@@ -174,12 +174,13 @@
 本节只适用于桌面端。
 
 - 独立写作窗口的默认逻辑尺寸是 960 × 720 `(工程细则)`。插件 manifest 声明窗口不可缩放(`resizable: false`)。
-- 是否可缩放按平台决定:macOS 遵循 manifest,即不可拖动改变大小;Linux 一律可缩放,忽略 manifest 的这一声明。[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/src-tauri/src/desktop_policy.rs https://github.com/wizlijun/note.md/blob/v6.1117.1/plugins-src/write/manifest.v2.json 平台细节见 [platform/notemd-desktop.md](platform/notemd-desktop.md)。
+- 独立写作窗口在两个平台上都可以拖动改变大小,尽管 manifest 声明的是不可缩放。macOS 上由宿主对这个窗口单独放开(同时保留绿色全屏按钮);Linux 上宿主对所有插件窗口放开。[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/src-tauri/src/plugin_runtime/windows.rs https://github.com/wizlijun/note.md/blob/v6.1117.1/src-tauri/src/desktop_policy.rs 平台细节见 [platform/notemd-desktop.md](platform/notemd-desktop.md),manifest 与实际行为的出入记在 [known-gaps](../handoff/04-known-gaps.md) §4.6、§4.9。
 - 新窗口按当前显示器的可用工作区布局,不超出小屏范围。
 - 可以进入和退出系统原生全屏。全屏往返时保留光标和滚动位置,保留标准的退出方式。
 - macOS 有“新窗口以全屏打开”选项,默认开启。修改后从下一个新建的独立窗口开始生效。再次激活已打开的窗口时,不改变用户选定的非全屏状态。[已交付:macOS] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/CHANGELOG.zh-CN.md
-- Linux 窗口保留可拖动的标题栏,可以缩放(见上一条),启动尺寸适配可用桌面。[已交付:Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/CHANGELOG.zh-CN.md
+- Linux 窗口保留可拖动的标题栏,可以缩放(见本节第二条),启动尺寸适配可用桌面。[已交付:Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/CHANGELOG.zh-CN.md
 - 当前偏好里没有窗口规格选项。是否提供,[未定]。
+- 平铺窗口管理器下,固定尺寸窗口如何与之协商:[未定]。见 [platform/notemd-desktop.md](platform/notemd-desktop.md)。
 - note.md 主窗口里的写作标签跟随宿主布局,不会自动全屏,也不强制主窗口使用固定尺寸。
 
 ### 按需工具与状态提示
