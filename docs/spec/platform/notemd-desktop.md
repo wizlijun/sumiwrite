@@ -301,3 +301,77 @@ macOS 内嵌候选随宿主 `v6.1110.8` / Sumi `0.1.13` 首发(`CHANGELOG.zh-CN.
 状态:[未定]
 
 Windows **没有交付**。插件二进制没有 Windows 目标,宿主在 Windows 上挂载原生编辑面会报“当前系统尚不支持”。旧规范的选型方向(Win32 Rich Edit HWND 内嵌)和后续评估,统一记在 [later.md · Windows](later.md)。
+
+## 8. 落盘保证
+
+本节补充 [01](../01-pages-and-storage.md) 里“写盘方式”的平台差异。
+
+### 8.1 `fullfsync` 与 `checkpoint_fullfsync` 在各平台的实际效果
+
+状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/src-tauri/src/sumi/journal.rs?plain=1#L39-L42
+
+- **两处都设置**:两处设置的 pragma 相同,都是 WAL、`synchronous=FULL`、`fullfsync=ON` 与 `checkpoint_fullfsync=ON`。
+  - 一处是宿主的输入保护日志(`src-tauri/src/sumi/journal.rs`)。
+  - 另一处是后台的页存储,证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/src/storage.rs?plain=1#L264-L271。
+  - 两处代码都没有按平台区分的条件编译,macOS 和 Linux 上执行的是同一组设置。
+- **macOS**:代码注释写明,这组设置除了刷写操作系统缓冲,还会刷写驱动器缓存,检查点也保持这一保证。
+  - 这是代码表达的意图。没有做过物理断电实验,证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-09-sumi-local-safety.md?plain=1#L21。真实断电下的效果 [未定]
+- **Linux**:设置照样下发,单测也断言读回值为 `fullfsync=1`。
+  - 但源仓库没有任何代码注释、测试或报告说明,在 Linux 上这组设置会刷写驱动器缓存。
+  - 能确认的只是 `synchronous=FULL` 带来的每次提交前落盘。
+  - 驱动器缓存是否一并刷写 [未定];接手方应对照 SQLite 文档与目标文件系统核实。
+- **Windows / iOS**:不在本附录范围。iOS 见 [ios.md](ios.md)。
+
+## 9. 同步面板与设备配对
+
+本节是 [03 §2.3](../03-sync.md) 配对流程在桌面插件里的界面细节。流程本身、邀请格式与有效期以 03 为准。
+
+### 9.1 入口与面板结构
+
+状态:[已交付:macOS] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/plugins-src/write/src/main.ts?plain=1#L482-L499
+
+- **入口**:写作界面工具条上的同步按钮,打开标题为“同步”的面板。
+  - 按钮图标是 `⇄`,提示与无障碍标签是“同步”。
+  - 有待上传的修改时,按钮带 `data-pending` 标记。
+- **面板顶部**:一行状态文字。
+  - 已连接时显示“已连接”。
+  - 未连接时显示“离线也可以继续书写。连接后自动合并。”
+- **面板由上到下的组成**:
+  - 状态行。
+  - 加入表单(§9.3)。
+  - 生成邀请的按钮(§9.2)。
+- **平台**:界面代码是插件前端,macOS 与 Linux 共用同一份。Linux 上这个面板没有真实配对的验收记录,Linux 侧的状态 [未定]。
+- **文案**:各处界面文案都有中、英、日三种语言版本,本节只引中文。
+
+### 9.2 已配对设备:生成邀请
+
+状态:[已交付:macOS] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/plugins-src/write/src/main.ts?plain=1#L493-L497
+
+- 已配对设备的设置里提供生成邀请的入口:同步面板里的“配对另一台设备”按钮。
+  - 只有同步处于已连接状态时才显示,未连接时隐藏。
+  - 连接状态变化时,显隐随之刷新。
+- 按下后向后台请求一份新邀请。
+  - 邀请文本出现在面板底部的一个只读多行文本框里,无障碍标签为“一次性配对码”。
+  - 文本框出现时文字已全选,方便直接复制。
+- 邀请一次性、300 秒过期(工程细则),见 [03 §2.3](../03-sync.md)。
+  - 面板不显示倒计时,也不提供作废按钮。
+  - 每按一次就生成一份新邀请,并再追加一个文本框。
+- Linux 上这一步的真实验收 [未定]
+
+### 9.3 新设备:填写服务地址与邀请文本加入
+
+状态:[已交付:macOS] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/CHANGELOG.md?plain=1#L183
+
+界面代码:https://github.com/wizlijun/note.md/blob/v6.1117.1/plugins-src/write/src/main.ts?plain=1#L485-L491。新设备在同步面板的表单里填写两项,再按提交按钮:
+
+| 步骤 | 界面文案 | 输入方式 |
+| --- | --- | --- |
+| 1 | “同步服务地址” | URL 输入框,必填,关闭自动填充 |
+| 2 | “设备配对码”,即粘贴另一台设备上生成的邀请文本 | 密码型输入框,内容遮蔽,必填,关闭自动填充 |
+| 3 | 按“连接” | 提交给后台的 `pair`,兑换邀请 |
+
+- **成功后**:清空表单、关闭面板,同步状态随之刷新。
+- **失败时**:错误走插件统一的错误提示,表单不清空。具体提示文案未逐条核实。[未定]
+- **用词差异**:已配对设备那一侧把同一份文本标为“一次性配对码”,新设备这一侧标为“设备配对码”,两侧用词不一致。规范文字统一称“邀请文本”;界面是否统一用词 [未定]
+- **扫码**:扫码配对不在现行范围内。
+- **验收**:客户端加入的真实验收只在 macOS 上做过。Linux 共用这份界面与后台代码,但没有真实配对的验收记录。[未定]
