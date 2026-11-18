@@ -81,6 +81,34 @@
 
 旧规范建议把 vault 的 Git / iCloud 只当归档,不当实时同步通道;纸页的实时同步走玄霜写作自己的同步服务(见 [03-sync](../03-sync.md))。这是建议,不是宿主强制的行为,基线代码里没有对应的检测。
 
+### 2.5 正文与 sidecar 在宿主文件操作里成对处理
+
+状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/src/lib/folder-view.svelte.ts?plain=1#L109-L111
+
+两个平台共用这份宿主前端代码,证据是代码加单测。单测见 `src/lib/folder-view.test.ts` 的 `hides paired writing metadata while retaining orphan files for recovery` 和 `src/lib/outline/rename-pair.test.ts`。没有逐平台的界面验收记录。
+
+- **文件树**:
+  - 同目录里有对应的 `.writing.md` 时,`.writing.meta.json` 不显示。
+  - 没有正文的孤儿 sidecar 照常显示,留作恢复。
+  - 隐藏靠文件名配对,不靠 JSON 扩展名:其他 `.json` 文件照常显示。
+- **改名**:文件树里改名玄霜写作的投影文件,宿主一律拒绝。正文和 sidecar 都算,把普通文件改名成 `.writing.md` 也算。
+  - 拒绝时提示“玄霜写作纸页和逐行时间需要一起保存。请在玄霜写作中导出，或将已有副本恢复为新的一页。”(`src/components/FolderView.svelte`、`src/lib/outline/rename-pair.ts`)。
+  - 宿主不做联动改名,与旧规范的差异见 [MAPPING](../MAPPING.md) 与 [04-known-gaps](../../handoff/04-known-gaps.md)。
+- **另存为**:宿主同样拒绝另存为玄霜写作页面,也拒绝另存为 `.writing.md`,并提示通过玄霜写作新建页面(`src/lib/tabs.svelte.ts`)。
+- **后台改名投影**:文件名由后台决定。后台改名时,只删除与上次发布逐字节一致的旧正文和旧 sidecar。
+  - 旧文件里有外部改动时停下来,先走导入(`plugins-src/write/backend/src/durability.rs`)。
+- **尚未核实**:删除、全文搜索、索引和分享里有没有成对规则,没有核实。[未定]
+
+### 2.6 复制品与移动
+
+状态:[未定]
+
+- **恢复副本**:把复制出来的文件恢复为纸页时,总会分配新的 page UUID。
+  - 不能重建原来的 UUID 和 `write_epoch`(`src-tauri/src/sumi/recovery.rs` 的 `prepare`)。
+  - 这一条已交付,[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/src-tauri/src/sumi/recovery.rs?plain=1#L363-L381
+- **自动检测**:复制品带着相同 UUID 时,宿主应自动识别别名和内容分叉,不把复制品并成同一页。基线代码里没有找到这项检测。[未定]
+- **移动与改名**:文件在 vault 外部被移动或改名后,用 page UUID 找回候选并校验。基线代码里同样没有找到。[未定]
+
 ---
 
 ## 3. 专用 Tab 与专注窗口共享会话
@@ -166,7 +194,7 @@
 | Esc | 先关查找栏;没有查找栏时打开菜单 | 系统 `insertLineBreak:` | 段内硬换行 |
 
 - 按住不放产生的重复事件不会反复切换全屏。退出全屏后,窗口恢复原来的尺寸。来源:`tauri-plugin-native-editor/README.md`、`native/editor.m`。
-- 旧规范写过全屏键“Cmd/Win/Super+Enter”。macOS 保留 ⌘Return,Linux 已改为 F11,见 6.2。
+- 全屏键:macOS 是 ⌘Return,Linux 是 F11(见 6.2)。退役的旧键位见 [MAPPING](../MAPPING.md)。
 
 ### 5.2 AppKit 实现要点
 
@@ -198,8 +226,21 @@
 - **音效**:经 PulseAudio 播放,也兼容 PipeWire 的 Pulse 服务。
 - **RTF 粘贴**:只有 RTF 的剪贴板内容,用 `rclip-rtf` 0.1.0 转成纯文本。输入与解码结果各限 2 MiB(工程细则)。旧式中日韩代码页字节一律拒绝,并提示改用纯文本复制。
 - **打包**:Arch 包 `.pkg.tar.zst`,目前只有 x86_64。
+  - 宿主包的配方 `packaging/omarchy/notemd/PKGBUILD` 由 `prepare.py` 生成。它从已发布的同版本 Deb 解包,重新打成 Arch 包。
+  - 配方声明了 `x86_64` 和 `aarch64` 两个架构;输入法 addon 包只声明 `x86_64`。
+- **安装验收按架构逐个做**:每个架构都要用它自己的 `.pkg.tar.zst` 在 Arch 上验证依赖和实际启动。不能拿 `.deb` 或另一架构的包证明 Omarchy 可安装。
+  - x86_64 [已交付:Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-11-omarchy-amd64-ime-release/README.md?plain=1#L21
+    - 干净 Arch 容器里的依赖、重定位和 CLI 检查都通过。
+    - 报告写明没有装到本机,所以“实际启动”只有 CLI 证据,没有安装包的 GUI 启动证据。[未定]
+  - aarch64:配方里有,但没有任何验收记录。[未定]
+- **主题与系统深浅色**:插件的配色只有六个显式选项,默认 `dim`(`plugins-src/write/src/contract.ts`)。
+  - 六个选项是 `ink`、`dim`、`paper`、`sepia`、`crt`、`crt-blue`。
+  - 插件前端、后台和宿主的 `src-tauri/src/sumi/` 里都没有读取系统深浅色的代码。`effective_appearance` 只按全屏调整字号。
+  - 所以用户选定的配色不会被系统主题改掉。证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/plugins-src/write/src/contract.ts?plain=1#L1
+  - 旧规范要求的“主题可跟随系统”没有实现。[未定]
+  - GTK 系统主题会不会渗进 `TextView` 的颜色,没有实测。[未定]
 
-> **出入**:旧规范 §4.1 推荐“Qt 6 富文本原型”,GTK3 只是备选;代码实际选了 GTK3 TextView overlay,决定记录在旧规范 `2026-11-10-sumi-omarchy-native.md`。以代码为准。
+> **出入**:Linux 编辑控件现行是 GTK3 `TextView` overlay;与旧规范的差异见 [MAPPING](../MAPPING.md) 与 [04-known-gaps](../../handoff/04-known-gaps.md)。
 
 验收口径沿用旧规范(Omarchy 优先),其中多项**尚未有物理证据**,逐条见 6.4:
 
@@ -251,6 +292,25 @@ Fcitx5 for Sumi 是独立的输入法项目,不并入本仓库;本节只写对�
 - 预编辑不加蓝色底,候选里不出现 emoji;
 - 只把候选绑定到当前编辑面这一个精确的输入上下文。连不上增强接口时,退回系统默认候选框。
 
+**分页、截断与编号**:证据见下。两端各有单测或探针,真机物理验收与上文一样 [未定]。
+
+- Linux [已交付:Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/tauri-plugin-native-editor/src/linux_candidates_layout.rs?plain=1#L33-L37 (实现与单测 `four_row_limit_paginates_without_losing_candidates`、`long_unicode_words_are_ellipsized_without_changing_identity`、`ellipsis_preserves_combining_emoji_and_flag_graphemes` 等)
+- macOS [已交付:macOS] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/tauri-plugin-native-editor/native/candidates-view.h?plain=1#L53-L66 (探针 `native/candidates-view-probe.m`)
+
+规则:
+
+- **4 行只是上限**。
+  - 实际行数取当前视区放得下的行数,在 1 到 4 之间。
+  - 一行都放不下时,退回系统候选框。
+  - 每行能放几个候选,用编辑器实际使用的字体度量:Linux 是 Pango,macOS 是 AppKit 的属性文本宽度。
+- **分页**:候选超出容量时在本地分页,向前、向后翻页能到达全部候选。
+  - 引擎当前选中的候选所在那一页,会自动显示出来。
+- **截断**:单个候选过长时,按字形簇边界截断再加 `…`。
+  - 组合字符、emoji 和旗帜都不会被拆开。
+  - 截断只影响显示,选中后提交的仍是输入法给出的完整原词。
+- **编号**:显示的编号与选择用的索引,都是输入法的原始候选索引。
+  - 本地分页不改变引擎的编号,也不改动文档内容。
+
 **Linux 接口**(D-Bus):
 
 | 项 | 值 |
@@ -278,7 +338,7 @@ Fcitx5 for Sumi 是独立的输入法项目,不并入本仓库;本节只写对�
 
 macOS 内嵌候选随宿主 `v6.1110.8` / Sumi `0.1.13` 首发(`CHANGELOG.zh-CN.md`)。真机物理输入法的最终验收**未执行** [未定],见 `docs/superpowers/reports/2026-11-11-sumi-macos-ime-plugin-release/README.md`。
 
-> **出入**:旧规范 `2026-11-10-sumi-fcitx-candidates.md` 和 `v6.1110.2` 的更新日志写的是正文贴底布局,后来在 `v6.1110.4` 改为“非聚焦状态下输入行原地不动”。以现行规则为准。
+> **出入**:非聚焦状态下输入行原地不动是现行规则(自 `v6.1110.4`);退役的旧布局见 [MAPPING](../MAPPING.md)。
 
 ### 6.4 平台对齐的遗留项
 
