@@ -21,4 +21,6 @@
 
 1. [`docs/handoff/00-overview.md`](docs/handoff/00-overview.md):交接总览。
 2. [`docs/spec/00-product.md`](docs/spec/00-product.md):产品是什么、不是什么。
-3. [`docs/adr/`](docs/adr/):为什么这样选型。
+3. [`docs/handoff/01-inventory.md`](docs/handoff/01-inventory.md)、[`docs/handoff/03-notemd-contract.md`](docs/handoff/03-notemd-contract.md):东西在哪、与 note.md 怎么连。
+4. [`docs/handoff/02-migration-plan.md`](docs/handoff/02-migration-plan.md)、[`docs/handoff/04-known-gaps.md`](docs/handoff/04-known-gaps.md):怎么搬、还缺什么。
+5. [`docs/adr/`](docs/adr/):为什么这样选型;旧规范的去向见 [`docs/spec/MAPPING.md`](docs/spec/MAPPING.md)。
