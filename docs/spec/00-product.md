@@ -15,6 +15,7 @@
 
   小节内个别规则状态不同,就在该条规则末尾单独加标签。
 - **证据**:`[已交付:…]` 状态行同一行带证据链接,格式为 `https://github.com/wizlijun/note.md/blob/<宿主 tag 或提交号>/<路径>`。插件没有自己的 tag,一律用宿主 tag。判断依据有三:两份 CHANGELOG、`docs/superpowers/reports/` 下的发布报告、以及代码是否存在。
+- **双平台标签的证据**:`[已交付:macOS+Linux]` 要两个平台各有证据。macOS 侧取发布记录与发布报告;Linux 侧取 Linux 交付记录与 Omarchy 验收报告,即 Linux 上通过的自动化测试与实机检查。纯服务端的规则与客户端平台无关,会在正文里注明“服务端规则”。如果 Linux 侧只有共用代码和自动化测试,没有生产或实机证据,就在该条规则末尾单独加标签,并写明缺什么。
 - **工程细则**:旧规范中由实现团队补充、并非用户逐项选定的数值,例如快捷键、尺寸、时间和阈值,标 `(工程细则)`。
 - **主题文件与平台文件**:平台无关的规则写在 `00`–`05` 主题文件。某个平台特有的实现写在 [platform/](platform/) 下,包括 [notemd-desktop.md](platform/notemd-desktop.md)、[ios.md](platform/ios.md)、[later.md](platform/later.md)。
 - **出入与缺口**:凡出处不足、代码与旧规范不一致之处,都登记在 [../handoff/04-known-gaps.md](../handoff/04-known-gaps.md)。
@@ -61,7 +62,7 @@
 
 ### 1.3 成功标准
 
-状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/CHANGELOG.md?plain=1#L183 · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-08-sumi-release.md · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-10-sumi-omarchy-validation.md?plain=1#L7
+状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/CHANGELOG.md?plain=1#L183 · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-08-sumi-release.md · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-10-sumi-omarchy-validation.md?plain=1#L7 · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-10-sumi-omarchy-validation.md?plain=1#L49
 
 满足以下各条,才算这个产品成立:
 
@@ -71,14 +72,14 @@
 
    见 [04-editing-experience.md](04-editing-experience.md)。
 2. **行时间**:每个以 LF 分隔的逻辑行,都记录首次书写时间和最后修改时间。不做逐键回放。语义见 [02-markdown-and-line-time.md](02-markdown-and-line-time.md)。
-3. **多设备并发与离线合并**:多台设备可以同时编辑同一页,离线编辑能自动合并。整篇“后写覆盖”或“单设备独占写锁”都不满足这条。语义见 [03-sync.md](03-sync.md)。
+3. **多设备并发与离线合并**:多台设备可以同时编辑同一页,离线编辑能自动合并。整篇“后写覆盖”或“单设备独占写锁”都不满足这条。语义见 [03-sync.md](03-sync.md)。跨设备真实合并只在 macOS 上验收过,证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-08-sumi-release.md?plain=1#L42。Linux 共用同一内核与客户端,但没有跨设备生产联调,见 https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-10-sumi-omarchy-validation.md?plain=1#L65。[已交付:macOS]
 4. **源码完整可读**:用纯文本源码模式能读到完整 Markdown。富文本编辑时隐藏 YAML 头和各类 ID。
 5. **只同步自己的数据**:同步服务只同步本产品的纸页及必需的元数据,不同步 vault 里的其他内容。
 6. **偏好留在本机**:显示偏好只存本机,v1 不跨设备同步。
 7. **本机正文优先**:本机已确认保存的正文,不因投影文件缺失或冲突而打不开、读不了或写不下去。见 [01-pages-and-storage.md](01-pages-and-storage.md) §5。
 8. **性能矩阵**:物理输入到屏幕呈现的帧指标、能耗、内存,以及网络 p95 矩阵,尚无完整实测。[未定]
 
-Linux 的交付范围有一处限制:该平台共享同一套 Markdown/CRDT/持久日志,但尚无跨设备生产联调的证据。已记入 known-gaps。
+Linux 的交付范围:该平台共用同一套 Markdown/CRDT/持久日志,第 3 条的跨设备部分尚无生产证据,已记入 known-gaps。
 
 ## 2. 平台与形态
 
@@ -102,7 +103,7 @@ Linux 的交付范围有一处限制:该平台共享同一套 Markdown/CRDT/持�
 
 ### 3.1 现行分工
 
-状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/CHANGELOG.md?plain=1#L162 · https://github.com/wizlijun/note.md/blob/v6.1117.1/plugins-src/write/manifest.v2.json
+状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/CHANGELOG.md?plain=1#L162 · https://github.com/wizlijun/note.md/blob/v6.1117.1/plugins-src/write/manifest.v2.json · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-10-sumi-omarchy-validation.md?plain=1#L56 · https://github.com/wizlijun/note.md/blob/v6.1117.1/CHANGELOG.md?plain=1#L112
 
 **插件后台进程负责**:
 
@@ -150,7 +151,7 @@ Linux 的交付范围有一处限制:该平台共享同一套 Markdown/CRDT/持�
 - 不做文件夹、标签、拖拽排序。
 - 不做团队协作。
 - 总览不显示文件名和日期。见 [01-pages-and-storage.md](01-pages-and-storage.md)。
-- 同步服务不做公开注册、多租户或付费。“单用户”是当前的部署形态,不是协议层的假设。见 [03-sync.md](03-sync.md) §8.3。
+- 同步服务不做公开注册、多租户或付费。按设计 §10.4,规范把“单用户”写成当前的部署形态,不写成协议层的假设。见 [03-sync.md](03-sync.md) §8.3。
 - 不宣称端到端加密:同步服务不是 E2EE。
 - 不做逐键回放。
 - 显示偏好不跨设备同步。

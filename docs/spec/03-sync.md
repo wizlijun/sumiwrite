@@ -22,7 +22,7 @@
 
 ### 1.1 Yjs V1 更新
 
-状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/WIRE.md · https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/README.md · https://github.com/wizlijun/note.md/blob/v6.1117.1/CHANGELOG.md?plain=1#L183
+状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/WIRE.md · https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/README.md · https://github.com/wizlijun/note.md/blob/v6.1117.1/CHANGELOG.md?plain=1#L183 · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-10-sumi-omarchy-validation.md?plain=1#L17
 
 **格式与版本**:
 
@@ -49,6 +49,8 @@
 
 状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-sync-worker/README.md?plain=1#L32 · https://github.com/wizlijun/note.md/blob/v6.1117.1/write-sync-worker/README.md?plain=1#L34
 
+**适用范围**:本节是服务端规则,与客户端平台无关。
+
 **服务端的形态**:每个空间对应一个 Cloudflare Worker 后面的 SQLite Durable Object,外加 R2 备份。
 
 **只做中继**:
@@ -65,7 +67,9 @@
 
 ### 1.3 与内部协议 `sumi-protocol` 的区别
 
-状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/sumi-protocol/src/service.rs?plain=1#L5 · https://github.com/wizlijun/note.md/blob/v6.1117.1/plugins-src/write/backend/src/sync.rs?plain=1#L671
+状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/sumi-protocol/src/service.rs?plain=1#L5 · https://github.com/wizlijun/note.md/blob/v6.1117.1/plugins-src/write/backend/src/sync.rs?plain=1#L671 · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-10-sumi-omarchy-validation.md?plain=1#L56
+
+**适用范围**:客户端这一侧,macOS 与 Linux 的插件带的是同一套后台代码。
 
 **两套协议,互不相干**:
 
@@ -80,7 +84,7 @@
 
 ### 2.1 空间、设备、凭据与纸页分层
 
-状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/sumi-protocol/src/sync.rs?plain=1#L6 · https://github.com/wizlijun/note.md/blob/v6.1117.1/plugins-src/write/backend/src/sync.rs?plain=1#L62 · https://github.com/wizlijun/note.md/blob/v6.1117.1/CHANGELOG.md?plain=1#L112
+状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/sumi-protocol/src/sync.rs?plain=1#L6 · https://github.com/wizlijun/note.md/blob/v6.1117.1/plugins-src/write/backend/src/sync.rs?plain=1#L62 · https://github.com/wizlijun/note.md/blob/v6.1117.1/CHANGELOG.md?plain=1#L112 · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-10-sumi-omarchy-validation.md?plain=1#L24
 
 **身份层与纸页数据分开**,包括:
 
@@ -96,19 +100,18 @@
 **设备凭据**:
 
 - 内容:一个 256 位随机秘密,加上一个与空间绑定的 HMAC 路由证明。服务端只保存它的 SHA-256。
-- 存放:长期凭据只放在操作系统的安全存储里,不进 Markdown、sidecar、日志或插件包。
-  - macOS 用钥匙串 [已交付:macOS]
-  - Linux 用 Secret Service [已交付:Linux]
-  - iOS 用钥匙串 [计划:iOS]
-  - 条目名等平台细节见 [platform/notemd-desktop.md](platform/notemd-desktop.md)。
+- 存放:长期凭据只放在操作系统提供的安全存储里,不进 Markdown、sidecar、日志或插件包。各平台用哪种安全存储、条目叫什么,见 [platform/notemd-desktop.md](platform/notemd-desktop.md)。
+- iOS 同样只放系统安全存储,见 [platform/ios.md](platform/ios.md)。[计划:iOS]
 
 **身份由签名声明决定**:服务端根据签名声明确定空间,调用方自己填的身份头一律被替换。
 
-**部署形态**:当前是私有、单用户、多设备。“单用户”是部署形态,不是协议假设:任何已配对设备都被信任来管理它所在的个人空间。
+**部署形态**:当前是私有、单用户、多设备。按设计 §10.4,规范把“单用户”写成当前部署形态,不写成协议假设。服务端文档的说法是:任何已配对设备都被信任来管理它所在的个人空间(README L14)。
 
 ### 2.2 令牌与吊销
 
 状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-sync-worker/README.md?plain=1#L11 · https://github.com/wizlijun/note.md/blob/v6.1117.1/write-sync-worker/src/protocol.ts?plain=1#L18
+
+**适用范围**:本节是服务端规则,与客户端平台无关。令牌的获取与刷新,由两平台共用的插件后台完成。
 
 **访问令牌**:
 
@@ -127,6 +130,8 @@
 
 状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-sync-worker/README.md?plain=1#L13 · https://github.com/wizlijun/note.md/blob/v6.1117.1/plugins-src/write/src/main.ts?plain=1#L486 · https://github.com/wizlijun/note.md/blob/v6.1117.1/CHANGELOG.md?plain=1#L183
 
+**适用范围**:邀请的格式、时限与兑换都是服务端规则,与客户端平台无关。客户端加入的流程见第 3 步的单独标签。
+
 **没有公开注册**:没有公开注册,也没有匿名的纸页端点。
 
 **流程分四步**:
@@ -137,8 +142,8 @@
 2. **生成邀请**:已配对的设备生成邀请。
    - 邀请内容是 `{spaceId, code, expiresAt}`:含 256 位随机秘密和与空间绑定的 HMAC。
    - 邀请只能用一次,有效期 300 秒(工程细则)。
-   - 界面上“配对另一台设备”把这段邀请文本显示出来,供复制。
-3. **加入**:新设备填入两项,然后兑换邀请,得到与首台设备同样结构的凭据包。
+   - 已配对设备的设置里提供生成邀请的入口,把邀请文本显示出来供复制。界面细节见 [platform/notemd-desktop.md](platform/notemd-desktop.md)。
+3. **加入**:新设备填入两项,然后兑换邀请,得到与首台设备同样结构的凭据包。客户端加入的真实验收只在 macOS 上做过,证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/CHANGELOG.md?plain=1#L183。Linux 共用同一配对界面与后台代码,但没有真实配对的验收记录。[已交付:macOS]
    - 同步服务地址
    - 邀请文本
 4. **设备管理**:设备列表可以查看;吊销即时生效,见 §2.2。
@@ -154,7 +159,7 @@
 
 ### 3.1 目录
 
-状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-sync-worker/README.md?plain=1#L22 · https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/src/catalog.rs?plain=1#L109
+状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-sync-worker/README.md?plain=1#L22 · https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/src/catalog.rs?plain=1#L109 · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-10-sumi-omarchy-validation.md?plain=1#L17
 
 **服务端目录是只追加的变更流**:
 
@@ -179,7 +184,7 @@
 
 ### 3.2 `opId` 幂等
 
-状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-sync-worker/src/index.ts?plain=1#L343 · https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/src/catalog.rs?plain=1#L66
+状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-sync-worker/src/index.ts?plain=1#L343 · https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/src/catalog.rs?plain=1#L66 · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-10-sumi-omarchy-validation.md?plain=1#L17
 
 **所有写操作都带 `opId`**,包括新建、删除、恢复和内容更新。
 
@@ -199,7 +204,7 @@
 
 ### 4.1 本机先持久,再发送
 
-状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/README.md · https://github.com/wizlijun/note.md/blob/v6.1117.1/src-tauri/src/sumi/mod.rs?plain=1#L834
+状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/README.md · https://github.com/wizlijun/note.md/blob/v6.1117.1/src-tauri/src/sumi/mod.rs?plain=1#L834 · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-10-sumi-omarchy-validation.md?plain=1#L18
 
 **发出的时机**:客户端先把编辑持久化到本机,见 [01-pages-and-storage.md](01-pages-and-storage.md) §5。持久化之后,编辑才从发件箱发出。
 
@@ -215,7 +220,7 @@
 
 ### 4.2 合并语义
 
-状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-08-sumi-release.md?plain=1#L42 · https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/README.md · https://github.com/wizlijun/note.md/blob/v6.1117.1/CHANGELOG.md?plain=1#L183
+状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-08-sumi-release.md?plain=1#L42 · https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/README.md · https://github.com/wizlijun/note.md/blob/v6.1117.1/CHANGELOG.md?plain=1#L183 · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-10-sumi-omarchy-validation.md?plain=1#L17 · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-10-sumi-omarchy-validation.md?plain=1#L65
 
 **自动合并**:同一页上多台设备的并发编辑和离线编辑,经 CRDT 自动合并,所有文字都保留。这里不用整篇后写覆盖,也不用单写者锁。
 
@@ -239,14 +244,16 @@
 - 代际冲突
 - epoch 冲突
 
-**跨平台验证的范围**:
+**跨平台验证的范围**:本节的合并语义在两平台共用的内核里实现,Linux 上内核测试通过(见状态行)。
 
-- 跨设备真实远端合并的证据来自 macOS 发布验收。
-- Linux 共享同一内核与客户端,但没有跨设备生产联调的证据。已记入 known-gaps。
+- 跨设备真实远端合并(包括组字期间收到远端更新、撤销保留远端文字)只在 macOS 发布验收中核对过,证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-08-sumi-release.md?plain=1#L42。[已交付:macOS]
+- Linux 只有共用代码与自动化测试,没有跨设备生产联调,原话是“远端投影及同步内核测试不等同于跨设备生产联调”,见 https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-10-sumi-omarchy-validation.md?plain=1#L65。已记入 known-gaps。
 
 ### 4.3 重连回放
 
 状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-sync-worker/README.md?plain=1#L28 · https://github.com/wizlijun/note.md/blob/v6.1117.1/write-sync-worker/README.md?plain=1#L48
+
+**适用范围**:服务端规则与客户端平台无关;客户端一侧由 macOS 与 Linux 共用的插件后台实现。Linux 侧没有跨设备生产联调,见 §4.2。
 
 **回放什么**:重连或首次拉取一页时,服务端按 `journal-v1` 格式分块回放这一页的增量日志。
 
@@ -269,7 +276,9 @@
 
 ### 5.1 代际
 
-状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-sync-worker/src/index.ts?plain=1#L402 · https://github.com/wizlijun/note.md/blob/v6.1117.1/write-sync-worker/src/index.ts?plain=1#L460 · https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/src/catalog.rs?plain=1#L88
+状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-sync-worker/src/index.ts?plain=1#L402 · https://github.com/wizlijun/note.md/blob/v6.1117.1/write-sync-worker/src/index.ts?plain=1#L460 · https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/src/catalog.rs?plain=1#L88 · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-10-sumi-omarchy-validation.md?plain=1#L17
+
+**适用范围**:服务端规则与客户端平台无关;客户端一侧的代际处理在两平台共用的内核目录里。
 
 **代际怎样变化**:每页有生命周期代际 `generation`,删除和恢复各使它加一。
 
@@ -294,7 +303,9 @@
 
 ### 6.1 分配规则
 
-状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-sync-worker/src/index.ts?plain=1#L420 · https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/src/catalog.rs?plain=1#L77 · https://github.com/wizlijun/note.md/blob/v6.1117.1/write-sync-worker/README.md
+状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-sync-worker/src/index.ts?plain=1#L420 · https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/src/catalog.rs?plain=1#L77 · https://github.com/wizlijun/note.md/blob/v6.1117.1/write-sync-worker/README.md · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-10-sumi-omarchy-validation.md?plain=1#L17
+
+**适用范围**:服务端规则与客户端平台无关;客户端一侧的暂定与改号在两平台共用的内核目录里。
 
 **新建的空白页**:首次书写日期和序号都为空,没有文件名。
 
@@ -324,6 +335,8 @@
 
 状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-sync-worker/README.md?plain=1#L34 · https://github.com/wizlijun/note.md/blob/v6.1117.1/write-sync-worker/src/index.ts?plain=1#L413 · https://github.com/wizlijun/note.md/blob/v6.1117.1/plugins-src/write/backend/src/coordinator.rs?plain=1#L555
 
+**适用范围**:服务端规则与客户端平台无关;客户端一侧由 macOS 与 Linux 共用的插件后台实现。Linux 侧没有跨设备生产联调,见 §4.2。
+
 **直接无效的操作**:当前就能判定无效的操作,直接回滚,不入日志。
 
 **事后被证明无效的操作**:一个先前处于待定状态的操作,可能被后到的合法依赖证明为无效。此时服务端:
@@ -345,6 +358,8 @@
 ### 7.2 空间恢复
 
 状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-sync-worker/README.md?plain=1#L10 · https://github.com/wizlijun/note.md/blob/v6.1117.1/write-sync-worker/CLOUD-ACCEPTANCE.md?plain=1#L26
+
+**适用范围**:本节是服务端规则,与客户端平台无关。
 
 **从备份恢复**:由管理员执行。它总是:
 
@@ -371,6 +386,8 @@
 
 状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-sync-worker/README.md?plain=1#L56 · https://github.com/wizlijun/note.md/blob/v6.1117.1/write-sync-worker/CLOUD-ACCEPTANCE.md
 
+**适用范围**:本节是服务端规则,与客户端平台无关。
+
 **做法**:
 
 - 在某一修订号冻结日志与目录。
@@ -390,6 +407,8 @@
 ### 8.2 限额
 
 状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-sync-worker/src/protocol.ts?plain=1#L3 · https://github.com/wizlijun/note.md/blob/v6.1117.1/write-sync-worker/README.md?plain=1#L38
+
+**适用范围**:本节是服务端规则,与客户端平台无关。客户端回放与正文上限由两平台共用的插件后台和内核强制。
 
 下列上限全部是工程细则。超限时明确拒绝,不截断历史。
 
@@ -411,6 +430,8 @@
 ### 8.3 部署形态
 
 状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-sync-worker/README.md?plain=1#L62 · https://github.com/wizlijun/note.md/blob/v6.1117.1/write-sync-worker/CLOUD-ACCEPTANCE.md
+
+**适用范围**:本节是服务端规则,与客户端平台无关。
 
 **定位**:
 

@@ -11,7 +11,7 @@
 
 ### 1.1 身份与摘要
 
-状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/src/catalog.rs?plain=1#L70 · https://github.com/wizlijun/note.md/blob/v6.1117.1/plugins-src/write/src/contract.ts?plain=1#L53 · https://github.com/wizlijun/note.md/blob/v6.1117.1/src-tauri/src/sumi/mod.rs?plain=1#L828
+状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/src/catalog.rs?plain=1#L70 · https://github.com/wizlijun/note.md/blob/v6.1117.1/plugins-src/write/src/contract.ts?plain=1#L53 · https://github.com/wizlijun/note.md/blob/v6.1117.1/src-tauri/src/sumi/mod.rs?plain=1#L828 · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-10-sumi-omarchy-validation.md?plain=1#L18
 
 - **身份**:每页的身份是一个随机 UUID。
   - 这个 UUID 由发起新建的客户端生成,同时用作这次新建的幂等请求号,见 §3.1。
@@ -27,7 +27,7 @@
 
 ### 1.2 设备本地状态不共享
 
-状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/src/catalog.rs?plain=1#L39 · https://github.com/wizlijun/note.md/blob/v6.1117.1/src-tauri/src/sumi/mod.rs?plain=1#L859
+状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/src/catalog.rs?plain=1#L39 · https://github.com/wizlijun/note.md/blob/v6.1117.1/src-tauri/src/sumi/mod.rs?plain=1#L859 · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-10-sumi-omarchy-validation.md?plain=1#L18
 
 以下状态只属于本机,不随纸页同步:
 
@@ -41,7 +41,7 @@
 
 ### 2.1 顺序键
 
-状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/src/catalog.rs?plain=1#L48 · https://github.com/wizlijun/note.md/blob/v6.1117.1/write-sync-worker/README.md?plain=1#L23
+状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/src/catalog.rs?plain=1#L48 · https://github.com/wizlijun/note.md/blob/v6.1117.1/write-sync-worker/README.md?plain=1#L23 · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-10-sumi-omarchy-validation.md?plain=1#L17
 
 **新建时**:新页以当前页为锚点(`after_id`)插入。没有当前页时,锚点为空,新页挂在根下。
 
@@ -57,7 +57,7 @@
 
 ### 2.2 上一页、下一页与总览
 
-状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/src-tauri/src/sumi/mod.rs?plain=1#L3751 · https://github.com/wizlijun/note.md/blob/v6.1117.1/plugins-src/write/src/main.ts?plain=1#L264
+状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/src-tauri/src/sumi/mod.rs?plain=1#L3751 · https://github.com/wizlijun/note.md/blob/v6.1117.1/plugins-src/write/src/main.ts?plain=1#L264 · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-10-sumi-omarchy-validation.md?plain=1#L16
 
 **翻页**:
 
@@ -82,7 +82,7 @@
 
 ### 3.1 新建的幂等
 
-状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/src-tauri/src/sumi/mod.rs?plain=1#L880 · https://github.com/wizlijun/note.md/blob/v6.1117.1/src-tauri/src/sumi/mod.rs?plain=1#L3729
+状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/src-tauri/src/sumi/mod.rs?plain=1#L880 · https://github.com/wizlijun/note.md/blob/v6.1117.1/src-tauri/src/sumi/mod.rs?plain=1#L3729 · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-10-sumi-omarchy-validation.md?plain=1#L18
 
 - **哪些操作会产生新页**:新建、“下一页”和删除。删除当前页且没有剩余页时会产生新页,见 §3.3。
 - **请求号**:这些操作都必须带请求号 `requestId`(UUID)。新页的 UUID 就是这个请求号。
@@ -91,7 +91,7 @@
 
 ### 3.2 空白页不生成文件
 
-状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/src/catalog.rs?plain=1#L24 · https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/src/catalog.rs?plain=1#L77 · https://github.com/wizlijun/note.md/blob/v6.1117.1/src-tauri/src/sumi/mod.rs?plain=1#L2545
+状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/src/catalog.rs?plain=1#L24 · https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/src/catalog.rs?plain=1#L77 · https://github.com/wizlijun/note.md/blob/v6.1117.1/src-tauri/src/sumi/mod.rs?plain=1#L2545 · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-10-sumi-omarchy-validation.md?plain=1#L17
 
 **“不落盘”的含义**:空白页不生成任何可见文件,但纸页存储里有它。
 
@@ -103,7 +103,7 @@
 
 ### 3.3 废纸篓与恢复
 
-状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/src-tauri/src/sumi/mod.rs?plain=1#L3757 · https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/src/catalog.rs?plain=1#L88 · https://github.com/wizlijun/note.md/blob/v6.1117.1/write-sync-worker/src/index.ts?plain=1#L460
+状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/src-tauri/src/sumi/mod.rs?plain=1#L3757 · https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/src/catalog.rs?plain=1#L88 · https://github.com/wizlijun/note.md/blob/v6.1117.1/write-sync-worker/src/index.ts?plain=1#L460 · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-10-sumi-omarchy-validation.md?plain=1#L18
 
 **删除**:
 
@@ -129,7 +129,7 @@
 
 ### 4.1 SQLite 是本机事实源
 
-状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/src/storage.rs?plain=1#L263 · https://github.com/wizlijun/note.md/blob/v6.1117.1/plugins-src/write/backend/src/durability.rs?plain=1#L602 · https://github.com/wizlijun/note.md/blob/v6.1117.1/CHANGELOG.md?plain=1#L162
+状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/src/storage.rs?plain=1#L263 · https://github.com/wizlijun/note.md/blob/v6.1117.1/plugins-src/write/backend/src/durability.rs?plain=1#L602 · https://github.com/wizlijun/note.md/blob/v6.1117.1/CHANGELOG.md?plain=1#L162 · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-10-sumi-omarchy-validation.md?plain=1#L56
 
 **事实源**:本机的唯一事实源是内核的 SQLite 库。SQLite 以 WAL 模式运行,`synchronous=FULL`。库里保存:
 
@@ -159,7 +159,7 @@
 
 ### 4.2 纸页存储与 vault 投影的分层
 
-状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/README.md · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-08-sumi-release.md?plain=1#L30
+状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/README.md · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-08-sumi-release.md?plain=1#L30 · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-10-sumi-omarchy-validation.md?plain=1#L18
 
 **纸页存储**:§4.1 所述,每个客户端都有。
 
@@ -176,7 +176,7 @@
 
 ### 4.3 迁移层级与导出
 
-状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/src-tauri/src/sumi/export.rs?plain=1#L10 · https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/README.md
+状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/src-tauri/src/sumi/export.rs?plain=1#L10 · https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/README.md · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-10-sumi-omarchy-validation.md?plain=1#L18
 
 **能恢复到什么程度,取决于手里有什么**:
 
@@ -199,7 +199,7 @@
 
 ### 5.1 本机正文优先
 
-状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/CHANGELOG.md?plain=1#L146 · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-09-sumi-local-safety-release.md · https://github.com/wizlijun/note.md/blob/v6.1117.1/src-tauri/src/sumi/mod.rs?plain=1#L840
+状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/CHANGELOG.md?plain=1#L146 · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-09-sumi-local-safety-release.md · https://github.com/wizlijun/note.md/blob/v6.1117.1/src-tauri/src/sumi/mod.rs?plain=1#L840 · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-10-sumi-omarchy-validation.md?plain=1#L49 · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-10-sumi-omarchy-validation.md?plain=1#L28
 
 **本机库可信,投影可重建**:
 
@@ -237,7 +237,7 @@
 **写盘方式**:
 
 - 日志用 SQLite WAL 且 `synchronous=FULL`,每次提交在确认前落盘。
-- macOS 上另开 `fullfsync`,连驱动器缓存一起刷写。[已交付:macOS]
+- 日志和检查点都请求最强的落盘保证,即 SQLite 的 `fullfsync` 与 `checkpoint_fullfsync`。这项设置在哪些平台上会连驱动器缓存一起刷写,见 [platform/notemd-desktop.md](platform/notemd-desktop.md)。
 
 **回收与重放**:
 
@@ -250,7 +250,7 @@
 
 ### 5.3 写入失败与未持久草稿
 
-状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/CHANGELOG.md?plain=1#L146 · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-09-sumi-local-safety-release.md
+状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/CHANGELOG.md?plain=1#L146 · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-09-sumi-local-safety-release.md · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-10-sumi-omarchy-validation.md?plain=1#L28
 
 **日志写入失败时**:
 

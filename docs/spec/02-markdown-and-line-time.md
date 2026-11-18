@@ -15,7 +15,7 @@
 
 ### 1.1 正文以 LF Markdown 为准
 
-状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/README.md · https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/WIRE.md · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-08-sumi-release.md?plain=1#L29
+状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/README.md · https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/WIRE.md · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-08-sumi-release.md?plain=1#L29 · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-10-sumi-omarchy-validation.md?plain=1#L28
 
 - **权威是 Markdown 源码**:正文的唯一权威是以 LF 换行的 Markdown 源码。展示样式不作为 CRDT 文本格式存储。
 - **视图之间的关系**:
@@ -33,7 +33,7 @@
 
 ### 1.2 富文本视图支持的语法
 
-状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/src/render.rs?plain=1#L56 · https://github.com/wizlijun/note.md/blob/v6.1117.1/CHANGELOG.md?plain=1#L180
+状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/src/render.rs?plain=1#L56 · https://github.com/wizlijun/note.md/blob/v6.1117.1/CHANGELOG.md?plain=1#L180 · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-10-sumi-omarchy-validation.md?plain=1#L28
 
 富文本视图可以直接编辑以下语法:
 
@@ -46,7 +46,7 @@
 
 ### 1.3 不支持的块原样保留
 
-状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/src/render.rs?plain=1#L56 · https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/README.md
+状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/src/render.rs?plain=1#L56 · https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/README.md · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-10-sumi-omarchy-validation.md?plain=1#L17
 
 **哪些语法受保护**:
 
@@ -72,7 +72,7 @@
 
 ### 2.1 Markdown 文件
 
-状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/src/storage.rs?plain=1#L56 · https://github.com/wizlijun/note.md/blob/v6.1117.1/src-tauri/src/sumi/mod.rs?plain=1#L889
+状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/src/storage.rs?plain=1#L56 · https://github.com/wizlijun/note.md/blob/v6.1117.1/src-tauri/src/sumi/mod.rs?plain=1#L889 · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-10-sumi-omarchy-validation.md?plain=1#L17
 
 便携文件是一对:Markdown 文件和 JSON sidecar(§2.2)。Markdown 文件由一个小 YAML 身份头加上原样的 Markdown 正文组成:
 
@@ -99,7 +99,7 @@ write_metadata: sidecar-v1
 
 ### 2.2 sidecar
 
-状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/src/storage.rs?plain=1#L14 · https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/WIRE.md
+状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/src/storage.rs?plain=1#L14 · https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/WIRE.md · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-10-sumi-omarchy-validation.md?plain=1#L17
 
 sidecar 是一份 JSON,字段如下:
 
@@ -136,7 +136,7 @@ sidecar 是一份 JSON,字段如下:
 
 ### 2.3 不写进正文的东西
 
-状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/WIRE.md · https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/README.md
+状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/WIRE.md · https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/README.md · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-10-sumi-omarchy-validation.md?plain=1#L17
 
 - 正文里不出现逐行时间注释。
 - CRDT 正文里不出现时间字符串。
@@ -148,7 +148,7 @@ sidecar 是一份 JSON,字段如下:
 
 ### 3.1 逻辑行
 
-状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/WIRE.md · https://github.com/wizlijun/note.md/blob/v6.1117.1/CHANGELOG.md?plain=1#L183
+状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/WIRE.md · https://github.com/wizlijun/note.md/blob/v6.1117.1/CHANGELOG.md?plain=1#L183 · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-10-sumi-omarchy-validation.md?plain=1#L17
 
 **怎样切分逻辑行**:按 LF 切分,保留末尾的空段,也不裁剪空白。
 
@@ -170,7 +170,7 @@ sidecar 是一份 JSON,字段如下:
 
 ### 3.2 首次书写与最后修改
 
-状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/WIRE.md · https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/README.md · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-08-sumi-release.md?plain=1#L42
+状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/WIRE.md · https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/README.md · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-08-sumi-release.md?plain=1#L42 · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-10-sumi-omarchy-validation.md?plain=1#L17
 
 **基本规则**:
 
@@ -201,7 +201,7 @@ sidecar 是一份 JSON,字段如下:
 
 ### 3.3 `time_source` 取值
 
-状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/src/document.rs?plain=1#L213 · https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/WIRE.md
+状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/src/document.rs?plain=1#L213 · https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/WIRE.md · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-10-sumi-omarchy-validation.md?plain=1#L17
 
 sidecar 里每行的 `time_source`,取以下四个值之一:
 
@@ -224,7 +224,7 @@ sidecar 里每行的 `time_source`,取以下四个值之一:
 
 ### 3.4 不做逐键回放
 
-状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/WIRE.md · https://github.com/wizlijun/note.md/blob/v6.1117.1/CHANGELOG.md?plain=1#L183
+状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/WIRE.md · https://github.com/wizlijun/note.md/blob/v6.1117.1/CHANGELOG.md?plain=1#L183 · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-10-sumi-omarchy-validation.md?plain=1#L17
 
 **不做什么**:产品只承诺逐行的首次书写和最后修改时间,不提供逐键回放,也不按时间线重演书写过程。
 
