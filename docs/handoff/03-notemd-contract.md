@@ -159,7 +159,7 @@ owner 是“当前持有某纸页编辑面的 `(窗口, 标签页, 编辑面)`�
 
 **B7 宿主主窗口文件视图用的 Tauri 命令(补充)**
 
-文件视图(`file_views`)的编辑面开在宿主**主窗口**里,由 `src/lib/sumi/` 与 `NativeFileView` 通过 Tauri 命令(不是 `host.sumi.*`)驱动。这些命令只接受标签为 `main` 的窗口(否则 `CAPABILITY_DENIED: main editor window required`),且都要求 `plugin_id == notemd.sumi` 并通过 `authorize()`。注册处 `src-tauri/src/lib.rs` 的 `generate_handler!`。这部分是宿主内部实现,**留在 note.md**(归属见 `01-inventory.md`),此处列出只为让“宿主改了命令名插件会不会坏”可检查——它们不被插件包调用,而被宿主自己的前端调用。
+文件视图(`file_views`)的编辑面开在宿主**主窗口**里,由 `src/lib/sumi/` 与 `NativeFileView` 通过 Tauri 命令(不是 `host.sumi.*`)驱动。这些命令只接受标签为 `main` 的窗口(否则 `CAPABILITY_DENIED: main editor window required`),且都要求 `plugin_id == notemd.sumi` 并通过 `authorize()`。注册处 `src-tauri/src/lib.rs` 的 `generate_handler!`。这部分是宿主内部实现,**留在 note.md**(归属见 `01-inventory.md`),此处列出只为让“宿主改了命令名插件会不会坏”可检查——已核实 `plugins-src/write/src/main.ts` 不含 `invoke`、也不含任何 `sumi_*` 命令名(grep 0 命中);调用点在宿主前端 `src/lib/sumi/{focus,session,recovery}.ts`。插件包的其他入口(`contract.ts`、样式)不发命令。后台进程是否另有路径触达这些命令 `[未定]`(未逐文件审查)。
 
 | Tauri 命令(参数,均以 snake_case 传入) | 说明 |
 |---|---|
@@ -267,18 +267,44 @@ owner 是“当前持有某纸页编辑面的 `(窗口, 标签页, 编辑面)`�
 
 ### 1.5 版本规则
 
-1. **新增可选能力**(新的 `host.sumi.*` 命令、新的可选参数/返回字段、新的推送消息类型、新的 `capabilities` 字符串,且旧插件/旧宿主不用它也照常工作):升**次版本**,`host-contract v1.x`。宿主对缺失的能力必须降级而不是拒绝(参照 `observe_page` 的先例:旧后台只在需要该能力的那一个请求上被拒,且文案指向“更新插件”)。
+1. **新增可选能力**(新的 `host.sumi.*` 命令、新的可选参数/返回字段、新的推送消息类型、新的 `capabilities` 字符串,且旧插件/旧宿主不用它也照常工作):升**次版本**,`host-contract v1.x`。**[提议规则,非现有行为]** 宿主对缺失的能力应当降级而不是拒绝(现有先例只有一个,参照 `observe_page` 的先例:旧后台只在需要该能力的那一个请求上被拒,且文案指向“更新插件”)。
 2. **改变或删除既有行为**(改名/删除命令、改参数或返回的含义、收紧取值范围、改变服务协议 `VERSION`、改变 `edit_receipt` 摘要的线上身份、改变 owner/组字的拒绝规则):升**主版本**,`host-contract v2`。
 3. **主版本变化必须两个仓库配套发版**(见 §4)。
 4. 每次变更同时更新:本文件、`CHANGELOG`(两个仓库各自)、插件 manifest 的 `engines.notemd`(若需要更高的宿主下限)。
 5. 契约版本与插件版本、宿主版本互相独立。当前对应关系:`host-contract v1` = 宿主 `v6.1117.1` 基线 + 插件 `0.1.16`。
 6. **机械检查**:`bash docs/check.sh check_contract` 会从源仓库 `src-tauri/src/sumi/mod.rs` 抓取每个 `host.sumi.*` 名称,要求本文件都出现过;宿主新增命令而本文未登记,检查即失败。
 
+### 1.6 停止、持久回执与插件进程环境(补漏,已按 v6.1117.1 代码核实)
+
+追加于 §1.4/§1.5 之后,不改既有编号。产品层说法归 spec 01,此处只写契约层。
+
+**E1 停止/停用/退出/升级的次序**(`src-tauri/src/sumi/mod.rs` `before_exit`、`freeze_workspace`、`cleanup_plugin`、`resume_plugin`;`service.rs` `MutationGate`、`stop_network`)
+
+1. 置全局 `PLUGIN_QUIESCING`,此后拒绝创建新会话与重新显示窗口;各工作区相位 `ACTIVE -> QUIESCING`。覆盖**全部已打开工作区**,含隐藏页。
+2. 停打字音,逐窗口 `before_close`(停止新输入、过组字屏障)。
+3. `network.stop()`:先 `MutationGate::close()`(`accepting=false` 且代数加一),再向后台发 `network stop`,最后 `drain()` 等在途回调结束。此后到达的 `remote`/`directory` 回调被拒(“belongs to a stopped synchronization run”)。
+4. `freeze_workspace`:flush 位置,`durable.flush()`(排空持久队列并尝试投影)。若 flush 因外部冲突失败:逐页 `load` 并核对已接受的 `revision` 等于内存文档 revision,全部一致则放行,冻结快照里 `projected=false`;任一页不一致或数据库错误,返回“正文尚未完成持久化,不能停用”,**仍阻止**停用/退出。
+5. 全部成功后相位为 `QUIESCED`。失败则回滚:清快照、相位回 `ACTIVE`、`network.resume()`、窗口恢复。
+6. 触发点:应用退出(`lib.rs` 的 exit 流程调用 `before_exit`);停用/卸载(`plugin_runtime/commands.rs`)与升级替换(`plugin_runtime/lifecycle.rs`)调用 `cleanup_plugin`(内部先 `before_exit`);升级成功后 `resume_plugin`。`resume_workspace` 恢复前逐页核对 epoch/generation/revision 与冻结快照一致,不一致则报错并保留草稿。
+7. **启动票据**:`start_network()` 在调用时同步取 `MutationGate` 代数作票据;`stop_network()` 的 `close()` 令旧票据失效,即使旧启动 future 还没被轮询,`open_if_current` 也返回 false。恢复必须经 `network.resume()` 取新票据。
+8. 关闭**单个窗口**只走第 2 步,不停后台下载、不停其他纸页的同步:`[未定]`——代码里 `before_close` 的单窗口语义已见,但“不终止后台下载”的断言未逐行证明,以单测/代码为准。
+
+**E2 持久回执**(`sumi-protocol/src/durability.rs` `edit_receipt`;`plugins-src/write/backend/src/durability.rs`;宿主 `src-tauri/src/sumi/durability.rs`)
+
+- 回执表在后台 SQLite 内:`sumi_edit_receipts(op_id PK, digest, page_id, epoch, generation, revision)`;`sumi_local_update_identity(op_id, digest)`;`sumi_echo_receipts`(远端回声)。回执与数据在同一事务写入(`record_local_receipt` 在 `transaction` 内)。
+- `digest` 覆盖 `(1u8, remote, edit, imported)`。同 `op_id`:摘要相同则**重放返回原回执**(`receipt()` 返回 `found`);摘要不同则拒绝,错误文案 `operation ID reused with different durable payload`。唯一例外:已确认的本地操作经云端回来,带新宿主 revision,按 `local_echo` 判为回声(返回 `None`,不算冲突)。
+- 宿主侧 `validate_receipt` 用 `journal::receipt(request)` 重算并与后台回执比对,不一致报“后台保存回执与待确认修改不一致”,通过后才 `journal.acknowledge`。
+- 事件语义:`DurableEvent::Committed{page_id,revision}` 在回执持久化后宿主确认时发出;`Saved{..,projected,projection_error}` 在投影结束后另发;`Failed` 表示失败。投影被外部冲突挡住时 `Saved.projected=false`,并不撤销已发出的 `Committed`(测试 `projection_conflict_allows_local_writing_reopen_and_never_reports_projected`)。
+- “checkpoint 与云端 ACK 都不清除回执”“后台崩溃后按原序原 ID 重放”“读和 flush 不越过前面的写”:`[未定]`,本轮未逐条在代码中证明(见 `service.rs` 注释“only the durable FIFO may replay operations with proven durable idempotency identities”,仅支持重放只走持久 FIFO)。
+- P10“同一 CRDT 更新回声幂等”:`sumi_echo_receipts` 与 `local_echo` 是其实现入口;完整性 `[未定]`。
+
+**E3 插件进程环境(Linux)**:`src-tauri/src/platform.rs` 的环境白名单在 Linux 为 `HOME PATH LANG LC_ALL TERM USER TMPDIR XDG_RUNTIME_DIR`,注释说明默认 PulseAudio/PipeWire 客户端靠它找会话 socket,其余变量不继承;单测 `linux_plugin_spawn_preserves_runtime_without_secrets`(`plugin_runtime/process.rs`)断言保留 `XDG_RUNTIME_DIR` 且不泄露秘密变量。宿主若改白名单,须保留该变量。
+
 ---
 
 ## 2. 依赖方向
 
-两个方向都按**固定 tag** 引用,不跟分支;两者在 crate 层面不成环。
+两个方向都按**固定 tag** 引用,不跟分支;两者在 crate 层面不成环。 **[我的判断]**(设计 §5.3 第 2 条;其中“共享快捷键 TypeScript 的处理方式由第 2 期定”同属 [我的判断],第 5 条签名与上架归属亦是。)
 
 | 方向 | 引用什么 | 怎么引用 |
 |---|---|---|
