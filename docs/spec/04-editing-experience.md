@@ -112,6 +112,7 @@
 - 进入过渡 0.2 秒。停笔 10 秒后,用 1.2 秒让上下文恢复完全可见。再次输入时,0.2 秒内回到渐隐 `(工程细则)`。
 - 聚焦状态下按上、下方向键移动,当前行仍保持居中。空白页或首行从中线开始。
 - 回车后,上文必须仍然可见且连续。
+- 位置稳定:文档、光标、字号和视区都不变时,重复居中必须得到同一滚动位置和同一正文像素位置;平滑移动结束后不再跳动。浮点滚动值与平台整数像素之间按平台实际的取整规则换算,不靠放大误差容限掩盖抖动。Linux 已修复半像素来回跳动,并有重复居中幂等的单测。[已交付:Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/tauri-plugin-native-editor/src/linux.rs https://github.com/wizlijun/note.md/blob/v6.1117.1/CHANGELOG.zh-CN.md macOS 上没有找到同等的验收记录。[未定]
 
 **退出聚焦与不触发的情形**
 
@@ -172,12 +173,13 @@
 
 本节只适用于桌面端。
 
-- 独立写作窗口的默认逻辑尺寸是 960 × 720 `(工程细则)`。
+- 独立写作窗口的默认逻辑尺寸是 960 × 720 `(工程细则)`。插件 manifest 声明窗口不可缩放(`resizable: false`)。
+- 是否可缩放按平台决定:macOS 遵循 manifest,即不可拖动改变大小;Linux 一律可缩放,忽略 manifest 的这一声明。[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/src-tauri/src/desktop_policy.rs https://github.com/wizlijun/note.md/blob/v6.1117.1/plugins-src/write/manifest.v2.json 平台细节见 [platform/notemd-desktop.md](platform/notemd-desktop.md)。
 - 新窗口按当前显示器的可用工作区布局,不超出小屏范围。
 - 可以进入和退出系统原生全屏。全屏往返时保留光标和滚动位置,保留标准的退出方式。
 - macOS 有“新窗口以全屏打开”选项,默认开启。修改后从下一个新建的独立窗口开始生效。再次激活已打开的窗口时,不改变用户选定的非全屏状态。[已交付:macOS] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/CHANGELOG.zh-CN.md
-- Linux 窗口保留可拖动的标题栏,可以缩放,启动尺寸适配可用桌面。[已交付:Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/CHANGELOG.zh-CN.md
-- 旧规范提出“在设置中选择少量固定窗口规格”。当前偏好里没有这一项。[未定]
+- Linux 窗口保留可拖动的标题栏,可以缩放(见上一条),启动尺寸适配可用桌面。[已交付:Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/CHANGELOG.zh-CN.md
+- 当前偏好里没有窗口规格选项。是否提供,[未定]。
 - note.md 主窗口里的写作标签跟随宿主布局,不会自动全屏,也不强制主窗口使用固定尺寸。
 
 ### 按需工具与状态提示
@@ -331,7 +333,7 @@
 - 只在原生正文编辑器有焦点时发声,包括中文组字过程。设置面板里的输入框不发声。
 - 不记录按键内容。
 - 命令快捷键不当作正文打字,不发声。保存失败后被暂停的草稿也不发声。Shift、Option 等参与正常输入的修饰键保留修饰键反馈。
-- 按普通键、空格、回车、删除、修饰键和按键抬起区分声音。共 12 个短 WAV,总计 133,584 字节,随插件提供 `(工程细则)`。
+- 按普通键、空格、回车、删除和修饰键区分声音。只有部分音色带按键抬起声:`thock` 有抬起样本,`typewriter` 没有。共 12 个短 WAV,总计 133,584 字节,随插件提供 `(工程细则)`。
 - macOS 需要“输入监控”权限。设置面板提供明确的授权入口和重试,状态里显示是否缺少权限。[已交付:macOS] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/CHANGELOG.zh-CN.md
 - 长按自动重复:macOS 不为自动重复发声;Linux 保留长按重复的声音。两端不一致,目标行为没有定下来。[未定]
 
