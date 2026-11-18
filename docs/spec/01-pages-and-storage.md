@@ -57,7 +57,9 @@
 
 ### 2.2 上一页、下一页与总览
 
-状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/src-tauri/src/sumi/mod.rs?plain=1#L3751 · https://github.com/wizlijun/note.md/blob/v6.1117.1/plugins-src/write/src/main.ts?plain=1#L264 · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-10-sumi-omarchy-validation.md?plain=1#L16
+状态:[已交付:macOS] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-08-sumi-release.md?plain=1#L25 · https://github.com/wizlijun/note.md/blob/v6.1117.1/src-tauri/src/sumi/mod.rs?plain=1#L3751 · https://github.com/wizlijun/note.md/blob/v6.1117.1/plugins-src/write/src/main.ts?plain=1#L264
+
+**Linux**:Linux 运行同一份插件前端与宿主代码,但 Omarchy 验收没有覆盖翻页与总览,所以本节只标 macOS。已记入 known-gaps。
 
 **翻页**:
 
@@ -129,7 +131,9 @@
 
 ### 4.1 SQLite 是本机事实源
 
-状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/src/storage.rs?plain=1#L263 · https://github.com/wizlijun/note.md/blob/v6.1117.1/plugins-src/write/backend/src/durability.rs?plain=1#L602 · https://github.com/wizlijun/note.md/blob/v6.1117.1/CHANGELOG.md?plain=1#L162 · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-10-sumi-omarchy-validation.md?plain=1#L56
+状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/src/storage.rs?plain=1#L263 · https://github.com/wizlijun/note.md/blob/v6.1117.1/plugins-src/write/backend/src/durability.rs?plain=1#L602 · https://github.com/wizlijun/note.md/blob/v6.1117.1/CHANGELOG.md?plain=1#L162 · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-10-sumi-omarchy-validation.md?plain=1#L7 · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-10-sumi-omarchy-validation.md?plain=1#L49
+
+**Linux 证据的范围**:Linux 共用同一内核存储与持久日志(Omarchy L7),最终宿主包上的保存、重开续写与继续保存逐字节一致(Omarchy L49)。WAL 与 `synchronous=FULL` 的具体设置在 Linux 上只有共用代码,没有单独验收。
 
 **事实源**:本机的唯一事实源是内核的 SQLite 库。SQLite 以 WAL 模式运行,`synchronous=FULL`。库里保存:
 
