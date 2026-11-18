@@ -108,7 +108,15 @@
 
 ### 4.1 三层代码各自随谁发布
 
-状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-09-sumi-focus-arrow-release.md
+状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/scripts/release-plugins.sh
+
+下表是**归纳**,没有哪一个源文件直接写着这张表。它由三处来源拼成:
+
+- 旧主规范 §8.1 的三层表;
+- 插件打包脚本 `scripts/release-plugins.sh` 的 `release_sumi()`:插件界面和后台二进制 `bin/notemd-sumi` 一起打进插件包;
+- 宿主 `src-tauri/Cargo.toml`:原生编辑桥以 `tauri-plugin-native-editor = { path = ... }` 编进宿主,证据 https://github.com/wizlijun/note.md/blob/v6.1117.1/src-tauri/Cargo.toml 。
+
+发版规则以[契约 §4](../../handoff/03-notemd-contract.md)为准。
 
 | 层 | 现位置(基线) | 怎么更新 |
 |---|---|---|
@@ -122,7 +130,7 @@
 - 新增可选能力时,宿主先发;
 - 主版本变化或服务协议 `VERSION` 变化时,两边配套发版。
 
-**先例**:聚焦状态下上下键居中这次修正,改到了原生编辑桥,所以是宿主 `6.1109.4` 与 Sumi `0.1.9` 一起发的(证据见本节状态行)。
+**先例**:聚焦状态下上下键居中这次修正,改到了原生编辑桥,所以是宿主 `6.1109.4` 与 Sumi `0.1.9` 一起发的。证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-09-sumi-focus-arrow-release.md
 
 ### 4.2 可独立更新的编辑模块
 
@@ -217,15 +225,25 @@
 | 启动时进入全屏 | 有此偏好,默认开 | 无此偏好 | 只在 Apple 平台提供(`plugins-src/write/src/main.ts`) |
 | 音效运行目录 | 系统音频 | 需要 Pulse 运行目录 | 平台差异,见旧规范 `2026-11-11-sumi-platform-parity.md` |
 
-Linux 的 Shift+Return 硬换行只有 GTK 合成测试,**没有物理按键证据**。[未定]
+**各行的证据强度不同**:
+
+- **全屏 F11**:有真实 GUI 证据。正式 GUI 验收里,正文与面板各做了两次 F11 往返;另有本机安装后的 F11 实测往返。见 `docs/superpowers/reports/2026-11-10-omarchy-plugin-window-release/README.md`。
+- **窗口装饰与顶部全屏工具区**:有 GUI 证据。但验收是在私有 Sway 会话里做的,真实 Omarchy dock 没有启动,“避开 dock”只靠几何推断(同一报告)。
+- **只有单元测试、没有物理按键证据**:[未定]
+  - Shift+Return / Shift+小键盘 Enter 硬换行;
+  - Shift+Tab / `ISO_Left_Tab` 减少缩进;
+  - 修饰键精确匹配与 Caps Lock 处理。
+
+  这些都只在 `linux.rs` 的 `linux_hard_break_requires_only_shift`、`linux_shortcuts_use_exact_modifiers`、`linux_shortcuts_ignore_caps_lock_letter_case_without_ignoring_shift` 里测过。平台对齐报告也写明硬换行“没有 Linux GTK 实机证据”。
+- **单元测试也没有逐项覆盖**:Ctrl+Y 重做、Esc 打开菜单。基线上只有 `shortcut()` 里的映射代码,没有对应的断言,也没有物理证据。[未定]
 
 ### 6.3 Fcitx5 for Sumi 对接契约
 
-状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/tauri-plugin-native-editor/src/linux_candidates.rs
+状态:[已交付:Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/tauri-plugin-native-editor/src/linux_candidates.rs 、https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-11-omarchy-amd64-ime-release/README.md ;macOS 侧另标,见下文“macOS 接口”
 
-Fcitx5 for Sumi 是独立的输入法项目,不并入本仓库;本节只写对接契约。没有装它时,写作照常可用,候选框退回系统默认样式。
+Fcitx5 for Sumi 是独立的输入法项目,不并入本仓库;本节只写对接契约。**[我的判断]**(设计 §2)没有装它时,写作照常可用,候选框退回系统默认样式。
 
-**候选呈现规则**(两端相同,来源旧规范 `sumi-ime-cross-platform.md`):
+**候选呈现规则**(两端规则相同,来源旧规范 `sumi-ime-cross-platform.md`;macOS 一侧的真机物理验收 [未定]):
 
 - 聚焦状态下,候选出现在输入行的下一显示行,向下展开;
 - 非聚焦状态下,输入行原地不动,候选固定在底部,向上展开;
@@ -245,7 +263,9 @@ Fcitx5 for Sumi 是独立的输入法项目,不并入本仓库;本节只写对�
 
 **Linux 打包**:addon 包 `fcitx5-sumi-candidates`(源仓库 `packaging/omarchy/fcitx5-sumi-candidates/`),依赖 `fcitx5>=5.1.23` 且 `<5.2`,运行时需要 `fcitx5-chinese-addons` 与 `fcitx5-gtk`,不需要 Qt 模块。用 `pacman -U` 和宿主一起装,装完要注销后重新登录。它提供三样东西:候选桥、预编辑下划线、输入音效用的按键回馈。它以 LGPL 发布,不改 ClassicUI 和个人配置。按真实按键发声的完整输入音效,需要宿主配合 r4 版 addon(`5.1.23.r4`),两者须同时更新(`CHANGELOG.zh-CN.md`)。
 
-**macOS 接口**:用 CFMessagePort 通信,来源 `tauri-plugin-native-editor/native/candidates-bridge.h`、旧规范 `2026-11-10-sumi-macos-fcitx-bridge.md`。
+**macOS 接口** [已交付:macOS] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/tauri-plugin-native-editor/native/candidates-bridge.h ;macOS 真机物理输入法终验 [未定]。
+
+用 CFMessagePort 通信,来源 `tauri-plugin-native-editor/native/candidates-bridge.h`、旧规范 `2026-11-10-sumi-macos-fcitx-bridge.md`。
 
 - 消息端口名:标记前缀 `com.notemd.sumi.candidates.v1.`,回复前缀 `org.fcitx.Fcitx5.Sumi.`;单条消息上限 256 KiB(工程细则)。
 - 消息序列:hello / ready / snapshot / prepared / present / select / page / ping / pong / release。
@@ -254,9 +274,9 @@ Fcitx5 for Sumi 是独立的输入法项目,不并入本仓库;本节只写对�
 **macOS 分发**:每次发布 macOS 宿主,都附上经过核准的 Fcitx5 for Sumi 安装包。它**不在** note.md 的自动更新载荷里,需要用户单独安装。现值见 `scripts/release-companions/fcitx5.json`:
 
 - 版本 0.5.0.15,仅 Apple Silicon(darwin-aarch64);
-- 其中的 App 已公证,但**安装包本身未签名**(`packageSigned: false`)。
+- 其中的 App 已公证,但**安装包本身未签名**(`packageSigned: false`)。安装包签名 [未定]。
 
-macOS 内嵌候选随宿主 `v6.1110.8` / Sumi `0.1.13` 首发(`CHANGELOG.zh-CN.md`)。真机物理输入法的最终验收**未执行**,见 `docs/superpowers/reports/2026-11-11-sumi-macos-ime-plugin-release/README.md`。
+macOS 内嵌候选随宿主 `v6.1110.8` / Sumi `0.1.13` 首发(`CHANGELOG.zh-CN.md`)。真机物理输入法的最终验收**未执行** [未定],见 `docs/superpowers/reports/2026-11-11-sumi-macos-ime-plugin-release/README.md`。
 
 > **出入**:旧规范 `2026-11-10-sumi-fcitx-candidates.md` 和 `v6.1110.2` 的更新日志写的是正文贴底布局,后来在 `v6.1110.4` 改为“非聚焦状态下输入行原地不动”。以现行规则为准。
 
