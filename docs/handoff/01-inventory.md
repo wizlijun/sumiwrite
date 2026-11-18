@@ -17,8 +17,8 @@
 |---|---|---|---|---|---|
 | `write-core/` | 39 / 6674 | 无 note.md 内部依赖;`Cargo.toml` 声明 MIT 但无 LICENSE 文件(设计 §6) | sumiwrite | 1 | 编辑内核。含 `WIRE.md`、`examples/`、`tests/`。迁入时把 MIT 声明改为 Apache-2.0(设计 §12) |
 | `sumi-protocol/` | 7 / 393 | `write-core`(`Cargo.toml:10`) | sumiwrite | 1 | 宿主与插件后台的内部服务契约,不是同步线协议;iOS 不使用。`Cargo.toml` 没有许可声明,迁入时补 Apache-2.0。宿主 `src-tauri/Cargo.toml:39-40` 与插件后台 `Cargo.toml:12-13` 都直接依赖它和 `write-core` |
-| `write-sync-worker/` | 33 / 3566 | 依赖源仓库根下 `worker/` 的 Wrangler、`tsc`、`vitest`,以及根目录 `.env`、`worker/wrangler.toml`,详见第 5 节 | sumiwrite | 1 | 同步服务。行数含 `package-lock.json`。迁入前必须先解开第 5 节的三处依赖 |
-| `plugins-src/write/`(不含 `resources/`) | 28 / 10692 | 反向依赖 note.md 的四样东西,详见第 4 节 | sumiwrite | 2 | 桌面插件壳:`src/`(前端)、`backend/`(插件后台,含 `sync.rs`、`coordinator.rs`、`durability.rs`)、`manifest.v2.json`、构建配置。0.1.16 对应此处 `manifest.v2.json` |
+| `write-sync-worker/` | 33 / 3566 | 依赖源仓库根下 `worker/` 的 Wrangler、`tsc`、`vitest`,以及根目录 `.env`、`worker/wrangler.toml`,详见第 5 节 | sumiwrite | 1 | 同步服务。行数含 `package-lock.json`(本行是例外,其余行不计 lock 文件)。迁入前必须先解开第 5 节的三处依赖 |
+| `plugins-src/write/`(不含 `resources/`) | 28 / 10692 | 反向依赖 note.md 的四样东西,详见第 4 节 | sumiwrite | 2 | 桌面插件壳:`src/`(前端)、`backend/`(插件后台,含 `sync.rs`、`coordinator.rs`、`durability.rs`;这些后台文件第 2 期随插件壳整体迁入,第 3 期再把其中与宿主无关的同步协调部分切出下沉到 `session/`,设计 §8、§10.2)、`manifest.v2.json`、构建配置。0.1.16 对应此处 `manifest.v2.json` |
 | `plugins-src/write/resources/` | 24 / 1309(json 与 txt 共 12 个文件;另 12 个 WAV 音效) | 无 | sumiwrite | 2 | 打字音效(`sounds/`)、字体目录与许可来源文件(`sumi/`)。字体本体不入包,按需下载 |
 | `src/lib/sumi/i18n.ts` | 1 / 109 | 被插件壳和宿主两边引用,详见第 4 节 | sumiwrite | 2 | 插件界面文案。宿主 `SumiRecovery.svelte:3`、`NativeFileView.svelte:13` 也用,处理方式由第 2 期计划定(设计 §5.2) |
 | `src/lib/sumi/`(除 `i18n.ts`) | 8 / 475 | 宿主前端、Tauri 调用 | note.md | 不迁 | `files.ts`、`focus.ts`、`geometry.ts`、`recovery.ts`、`session.ts` 与对应测试。宿主内的 Sumi 界面适配(设计 §5.2「宿主内 Sumi 界面与 Tauri 适配」) |
@@ -27,12 +27,12 @@
 | `tauri-plugin-native-editor/` | 47 / 12442 | AppKit / GTK;被宿主 `src-tauri` 编译进去 | note.md | 不迁 | 原生编辑桥,是宿主能力(设计 §3、§5.2),含 `native/*-probe.m` 探针。桌面独立应用评估通过后才会随之迁入(设计 §9) |
 | `packaging/omarchy/fcitx5-sumi-candidates/` | 8 / 138(另含源码压缩包) | Linux 宿主打包流程 | note.md | 不迁 | Fcitx5 for Sumi 打包。设计 §5.2 判定随 Linux 宿主打包 **[我的判断]**。输入法本身是独立项目,不并入 |
 | `notemd-plugin-sdk/` | 3 / 749 | `plugin-protocol`(note.md 根下,设计未列) | note.md | 不迁 | 插件 SDK。sumiwrite 的插件壳按 tag 引用它(设计 §5.3)。注意它再依赖 `plugin-protocol/`,见第 4 节 |
-| `plugins-registry/` | 14 / 2448(含 `node_modules` 之外的全部文件) | Cloudflare Worker | note.md | 不迁 | 插件市场。设计 §5.2 判定 |
+| `plugins-registry/` | 14 / 2448(不含 `node_modules`) | Cloudflare Worker | note.md | 不迁 | 插件市场。设计 §5.2 判定 |
 | `scripts/release-plugins.sh`(其中 `release_sumi()`) | 1 个函数,`:351` 起 | 签名密钥、公证、minisign | note.md | 不迁 | 签名、公证、上架留在 note.md(设计 §5.3 第 5 条) |
 | `docs/superpowers/reports/*sumi*` | 68 个文件 | 无 | note.md | 不迁 | 历史发布证据。新规范链接到宿主 tag、提交号与这些路径 |
 | `docs/superpowers/specs/*sumi*` 及其他旧规范 | 文件名含 `sumi` 的 15 份(含本设计文档) | 无 | sumiwrite(内容重写) | 本期(第 0 期) | 旧文档留在原处不删;新规范见 `docs/spec/`。旧文档文首加指引的动作放第 1 期(设计 §7.2) |
 | `scripts/sumi/` | 63 / 3995(含子目录) | 逐条目见第 3 节 | 拆分:见第 3 节 | 2 / 不迁 | 逐条目判定 |
-| `plugins-src/shared/shortcuts.ts` | 1 / 25 | 插件壳 `main.ts:2` 引用 | note.md(暂定) | 待第 2 期计划 | 设计 §5.3 第 2 条:共享快捷键 TypeScript 的处理方式由第 2 期计划定。此文件还被其他插件使用与否 **[未定]**,待第 2 期核查 |
+| `plugins-src/shared/shortcuts.ts` | 1 / 25 | 插件壳 `main.ts:2` 引用 | note.md(暂定) | 待第 2 期计划 | 设计 §5.3 第 2 条:共享快捷键 TypeScript 的处理方式由第 2 期计划定。实测(grep `shared/shortcuts`)另有插件引用它:`plugins-src/next/src/App.svelte:2` 与 `plugins-src/next/src/components/` 下的 `CreateIdeaSheet.svelte`、`ReminderSheet.svelte`、`MetadataSheet.svelte`、`CreateTaskSheet.svelte`,以及 `plugins-src/idea-spark/src/App.svelte:47` 与 `lib/shortcuts.test.ts:3`。它是多个插件共用的文件,所以留在 note.md,sumiwrite 若需要就复制一份 **[我的判断]** |
 
 补充:iOS/iPadOS 应用(`apps/ios/`,第 4 期)在 note.md 里没有对应现存代码,不在本清单范围。
 
@@ -77,13 +77,13 @@
 | 3916-4857 | 单元测试(`mod tests`) |
 | 4858 | 声明 `lifecycle_tests` |
 
-> 行范围由 `grep` 函数起始行得出,是近似值,各块之间有重叠的辅助函数。
+> 只有最后两行(`mod tests` 起于 3917 行、`lifecycle_tests` 声明在 4858 行)是精确锚点;其余行范围由 `grep` 函数起始行得出,是近似值,各块之间有重叠的辅助函数。
 
 ## 3. `scripts/sumi/` 逐条目判定
 
 判定规则(来自任务要求):运行时需要启动 note.md 宿主、链接 `tauri-plugin-native-editor`、或驱动真实窗口与输入法的,归 note.md;只依赖内核、插件壳或同步服务的,归 sumiwrite 第 2 期;拿不准的标“待第 2 期判定”并写明原因。
 
-源仓库 `scripts/sumi/` 共 33 个一级条目(文件或目录),63 个文件,3995 行。
+源仓库 `scripts/sumi/` 共 34 个一级条目(文件或目录),63 个文件,3995 行。
 
 | 条目 | 规模(文件 / 行) | 依赖 | 归属 | 迁入期次 | 备注 |
 |---|---|---|---|---|---|
@@ -122,7 +122,7 @@
 | `verify-release.py` | 1 / 627 | 读取 `src-tauri/`、`tauri-plugin-native-editor/`、`plugins-src/write/` 多处源文件并校验宿主 DMG(`:20-44`、`:334-338`) | note.md | 不迁 | 宿主发版门禁,是发版与签名流程的一部分。其中对插件资源的校验部分第 2 期是否拆出,**待第 2 期判定**:现状把宿主和插件资源混在一个脚本里 |
 | `verify-sounds.py` | 1 / 84 | 只校验音效 WAV 包与 `plugins-src/write/resources/sounds`;`release-plugins.sh:394`、`:397` 调用 | sumiwrite | 2 | 只依赖插件资源。迁走后 `release_sumi()` 需改引用,见第 4 节 |
 
-> 判定为 sumiwrite 的只有三项:`verify-sounds.py`、`verify-linux-binary.py`、`test_verify_linux_binary.py`。其余都需要宿主、原生桥或真实窗口,或属于发版门禁。`verify-sounds.py` 与 `verify-linux-binary.py` 同时被 note.md 的发版脚本调用,迁走后调用方式由第 2 期计划定。
+> 判定为 sumiwrite 的暂时只有三项(此结论不是最终的:`verify-release.py` 横跨宿主与插件资源两边,第 2 期拆分后可能有一部分也归 sumiwrite):`verify-sounds.py`、`verify-linux-binary.py`、`test_verify_linux_binary.py`。其余都需要宿主、原生桥或真实窗口,或属于发版门禁。`verify-sounds.py` 与 `verify-linux-binary.py` 同时被 note.md 的发版脚本调用,迁走后调用方式由第 2 期计划定。
 
 ## 4. 反向依赖:插件壳对 note.md 的依赖
 
@@ -160,6 +160,6 @@
 - 设计没有列出的反向依赖:`plugin-protocol/`(经 `notemd-plugin-sdk`)。
 - `scripts/sumi/native-release.py:11` 的 `SOURCE_DIRS` 与 `test_native_release.py:42` 的断言写死了迁移后会变的目录路径。
 - `scripts/sumi/verify-release.py` 把宿主与插件资源校验混在一个文件里,第 2 期是否拆分未定。
-- `plugins-src/shared/shortcuts.ts` 是否还有其他插件使用,未核查 **[未定]**。
+- `plugins-src/shared/shortcuts.ts` 被 `next`、`idea-spark` 两个插件共用(见第 1 节),留在 note.md;sumiwrite 复制一份还是改引用,由第 2 期计划定。
 - `src-tauri/src/sumi/external.rs`、`durability.rs` 的下沉落点,以及 `journal.rs` 依赖的 `mod.rs` 类型怎么抽出,留给第 3 期计划。
 - 同步服务依赖项里 `.env` 的迁出方式、账号 ID 的新存放位置,留给第 1 期计划。
