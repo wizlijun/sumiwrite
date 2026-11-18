@@ -29,7 +29,7 @@
 
 宿主的授权门要求插件 ID 恰为 `notemd.sumi`,并且同时具备 `editor.native`、`editor.write`、`vault.read`、`vault.write` 四项能力。缺一项就拒绝,返回 `CAPABILITY_DENIED`,详见[契约 §1](../../handoff/03-notemd-contract.md)。
 
-原生写作只在 macOS 13+ 与 Linux 上可用,其他系统挂载时报“当前系统尚不支持 Sumi 原生编辑”(`src-tauri/src/sumi/mod.rs`)。宿主本身的最低系统是 macOS 11;写作要求 13+,是因为用到了 TextKit 2。
+原生写作只在 macOS 13+ 与 Linux 上可用,其他系统挂载时报“当前系统尚不支持 Sumi 原生编辑”(`src-tauri/src/sumi/mod.rs`)。宿主本身的最低系统是 macOS 11;写作要求 13+。代码只做版本检查(`tauri-plugin-native-editor/native/editor.m` L1070 的 `sumi_editor_supported` 判断 `@available(macOS 13.0, *)`),没有写明原因。13.0 的版本分支里包着 TextKit 2 调用(L1083 以 `initUsingTextLayoutManager:YES` 创建文本视图),所以“因为用到 TextKit 2”只是推断 **[我的判断]**。
 
 ### 1.2 独立窗口的尺寸与全屏
 
@@ -275,7 +275,7 @@
   - Shift+Tab / `ISO_Left_Tab` 减少缩进;
   - 修饰键精确匹配与 Caps Lock 处理。
 
-  这些都只在 `linux.rs` 的 `linux_hard_break_requires_only_shift`、`linux_shortcuts_use_exact_modifiers`、`linux_shortcuts_ignore_caps_lock_letter_case_without_ignoring_shift` 里测过。平台对齐报告也写明硬换行“没有 Linux GTK 实机证据”。
+  这些都只在 `linux.rs` 的 `linux_hard_break_requires_only_shift`、`linux_shortcuts_use_exact_modifiers`、`linux_shortcuts_ignore_caps_lock_letter_case_without_ignoring_shift` 里测过。平台对齐报告也写明硬换行“没有 Linux GTK 实机证据”。映射提交 `e5c323d8` 最早包含在宿主 tag `v6.1111.3` 中(`git tag --contains`)。
 - **单元测试也没有逐项覆盖**:Ctrl+Y 重做、Esc 打开菜单。基线上只有 `shortcut()` 里的映射代码,没有对应的断言,也没有物理证据。[未定]
 
 ### 6.3 Fcitx5 for Sumi 对接契约
@@ -283,6 +283,10 @@
 状态:[已交付:Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/tauri-plugin-native-editor/src/linux_candidates.rs 、https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-11-omarchy-amd64-ime-release/README.md ;macOS 侧另标,见下文“macOS 接口”
 
 Fcitx5 for Sumi 是独立的输入法项目,不并入本仓库;本节只写对接契约。**[我的判断]**(设计 §2)没有装它时,写作照常可用,候选框退回系统默认样式。
+
+**职责边界**:候选区固定在底部、内嵌在正文中、去掉预编辑底色等能力,由 Fcitx5 for Sumi 自己实现;编辑器只提供经过授权的主题与几何参数,不传送不必要的全文(旧主规范 `2026-11-07-immersive-write-design.md` L103)。
+
+**插件版本**:Sumi 0.1.16 只更正了插件界面中配套输入法的名称(Fcitx5 for Sumi),编辑行为与 0.1.15 相同(`CHANGELOG.zh-CN.md` 的 v6.1116.1 段)。
 
 **候选呈现规则**(两端规则相同,来源旧规范 `sumi-ime-cross-platform.md`;macOS 一侧的真机物理验收 [未定]):
 
@@ -380,7 +384,7 @@ Windows **没有交付**。插件二进制没有 Windows 目标,宿主在 Window
   - 但源仓库没有任何代码注释、测试或报告说明,在 Linux 上这组设置会刷写驱动器缓存。
   - 能确认的只是 `synchronous=FULL` 带来的每次提交前落盘。
   - 驱动器缓存是否一并刷写 [未定];接手方应对照 SQLite 文档与目标文件系统核实。
-- **Windows / iOS**:不在本附录范围。iOS 见 [ios.md](ios.md)。
+- **Windows / iOS**:不在本附录范围。iOS 上的落盘保证尚无设计,见 [ios.md §7.5](ios.md) `[未定]`。
 
 ## 9. 同步面板与设备配对
 

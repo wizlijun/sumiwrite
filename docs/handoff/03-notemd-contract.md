@@ -272,7 +272,7 @@ owner 是“当前持有某纸页编辑面的 `(窗口, 标签页, 编辑面)`�
 3. **主版本变化必须两个仓库配套发版**(见 §4)。
 4. 每次变更同时更新:本文件、`CHANGELOG`(两个仓库各自)、插件 manifest 的 `engines.notemd`(若需要更高的宿主下限)。
 5. 契约版本与插件版本、宿主版本互相独立。当前对应关系:`host-contract v1` = 宿主 `v6.1117.1` 基线 + 插件 `0.1.16`。
-6. **机械检查**:`bash docs/check.sh check_contract` 会从源仓库 `src-tauri/src/sumi/mod.rs` 抓取每个 `host.sumi.*` 名称,要求本文件都出现过;宿主新增命令而本文未登记,检查即失败。
+6. **机械检查**:`bash docs/check.sh check_contract` 按固定 tag `v6.1117.1`(脚本里的 `TAG` 变量)用 `git show` 读源仓库的 `src-tauri/src/sumi/mod.rs`、`src-tauri/src/plugin_runtime/host_api.rs` 与 `src-tauri/src/plugin_runtime/process.rs`,不读工作区;抓取其中每个 `host.sumi.*` 名称(含只在 `host_api.rs`/`process.rs` 出现的 `host.sumi.service`),要求本文件都出现过;宿主新增命令而本文未登记,检查即失败。基线换 tag 时同步改 `TAG`。
 
 ### 1.6 停止、持久回执与插件进程环境(补漏,已按 v6.1117.1 代码核实)
 
@@ -287,7 +287,7 @@ owner 是“当前持有某纸页编辑面的 `(窗口, 标签页, 编辑面)`�
 5. 全部成功后相位为 `QUIESCED`。失败则回滚:清快照、相位回 `ACTIVE`、`network.resume()`、窗口恢复。
 6. 触发点:应用退出(`lib.rs` 的 exit 流程调用 `before_exit`);停用/卸载(`plugin_runtime/commands.rs`)与升级替换(`plugin_runtime/lifecycle.rs`)调用 `cleanup_plugin`(内部先 `before_exit`);升级成功后 `resume_plugin`。`resume_workspace` 恢复前逐页核对 epoch/generation/revision 与冻结快照一致,不一致则报错并保留草稿。
 7. **启动票据**:`start_network()` 在调用时同步取 `MutationGate` 代数作票据;`stop_network()` 的 `close()` 令旧票据失效,即使旧启动 future 还没被轮询,`open_if_current` 也返回 false。恢复必须经 `network.resume()` 取新票据。
-8. 关闭**单个窗口**只走第 2 步,不停后台下载、不停其他纸页的同步:`[未定]`——代码里 `before_close` 的单窗口语义已见,但“不终止后台下载”的断言未逐行证明,以单测/代码为准。
+8. 关闭**单个窗口**只走第 2 步,不停后台下载、不停其他纸页的同步:`[未定]`——已核实的部分:`before_close_inner`(`mod.rs` L3106 起)只处理正在关闭的窗口里的 owner,不调用 `network.stop()`;`network.stop()` 只在 `before_exit`(L3290)里调用。但没有测试断言“关窗后后台下载与其他纸页同步继续”,故整体仍不算已证明。
 
 **E2 持久回执**(`sumi-protocol/src/durability.rs` `edit_receipt`;`plugins-src/write/backend/src/durability.rs`;宿主 `src-tauri/src/sumi/durability.rs`)
 
@@ -295,7 +295,9 @@ owner 是“当前持有某纸页编辑面的 `(窗口, 标签页, 编辑面)`�
 - `digest` 覆盖 `(1u8, remote, edit, imported)`。同 `op_id`:摘要相同则**重放返回原回执**(`receipt()` 返回 `found`);摘要不同则拒绝,错误文案 `operation ID reused with different durable payload`。唯一例外:已确认的本地操作经云端回来,带新宿主 revision,按 `local_echo` 判为回声(返回 `None`,不算冲突)。
 - 宿主侧 `validate_receipt` 用 `journal::receipt(request)` 重算并与后台回执比对,不一致报“后台保存回执与待确认修改不一致”,通过后才 `journal.acknowledge`。
 - 事件语义:`DurableEvent::Committed{page_id,revision}` 在回执持久化后宿主确认时发出;`Saved{..,projected,projection_error}` 在投影结束后另发;`Failed` 表示失败。投影被外部冲突挡住时 `Saved.projected=false`,并不撤销已发出的 `Committed`(测试 `projection_conflict_allows_local_writing_reopen_and_never_reports_projected`)。
-- “checkpoint 与云端 ACK 都不清除回执”“后台崩溃后按原序原 ID 重放”“读和 flush 不越过前面的写”:`[未定]`,本轮未逐条在代码中证明(见 `service.rs` 注释“only the durable FIFO may replay operations with proven durable idempotency identities”,仅支持重放只走持久 FIFO)。
+- **checkpoint 与云端 ACK 都不清除回执**(已按 v6.1117.1 代码核实):`sumi_edit_receipts` 唯一的写入是后台 `durability.rs` L52(`record_receipt` 的 INSERT),全仓库没有对它的 DELETE;`ack`(L391–403)只删 `outbox` 与 `sumi_outbox_generation`;`checkpoint_page`(L641–655)只删 `sumi_dirty_projection`;`write-core` 的删除只针对 outbox、document_deltas、sumi_directory_outbox。`sumi_local_update_identity` 的 DELETE 只出现在测试代码里。
+- **后台崩溃后按原序原 ID 重放**(已按 v6.1117.1 代码核实):宿主输入日志 `src-tauri/src/sumi/journal.rs` 的 `pending()`(L80)按 `sequence` 自增列排序取出未确认请求,请求带原 `op_id`;`append_then`(L59 起)在同一把锁内写日志,同 `op_id` 内容不同则拒绝;`acknowledge`(L94 起)只在回执完全一致时删除。宿主 `durability.rs` 的 `from_backend`(L105 起,注释 L107“Recovery precedes every newly queued request, including Load/ObservePage”)先重放日志再接新请求;`run`(L239 起)失败时把同一请求放回队首重试(L275)。测试 `kill_after_accepted_before_ipc_recovers_both_edits`(`journal.rs` L234,经 `kill_and_reopen` L207)断言两次编辑按原序恢复。`service.rs` 注释“only the durable FIFO may replay operations with proven durable idempotency identities”与此一致。
+- **读和 flush 不越过前面的写**(已按 v6.1117.1 代码核实):后台 `durability.rs` 的 `load`(L201)、`observe_page`(L209)、`flush`(L216)都先调用 `drain()`(L778 起)排空待写队列再读或投影。`list` 与 `excerpts` 不排空,只读目录与摘要,不在此保证之内。
 - P10“同一 CRDT 更新回声幂等”:`sumi_echo_receipts` 与 `local_echo` 是其实现入口;完整性 `[未定]`。
 
 **E3 插件进程环境(Linux)**:`src-tauri/src/platform.rs` 的环境白名单在 Linux 为 `HOME PATH LANG LC_ALL TERM USER TMPDIR XDG_RUNTIME_DIR`,注释说明默认 PulseAudio/PipeWire 客户端靠它找会话 socket,其余变量不继承;单测 `linux_plugin_spawn_preserves_runtime_without_secrets`(`plugin_runtime/process.rs`)断言保留 `XDG_RUNTIME_DIR` 且不泄露秘密变量。宿主若改白名单,须保留该变量。

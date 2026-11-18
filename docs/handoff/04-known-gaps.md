@@ -36,7 +36,7 @@
 - **ESP32 板型、显示与输入硬件**:没有选定。现行 [platform/later.md §3.1](../spec/platform/later.md) `[未定]`。
 - **后续平台的字体子集**:没有交付;约束“子集字库不能宣称覆盖完整桌面字库”保留。现行 [05-fonts.md 回退与离线](../spec/05-fonts.md) `[未定]`。
 - **定制输入法项目**:桌面已有独立项目 Fcitx5 for Sumi,不并入本仓库,只写对接契约(设计 §2 **[我的判断]**);其他平台怎么做未定。现行 [later.md §6.1](../spec/platform/later.md)、[notemd-desktop §6.3](../spec/platform/notemd-desktop.md)。
-- **验收门槛、工期与备份保留期只是目标**:旧主规范 §10–§11 要求性能、物理输入法、VoiceOver、外部容量门禁未通过时必须明确保留。基线上性能矩阵一项都没有完整实测(`reports/2026-11-08-sumi-release.md` L49)。现行 [00-product.md §1.3](../spec/00-product.md) 第 8 条 `[未定]`。
+- **验收门槛、工期与备份保留期只是目标**:旧主规范 §10–§11 要求性能、物理输入法、VoiceOver、外部容量门禁未通过时必须明确保留。基线发布报告原话是“完整性能/PM10k、能耗/内存及网络可见 p95 矩阵仍未完成”(`reports/2026-11-08-sumi-release.md` L49)。现行 [00-product.md §1.3](../spec/00-product.md) 第 8 条 `[未定]`。
 
 ### 2.2 本期交接中留给后续各期的
 
@@ -45,6 +45,7 @@
 - `shortcuts.ts` 的复制或引用、`i18n.ts` 宿主侧是否留一份、`verify-release.py` 是否拆分——第 2 期定([01-inventory.md](01-inventory.md) §6)。
 - `session/` 的切分方式、`external.rs` 的落点、`journal.rs`/`durability.rs` 的接口抽取、同一模块如何适配桌面跨进程与 iOS 单进程——第 3 期定([ADR 0012](../adr/0012-shared-session-module.md))。
 - 桌面独立的第 1 条标准“明显多于”没有量化门槛([later.md §4.1](../spec/platform/later.md))。
+- **设计与计划文档尚未公开**:本仓库引用的 `docs/superpowers/specs/2026-11-18-sumiwrite-extraction-design.md` 及第 0 期计划在 note.md 仓库的 `docs/sumiwrite-extraction` 分支上(提交 `0c11629f`),该分支尚未推送到任何远端,公开读者打不开。推送 note.md 分支后把引用改为固定提交的 blob 链接;何时推送由用户定。见 [02-migration-plan.md](02-migration-plan.md) 第 1 期前置条件。
 - iOS 的 Bundle ID、开发者账号、应用图标(设计 §11),钥匙串服务名与访问组、沙盒目录、撤销是否由 CRDT owner 管理(现从桌面推断)、输入日志写入失败时怎样提示、iPad 快捷键表、导出文件名与 frontmatter([platform/ios.md](../spec/platform/ios.md))。
 - Android 复用 `core/` 与 `session/`:这只是从“两份源码不分叉”的反目标推出来的,未经确认([later.md §2.1](../spec/platform/later.md))**[我的判断]**。
 
@@ -101,8 +102,8 @@
 - **总览分页**:旧规范说分页;代码一次列出全部。源:`plugins-src/write/src/main.ts` L264。现行 [01 §2.2](../spec/01-pages-and-storage.md) `[未定]`。
 - **Linux 上的翻页与总览没有 Omarchy 验收记录**:Linux 运行同一份插件前端与宿主代码,但 Omarchy 验收没有覆盖上一页、下一页与总览(`docs/superpowers/reports/` 下 Omarchy 系列报告与 `host-final-result.json`)。现行 [01 §2.2](../spec/01-pages-and-storage.md) 只标 macOS,Linux `[未定]`。
 - **同 UUID 复制品与移动**:旧规范要求检测别名与内容分叉、移动改名后按 UUID 找候选;代码只观察本页文件名下的那对文件(`plugins-src/write/backend/src/durability.rs` L958–970),别名检测与按 UUID 移动都没有实现;从便携文件恢复总是分配新 UUID(`recovery.rs` L363–381)。现行 [01 §4.2](../spec/01-pages-and-storage.md)、[notemd-desktop §2.6](../spec/platform/notemd-desktop.md) `[未定]`。
-- **持久回执的几条断言**:“检查点与云端确认不清除回执”“后台崩溃后按原序原 ID 重放”“读与 flush 不越过前面的写”在契约层未逐条证明(契约 §1.6 `[未定]`);规范作者核对到代码里没有删除回执的语句,且只有 load、observe_page、flush 前排空,list 与 excerpts 不排空。现行 [01 §5.4](../spec/01-pages-and-storage.md)、[03-notemd-contract.md](03-notemd-contract.md) §1.6。
-- **停用、升级、重新启用的持久屏障**:只有自动化测试(`src-tauri/src/sumi/lifecycle_tests.rs`),两个平台都没有发布级实机验收;关闭单个窗口“不停后台下载”未逐行证明。现行 [01 §5.5](../spec/01-pages-and-storage.md)、契约 §1.6 `[未定]`。
+- **持久回执的几条断言**:“检查点与云端确认不清除回执”“后台崩溃后按原序原 ID 重放”“读与 flush 不越过前面的写”三条已按 v6.1117.1 代码逐条核实(契约 §1.6 E2 列出行号:后台 `durability.rs` 没有删除 `sumi_edit_receipts` 的语句,`ack` 只删发件箱;宿主 `journal.rs` 按 `sequence` 重放并有杀进程恢复测试;`load`、`observe_page`、`flush` 前先 `drain()`)。余下限制:`list` 与 `excerpts` 不排空,不在“读不越过写”的保证之内。现行 [01 §5.4](../spec/01-pages-and-storage.md)、[03-notemd-contract.md](03-notemd-contract.md) §1.6。
+- **停用、升级、重新启用的持久屏障**:只有自动化测试(`src-tauri/src/sumi/lifecycle_tests.rs`),两个平台都没有发布级实机验收(这些测试不按平台条件编译,两个平台都跑);关闭单个窗口“不停后台下载”仍未证明:代码里关窗不调用 `network.stop()`(只有 `before_exit` 调用),但没有测试断言关窗后下载与其他纸页同步继续。现行 [01 §5.5](../spec/01-pages-and-storage.md)、契约 §1.6 `[未定]`。
 - **没有物理断电测试**:`fullfsync` 在 Linux 上是否刷写驱动器缓存无证据。源:`reports/2026-11-09-sumi-local-safety-release.md`、`src-tauri/src/sumi/journal.rs` L39–42。现行 [notemd-desktop §8.1](../spec/platform/notemd-desktop.md) `[未定]`。
 
 ### 4.4 Markdown 与行时间
@@ -126,7 +127,7 @@
 ### 4.6 桌面平台与宿主
 
 - **Linux 编辑面是 GTK3,不是 Qt 6**:旧主规范 §4.1、§8 以 Qt 6 原型为 Linux 首选;代码用 GTK3 TextView overlay,变更见旧规范 `2026-11-10-sumi-omarchy-native.md`。源:`tauri-plugin-native-editor/README.md`。现行 [notemd-desktop §6.1](../spec/platform/notemd-desktop.md)、[ADR 0005](../adr/0005-native-text-controls.md)。
-- **manifest `resizable:false` 与实际可缩放**:manifest 声明不可缩放(`plugins-src/write/manifest.v2.json` L37);宿主在 Linux 上对所有插件窗口强制可缩放(`src-tauri/src/desktop_policy.rs` L14–16),在 macOS 上对 Sumi 独立窗口也设为可缩放、可最大化(`src-tauri/src/plugin_runtime/windows.rs` L419–424)。现行 [notemd-desktop §1.2](../spec/platform/notemd-desktop.md)。另见 §4.9 的规范内部不一致。
+- **manifest `resizable:false` 与实际可缩放**:manifest 声明不可缩放(`plugins-src/write/manifest.v2.json` L37);宿主在 Linux 上对所有插件窗口强制可缩放(`src-tauri/src/desktop_policy.rs` L14–16),在 macOS 上对 Sumi 独立窗口也设为可缩放、可最大化(`src-tauri/src/plugin_runtime/windows.rs` L419–424)。现行 [notemd-desktop §1.2](../spec/platform/notemd-desktop.md)、[04 专注窗口与全屏](../spec/04-editing-experience.md)。§4.9 记录的规范内部不一致已解决。
 - **owner 交接不转移上下文**:旧主规范 §8 说 Tab 与窗口切换时“转移选区、滚动与撤销上下文”;代码里第二个入口只去聚焦已有编辑面,没有转移。源:`mod.rs`。现行 [notemd-desktop §3.2](../spec/platform/notemd-desktop.md) `[未定]`,留给第 3 期。
 - **投影写盘节奏**:旧规范写停笔后 0.5–1 秒;代码的检查点是距最后一次编辑 250 ms 或距首次变脏 2 s,先到先触发(`plugins-src/write/backend/src/durability.rs` 的 `checkpoint_due`);投影是否就在检查点内写盘未逐行核实。现行 [notemd-desktop §2.1](../spec/platform/notemd-desktop.md) `[未定]`。
 - **投影改名**:旧规范说改名时 sidecar 一起改名;代码让宿主**拒绝**对投影改名和“另存为”(提示后不执行)。源:`src/lib/folder-view.svelte.ts`、`rename-pair.ts`、`tabs.svelte.ts` 的 `saveAs`。删除、搜索、索引、分享的成对处理未核实。现行 [notemd-desktop §2.5](../spec/platform/notemd-desktop.md)。
@@ -154,13 +155,13 @@
 - **写死的源路径**:`scripts/sumi/native-release.py:11`、`test_native_release.py:42`,以及 `write-sync-worker/scripts/interop.mjs:5` 读 `write-core` 夹具,第 1 期改名后都要改。
 - **读取宿主源文件的测试脚本**:`scripts/sumi/test-linux-credentials.sh` 编译 `src-tauri/src/sumi/credentials.rs`,`test_fullscreen_appearance.py` 读取 `src-tauri/src/sumi/mod.rs`;两者留在 note.md,但第 3 期切分这些文件后读取路径要核对,凭据逻辑若下沉,测试跟着拆([01-inventory.md](01-inventory.md) §3、[02-migration-plan.md](02-migration-plan.md) 第 3 期第 5 步)。
 - **文件位置的更正**(给第 1–3 期计划):`journal.rs` 在宿主 `src-tauri/src/sumi/journal.rs`(由 `durability.rs` 经 `#[path]` 引入),不在插件后台;`desktop_policy.rs` 在 `src-tauri/src/desktop_policy.rs`,不在 `src-tauri/src/sumi/`。
-- **规模**:原生编辑桥设计写约 12k 行,实测 `native/*.m` + `src/*.rs` 为 10,673 行(不含 .h 与 examples);宿主会话 8,686 行、插件后台三文件 5,926 行,与设计一致。
+- **规模**:原生编辑桥设计写约 12k 行,实测 `native/*.m` + `src/*.rs` 为 10,673 行(不含 .h 与 examples);宿主会话 8,685 行(`src-tauri/src/sumi/` 下 17 个文件,按 tag `v6.1117.1` 计)、插件后台三文件 5,926 行,与设计一致。
 - **投影代码在内核里**:投影与三方导入在 `write-core/src/projection.rs`、`import.rs`;按设计 §5.4 投影只有桌面做,iOS 会链接到用不上的代码。是否移出内核、何时移 `[未定]`([ADR 0009](../adr/0009-page-store-vs-vault-projection.md))。
 - **`sumi-protocol` 没有 README**,第 1 期验证命令只能按 `write-core` 的写法补。见 [02-migration-plan.md](02-migration-plan.md)。
 
 ### 4.9 规范内部待统一
 
-- **macOS 独立窗口是否可缩放**:[04 专注窗口与全屏](../spec/04-editing-experience.md) 写“macOS 遵循 manifest,即不可拖动改变大小”;[notemd-desktop §1.2](../spec/platform/notemd-desktop.md) 写 macOS 窗口可缩放、可最大化。基线代码 `src-tauri/src/plugin_runtime/windows.rs` L419–424 对 Sumi 窗口 `resizable(true).maximizable(true)`,与后者一致。代码注释说明了用意:可缩放的原生 NSWindow 才能让绿色全屏按钮保持可用(退出全屏后也是),而插件 manifest 本身是固定尺寸。04 该条需按代码修正 **[我的判断]**。
+- **macOS 独立窗口是否可缩放(已解决)**:原先 [04 专注窗口与全屏](../spec/04-editing-experience.md) 写 macOS 遵循 manifest、不可拖动改变大小,与 [notemd-desktop §1.2](../spec/platform/notemd-desktop.md) 矛盾。本仓库提交 `8b21bff` 已按代码修正 04:现写独立写作窗口在两个平台上都可以拖动改变大小。依据是基线代码 `src-tauri/src/plugin_runtime/windows.rs` L419–424:在 `#[cfg(target_os = "macos")]` 且为 Sumi 窗口时调用 `builder.resizable(true).maximizable(true).decorations(true)`;代码注释说明可缩放的原生 NSWindow 才能让绿色全屏按钮保持可用(退出全屏后也是)。两处现已一致,无待办。
 
 ### 4.10 iOS 相关
 

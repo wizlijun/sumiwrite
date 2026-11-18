@@ -1,6 +1,6 @@
 # 00 交接总览
 
-基线:note.md `main` 969f8e73,宿主 tag `v6.1117.1`,插件 `notemd.sumi` 0.1.16。权威设计:源仓库 `docs/superpowers/specs/2026-11-18-sumiwrite-extraction-design.md`(下称“设计”)。
+基线:note.md `main` 969f8e73,宿主 tag `v6.1117.1`,插件 `notemd.sumi` 0.1.16。权威设计:源仓库 `docs/superpowers/specs/2026-11-18-sumiwrite-extraction-design.md`(下称“设计”)。设计与第 0 期计划 `docs/superpowers/plans/2026-11-18-sumiwrite-phase0-docs.md` 都在 note.md 仓库的 `docs/sumiwrite-extraction` 分支(提交 `0c11629f`),该分支尚未推送到任何远端,暂不公开;见 [04-known-gaps §2.2](04-known-gaps.md)。
 
 ## 为什么拆
 

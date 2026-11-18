@@ -46,7 +46,7 @@
 
 ## 来源
 
-- 抽离设计 §2、§4.4、§5.2、§5.3、§6、§8、§10.2、§10.3:note.md 源仓库 `docs/superpowers/specs/2026-11-18-sumiwrite-extraction-design.md`(尚未提交到任何 tag)
+- 抽离设计 §2、§4.4、§5.2、§5.3、§6、§8、§10.2、§10.3:note.md 源仓库 `docs/superpowers/specs/2026-11-18-sumiwrite-extraction-design.md`(note.md 仓库 `docs/sumiwrite-extraction` 分支,提交 `0c11629f`;该分支尚未推送到任何远端,暂不公开,见 [04-known-gaps §2.2](../handoff/04-known-gaps.md))
 - 宿主会话代码:https://github.com/wizlijun/note.md/blob/v6.1117.1/src-tauri/src/sumi/mod.rs 、https://github.com/wizlijun/note.md/blob/v6.1117.1/src-tauri/src/sumi/journal.rs 、https://github.com/wizlijun/note.md/blob/v6.1117.1/src-tauri/src/sumi/recovery.rs 、https://github.com/wizlijun/note.md/blob/v6.1117.1/src-tauri/src/sumi/auth.rs 、https://github.com/wizlijun/note.md/blob/v6.1117.1/src-tauri/src/sumi/credentials_linux.rs
 - 插件后台:https://github.com/wizlijun/note.md/blob/v6.1117.1/plugins-src/write/backend/src/sync.rs 、https://github.com/wizlijun/note.md/blob/v6.1117.1/plugins-src/write/backend/src/coordinator.rs 、https://github.com/wizlijun/note.md/blob/v6.1117.1/plugins-src/write/backend/src/durability.rs
 - 组字期间暂缓远端更新:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/README.md

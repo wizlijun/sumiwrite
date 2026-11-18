@@ -276,7 +276,7 @@
 
 ### 5.4 持久回执
 
-状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/plugins-src/write/backend/src/durability.rs?plain=1#L48 · https://github.com/wizlijun/note.md/blob/v6.1117.1/plugins-src/write/backend/src/durability.rs?plain=1#L550 · https://github.com/wizlijun/note.md/blob/v6.1117.1/src-tauri/src/sumi/durability.rs?plain=1#L213 · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-09-sumi-local-safety-release.md?plain=1#L22 · https://github.com/wizlijun/note.md/blob/v6.1117.1/CHANGELOG.md?plain=1#L72 · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-10-sumi-omarchy-validation.md?plain=1#L28
+状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/plugins-src/write/backend/src/durability.rs?plain=1#L48 · https://github.com/wizlijun/note.md/blob/v6.1117.1/plugins-src/write/backend/src/durability.rs?plain=1#L550 · https://github.com/wizlijun/note.md/blob/v6.1117.1/src-tauri/src/sumi/durability.rs?plain=1#L213 · https://github.com/wizlijun/note.md/blob/v6.1117.1/src-tauri/src/sumi/journal.rs?plain=1#L80 · https://github.com/wizlijun/note.md/blob/v6.1117.1/src-tauri/src/sumi/journal.rs?plain=1#L234 · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-09-sumi-local-safety-release.md?plain=1#L22 · https://github.com/wizlijun/note.md/blob/v6.1117.1/CHANGELOG.md?plain=1#L72 · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-10-sumi-omarchy-validation.md?plain=1#L28
 
 **每次编辑都带身份**:编辑携带以下内容:
 
@@ -290,7 +290,7 @@
 
 - 相同请求重放,返回原来的回执。
 - 同一个 ID 带不同的内容,一律拒绝。
-- 检查点和云端确认都不会清除回执。
+- 检查点和云端确认都不会清除回执:回执表只有一处写入,没有删除语句;云端确认只删发件箱(后台 durability.rs L52、L391)。
 
 **回声幂等**:本机已确认的一次编辑,经云端同步回到本机时,带的是新的修订号。
 
@@ -302,18 +302,18 @@
 - 宿主核对持久回执与待确认修改一致之后,才报告 `Committed`,并释放这次待确认的编辑。
 - 文件投影完成后,另报 `Saved`,带上是否已投影(`projected`)。
 
-**后台崩溃或应答丢失**:未确认的本机编辑,按原顺序、原 ID 重放,见 §5.2。后台处理读取页面、观察投影文件和 flush 这三类请求时,先排空前面已入队的写,所以它们不会越过前面的写(durability.rs L202)。
+**后台崩溃或应答丢失**:未确认的本机编辑,按原顺序、原 ID 重放,见 §5.2。宿主输入日志按写入序号取出未确认请求,重放先于任何新请求;有杀进程后按原序恢复的测试(宿主 journal.rs L80、L234,宿主 durability.rs L107)。后台处理读取页面、观察投影文件和 flush 这三类请求时,先排空前面已入队的写,所以它们不会越过前面的写(后台 durability.rs L201–222)。列出纸页和取摘要不排空,不在此保证之内。
 
 宿主与后台之间的请求与事件类型,见 [../handoff/03-notemd-contract.md](../handoff/03-notemd-contract.md) §1.4。
 
 ### 5.5 关闭、退出、停用与升级的持久屏障
 
-状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/src-tauri/src/sumi/mod.rs?plain=1#L3096 · https://github.com/wizlijun/note.md/blob/v6.1117.1/src-tauri/src/sumi/mod.rs?plain=1#L3242 · https://github.com/wizlijun/note.md/blob/v6.1117.1/src-tauri/src/sumi/mod.rs?plain=1#L3272 · https://github.com/wizlijun/note.md/blob/v6.1117.1/src-tauri/src/sumi/mod.rs?plain=1#L3350 · https://github.com/wizlijun/note.md/blob/v6.1117.1/src-tauri/src/sumi/service.rs?plain=1#L147 · https://github.com/wizlijun/note.md/blob/v6.1117.1/src-tauri/src/sumi/lifecycle_tests.rs?plain=1#L163 · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-10-sumi-omarchy-validation.md?plain=1#L18 · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-10-sumi-omarchy-validation.md?plain=1#L49
+状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/src-tauri/src/sumi/mod.rs?plain=1#L3096 · https://github.com/wizlijun/note.md/blob/v6.1117.1/src-tauri/src/sumi/mod.rs?plain=1#L3242 · https://github.com/wizlijun/note.md/blob/v6.1117.1/src-tauri/src/sumi/mod.rs?plain=1#L3272 · https://github.com/wizlijun/note.md/blob/v6.1117.1/src-tauri/src/sumi/mod.rs?plain=1#L3350 · https://github.com/wizlijun/note.md/blob/v6.1117.1/src-tauri/src/sumi/service.rs?plain=1#L147 · https://github.com/wizlijun/note.md/blob/v6.1117.1/src-tauri/src/sumi/lifecycle_tests.rs?plain=1#L163 · https://github.com/wizlijun/note.md/blob/v6.1117.1/src-tauri/src/sumi/lifecycle_tests.rs?plain=1#L65 · https://github.com/wizlijun/note.md/blob/v6.1117.1/src-tauri/src/sumi/lifecycle_tests.rs?plain=1#L120 · https://github.com/wizlijun/note.md/blob/v6.1117.1/src-tauri/src/sumi/mod.rs?plain=1#L4857(这些生命周期测试不按平台条件编译,macOS 与 Linux 都运行)
 
 **关闭一个窗口**:
 
 - 只交接这个窗口里的编辑面。交接时一并处理输入法组字中的文字,不留半截组字。
-- 不停止网络,也不影响后台下载和其他纸页的同步。
+- 不停止网络,也不影响后台下载和其他纸页的同步。[未定] 关闭窗口的代码路径不调用停止网络(只有退出流程调用),但没有测试断言关窗后后台下载与其他纸页的同步继续。
 
 **退出应用、停用或升级插件**:覆盖所有已打开的写作空间,包括隐藏的纸页。顺序如下:
 

@@ -77,7 +77,7 @@
 5. **只同步自己的数据**:同步服务只同步本产品的纸页及必需的元数据,不同步 vault 里的其他内容。
 6. **偏好留在本机**:显示偏好只存本机,v1 不跨设备同步。
 7. **本机正文优先**:本机已确认保存的正文,不因投影文件缺失或冲突而打不开、读不了或写不下去。见 [01-pages-and-storage.md](01-pages-and-storage.md) §5。
-8. **性能矩阵**:下表只是首版目标,不是已通过的结果。基线上一项都没有完整实测,证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-08-sumi-release.md?plain=1#L49。[未定]
+8. **性能矩阵**:下表只是首版目标,不是已通过的结果。基线发布报告写明性能、能耗、内存与网络 p95 矩阵仍未完成,证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-08-sumi-release.md?plain=1#L49。[未定]
 
    | 指标 | 首版目标(未实测) |
    |---|---|
@@ -120,7 +120,7 @@ Linux 的交付范围:该平台共用同一套 Markdown/CRDT/持久日志,第 3 
 
 ### 3.1 现行分工
 
-状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/CHANGELOG.md?plain=1#L162 · https://github.com/wizlijun/note.md/blob/v6.1117.1/plugins-src/write/manifest.v2.json · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-10-sumi-omarchy-validation.md?plain=1#L56 · https://github.com/wizlijun/note.md/blob/v6.1117.1/CHANGELOG.md?plain=1#L112
+状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/CHANGELOG.md?plain=1#L162 · https://github.com/wizlijun/note.md/blob/v6.1117.1/plugins-src/write/manifest.v2.json · https://github.com/wizlijun/note.md/blob/v6.1117.1/plugins-src/write/manifest.v2.json?plain=1#L9 · https://github.com/wizlijun/note.md/blob/v6.1117.1/CHANGELOG.md?plain=1#L112
 
 **插件后台进程负责**:
 
@@ -173,7 +173,7 @@ Linux 的交付范围:该平台共用同一套 Markdown/CRDT/持久日志,第 3 
 - 不做逐键回放。
 - 显示偏好不跨设备同步。
 
-### 4.2 iOS 第一期不做
+### 4.2 iOS 第一阶段不做
 
 状态:[计划:iOS]
 

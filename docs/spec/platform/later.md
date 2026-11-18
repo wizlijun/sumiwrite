@@ -2,7 +2,7 @@
 
 这里收集明确推迟的平台与事项。**本页没有任何已交付或已排期的内容**,每一项都标 `[未定]`。
 
-每一项只保留已有的定位和已知事实,不做新规划。这一原则在设计文档 `docs/superpowers/specs/2026-11-18-sumiwrite-extraction-design.md` §2 中定为:“Android、ESP32 客户端只保留原规范中的定位,不做新规划” **[我的判断]**。
+每一项只保留已有的定位和已知事实,不做新规划。这一原则在设计文档 `docs/superpowers/specs/2026-11-18-sumiwrite-extraction-design.md`(note.md 仓库 `docs/sumiwrite-extraction` 分支,提交 `0c11629f`;该分支尚未推送到任何远端,暂不公开,见 [04-known-gaps §2.2](../../handoff/04-known-gaps.md))§2 中定为:“Android、ESP32 客户端只保留原规范中的定位,不做新规划” **[我的判断]**。
 
 - 已交付的桌面平台见 [notemd-desktop.md](notemd-desktop.md)。
 - 已有计划的 iOS/iPadOS 见 [ios.md](ios.md)。

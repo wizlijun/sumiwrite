@@ -41,16 +41,16 @@
 
 付出的:
 
-- **FFI 构建成本**:每次内核或会话改动都要重新交叉编译 iOS 设备与模拟器目标、打 XCFramework、重新生成 Swift 绑定;CI 要多一条 Apple 工具链流水线。UniFFI 的类型映射、错误与回调线程模型都要专门测试,崩溃栈跨两种语言。
-- **UTF-16 与字素边界在 Swift 侧再验证一次**:内核要求编辑落在扩展字素边界,UIKit 给的是 `NSRange`(UTF-16);转换错误会被内核拒绝,表现为输入丢字,必须用中英文与 emoji 真机测(M1)。
-- **TLS 根证书要换**:插件后台的 WebSocket 用 `tokio-tungstenite` 的 `rustls-tls-native-roots`(`plugins-src/write/backend/Cargo.toml`)。这套根证书加载方式在 iOS 上很可能不可用,**未实测**;会话下沉时要换证书校验方式,具体换成什么 `[未定]`。
+- **FFI 构建成本**(设计 §4.4 只写了“多一层 FFI”;下面的构建与测试成本是本 ADR 补充,设计未提及):每次内核或会话改动都要重新交叉编译 iOS 设备与模拟器目标、打 XCFramework、重新生成 Swift 绑定;CI 要多一条 Apple 工具链流水线。UniFFI 的类型映射、错误与回调线程模型都要专门测试,崩溃栈跨两种语言。
+- **UTF-16 与字素边界在 Swift 侧再验证一次**(本 ADR 补充,设计未提及):内核要求编辑落在扩展字素边界,UIKit 给的是 `NSRange`(UTF-16);转换错误会被内核拒绝,表现为输入丢字,必须用中英文与 emoji 真机测(M1)。
+- **TLS 根证书要换**(设计 §10.2):插件后台的 WebSocket 用 `tokio-tungstenite` 的 `rustls-tls-native-roots`(`plugins-src/write/backend/Cargo.toml`)。这套根证书加载方式在 iOS 上很可能不可用,**未实测**;会话下沉时要换证书校验方式,具体换成什么 `[未定]`。
 - **抬高设备门槛**:iOS 17 以下的设备不能用;这是设计者判断,用户可推翻。
-- **自绘光标与 TextKit 2 的组合在 iOS 上没有先例证据**:桌面 macOS 抑制系统细线的做法用的是 AppKit API,不能直接搬;M1 的真机验证是这条路线的第二道关。
+- **自绘光标与 TextKit 2 的组合在 iOS 上没有先例证据**(本 ADR 补充,设计未提及):桌面 macOS 抑制系统细线的做法用的是 AppKit API,不能直接搬;M1 的真机验证是这条路线的第二道关。
 - 若 M0 失败,§4.4 的用户选择需要重新决定,第 4 期的排期随之推迟。
 
 ## 来源
 
-- 抽离设计 §4.4、§10.1、§10.2、§10.3:note.md 源仓库 `docs/superpowers/specs/2026-11-18-sumiwrite-extraction-design.md`(尚未提交到任何 tag)
+- 抽离设计 §4.4、§10.1、§10.2、§10.3:note.md 源仓库 `docs/superpowers/specs/2026-11-18-sumiwrite-extraction-design.md`(note.md 仓库 `docs/sumiwrite-extraction` 分支,提交 `0c11629f`;该分支尚未推送到任何远端,暂不公开,见 [04-known-gaps §2.2](../handoff/04-known-gaps.md))
 - 编辑事务与组字规定:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/README.md
 - 互操作夹具:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/tests/fixtures/yrs-v1.json
 - WebSocket 与 TLS 依赖:https://github.com/wizlijun/note.md/blob/v6.1117.1/plugins-src/write/backend/Cargo.toml

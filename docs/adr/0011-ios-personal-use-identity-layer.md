@@ -16,9 +16,10 @@
   - 身份(空间、设备、凭据)与纸页数据在协议和代码里分层,将来换登录方式不动纸页层。
   - 配对界面不出现管理员密钥。
   - 规范把“单用户”写成当前部署形态,不写成协议假设。
-- 第一阶段不做注册登录、付费、上架,也不做扫码配对 **[我的判断]**(设计 §10.1“不做”)。
+- 第一阶段不做注册登录、付费、上架 **[用户定]**(设计 §2:“iOS 第一阶段不做公开发行:没有注册登录、多租户、付费、App Store 上架”)。
+- 第一阶段也不做扫码配对 **[我的判断]**(设计 §10.1“不做”)。
 
-设计 §10.4 的三条口子本身未标注归属;“不做”清单整体标为 [我的判断]。
+设计 §10.4 的三条口子本身未标注归属。设计 §10.1 的“不做”清单整体标为 [我的判断],但其中“注册登录、付费、上架”一条已由设计 §2 定为 [用户定],以 §2 为准。
 
 ## 放弃的方案
 
@@ -49,7 +50,7 @@
 
 ## 来源
 
-- 抽离设计 §4.3、§10.1、§10.4:note.md 源仓库 `docs/superpowers/specs/2026-11-18-sumiwrite-extraction-design.md`(尚未提交到任何 tag)
+- 抽离设计 §4.3、§10.1、§10.4:note.md 源仓库 `docs/superpowers/specs/2026-11-18-sumiwrite-extraction-design.md`(note.md 仓库 `docs/sumiwrite-extraction` 分支,提交 `0c11629f`;该分支尚未推送到任何远端,暂不公开,见 [04-known-gaps §2.2](../handoff/04-known-gaps.md))
 - 同步服务的部署形态、开通、邀请与吊销:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-sync-worker/README.md
 - 邀请与身份结构:https://github.com/wizlijun/note.md/blob/v6.1117.1/sumi-protocol/src/sync.rs
 - 桌面侧签发与输出邀请:https://github.com/wizlijun/note.md/blob/v6.1117.1/plugins-src/write/backend/src/sync.rs 、https://github.com/wizlijun/note.md/blob/v6.1117.1/src-tauri/src/sumi/mod.rs 、https://github.com/wizlijun/note.md/blob/v6.1117.1/plugins-src/write/src/main.ts

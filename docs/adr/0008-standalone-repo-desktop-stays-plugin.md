@@ -45,7 +45,7 @@
 
 ## 来源
 
-- 抽离设计 §1–§6、§8、§9、§12:note.md 源仓库 `docs/superpowers/specs/2026-11-18-sumiwrite-extraction-design.md`(尚未提交到任何 tag)
+- 抽离设计 §1–§6、§8、§9、§12:note.md 源仓库 `docs/superpowers/specs/2026-11-18-sumiwrite-extraction-design.md`(note.md 仓库 `docs/sumiwrite-extraction` 分支,提交 `0c11629f`;该分支尚未推送到任何远端,暂不公开,见 [04-known-gaps §2.2](../handoff/04-known-gaps.md))
 - 插件与宿主的更新边界:https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/specs/2026-11-07-immersive-write-design.md (§8.1)
 - 原生桥随宿主编译:https://github.com/wizlijun/note.md/blob/v6.1117.1/tauri-plugin-native-editor/build.rs
 - 宿主直接依赖内核与服务契约:https://github.com/wizlijun/note.md/blob/v6.1117.1/src-tauri/Cargo.toml

@@ -7,5 +7,6 @@
 3. **状态与证据。** 规范每个小节必须有状态行;已交付必须带证据链接,写不出出处就标 `[未定]`,不要猜。提交前跑 `bash docs/check.sh`,必须输出 `OK`。
 4. **红线。** iOS 与桌面共用同一套 Rust 内核与会话模块,不得在 Swift 里重写 CRDT、行时间、合并或恢复逻辑。
 5. **凭据只放引用,不放秘密。** Bundle ID、签名身份、账号 ID、密钥一律只写引用位置。
+6. **退役名称。** 退役名称不得作为现行行为出现在 `docs/spec/`;允许出现在 `docs/spec/MAPPING.md`、ADR 的「放弃的方案」段、以及 `docs/handoff/04-known-gaps.md` 的出入条目。退役名称与取代者的对照见 `docs/spec/MAPPING.md` 文末;`bash docs/check.sh check_retired` 扫描 `docs/spec/`(不含 `MAPPING.md`)、`docs/handoff/` 00–03、`README.md` 与本文件。
 
 约定:文档用简体中文;提交信息用英文祈使句。

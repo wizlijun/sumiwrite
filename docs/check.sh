@@ -8,6 +8,7 @@
 
 cd "$(dirname "$0")/.." || exit 2
 NOTEMD="${NOTEMD:-$HOME/git/note.md}"
+TAG=v6.1117.1   # 宿主基线 tag;check_contract 按此 tag 读源码,不读工作区
 FAILED=0
 
 fail() { # fail <检查名> <原因>
@@ -18,6 +19,11 @@ fail() { # fail <检查名> <原因>
 # 列出仓库内的 *.md(跳过 .git 与 .superpowers)
 list_md() {
   find . \( -name .git -o -name .superpowers \) -prune -o -type f -name '*.md' -print | sed 's|^\./||' | sort
+}
+
+# 去掉 ``` 围栏代码块里的行(围栏行本身也去掉),只留正文
+strip_fences() { # strip_fences <文件>
+  awk '/^```/ { f = !f; next } !f' "$1"
 }
 
 # --- 任务 1 ------------------------------------------------------------
@@ -72,7 +78,7 @@ check_links() {
       if [ ! -e "$dir/$target" ]; then
         fail check_links "$f: broken link -> $target"
       fi
-    done < <(grep -oE '\]\([^)]*\)' "$f")
+    done < <(strip_fences "$f" | grep -oE '\]\([^)]*\)')
   done < <(list_md)
 }
 
@@ -99,15 +105,23 @@ check_inventory() {
 # --- 任务 3 ------------------------------------------------------------
 
 check_contract() {
-  local doc=docs/handoff/03-notemd-contract.md cmd s modrs="$NOTEMD/src-tauri/src/sumi/mod.rs"
+  # 按 tag $TAG 读宿主源码(git show),不读 $NOTEMD 工作区;host.sumi.* 命令分布在下列文件
+  local doc=docs/handoff/03-notemd-contract.md cmd s p src
   if [ ! -f "$doc" ]; then fail check_contract "missing $doc"; return; fi
-  if [ ! -f "$modrs" ]; then fail check_contract "source file not found: $modrs"; return; fi
-  [ -n "$(grep -ohE 'host\.sumi\.[A-Za-z0-9_.-]+' "$modrs")" ] || fail check_contract "no host.sumi.* commands found in $modrs"
+  git -C "$NOTEMD" rev-parse -q --verify "refs/tags/$TAG" >/dev/null 2>&1 \
+    || { fail check_contract "tag $TAG not found in $NOTEMD"; return; }
+  src=""
+  for p in src-tauri/src/sumi/mod.rs src-tauri/src/plugin_runtime/host_api.rs src-tauri/src/plugin_runtime/process.rs; do
+    git -C "$NOTEMD" cat-file -e "$TAG:$p" 2>/dev/null || { fail check_contract "source file not found: $TAG:$p"; continue; }
+    src="$src
+$(git -C "$NOTEMD" show "$TAG:$p")"
+  done
+  [ -n "$(printf '%s\n' "$src" | grep -ohE 'host\.sumi\.[A-Za-z0-9_.-]+')" ] || fail check_contract "no host.sumi.* commands found at $TAG"
   while IFS= read -r cmd; do
     cmd=${cmd%.}   # 句末标点带来的尾部点号
     [ -z "$cmd" ] && continue
     grep -qF -- "$cmd" "$doc" || fail check_contract "command not documented: $cmd"
-  done < <(grep -ohE 'host\.sumi\.[A-Za-z0-9_.-]+' "$modrs" | sed 's/[.-]*$//' | sort -u)
+  done < <(printf '%s\n' "$src" | grep -ohE 'host\.sumi\.[A-Za-z0-9_.-]+' | sed 's/[.-]*$//' | sort -u)
   for s in 'host-contract v1' 'engines.notemd' 'Writing Page' '.writing.meta.json'; do
     grep -qF -- "$s" "$doc" || fail check_contract "missing: $s"
   done
@@ -144,7 +158,7 @@ check_adr() {
         if (!typeseen) bad = bad "no 类型: line before first ## heading; "
         else if (!typeok) bad = bad "类型 should be " want "; "
         if (bad != "") print bad
-      }' "$f")
+      }' < <(strip_fences "$f"))
     [ -n "$out" ] && fail check_adr "$base: $out"
   done < <(find docs/adr -maxdepth 1 -type f -name '[0-9][0-9][0-9][0-9]-*.md' 2>/dev/null | sort)
 }
@@ -191,16 +205,22 @@ EOF2
   done < <(find docs/spec -type f -name '*.md' ! -name MAPPING.md | sort)
 }
 
+# 退役名称规则:退役名称不得作为现行行为出现在 `docs/spec/`;允许出现在 `docs/spec/MAPPING.md`、
+# ADR 的「放弃的方案」段、以及 `docs/handoff/04-known-gaps.md` 的出入条目。
+# 因此扫描 docs/spec(不含 MAPPING.md)、docs/handoff 00–03、README.md 与 AGENTS.md;
+# 不扫 docs/adr/ 与 docs/handoff/04-known-gaps.md。
 check_retired() {
   local w f
   while IFS= read -r f; do
     for w in 'inbox/write/' 'inbox/writes' '.write.md' 'Courier Prime' 'Special Elite' \
-             '又又意宋' 'Sumi Typewriter' '玄霜打字机' 'Faitc5' 'Sumi Elite'; do
+             '又又意宋' 'Sumi Typewriter' '玄霜打字机' 'Faitc5' 'Sumi Elite' \
+             '统一 Qt' '横线光标'; do
       if grep -qF -- "$w" "$f"; then
         fail check_retired "$f: retired term: $w"
       fi
     done
-  done < <(list_md | grep -vx 'docs/spec/MAPPING.md')
+  done < <(list_md | grep -E '^(docs/spec/.*\.md|docs/handoff/0[0-3]-[^/]*\.md|README\.md|AGENTS\.md)$' \
+                   | grep -vx 'docs/spec/MAPPING.md')
 }
 
 # --- 任务 7 ------------------------------------------------------------

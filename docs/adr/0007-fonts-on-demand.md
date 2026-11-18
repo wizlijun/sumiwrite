@@ -55,4 +55,4 @@
 - 字体清单(组合、大小、SHA-256、来源地址、许可):https://github.com/wizlijun/note.md/blob/v6.1117.1/plugins-src/write/resources/sumi/manifest.json
 - 下载与校验:https://github.com/wizlijun/note.md/blob/v6.1117.1/plugins-src/write/backend/src/fonts.rs
 - 注册:https://github.com/wizlijun/note.md/blob/v6.1117.1/tauri-plugin-native-editor/native/editor.m 、https://github.com/wizlijun/note.md/blob/v6.1117.1/tauri-plugin-native-editor/src/linux.rs
-- 设计 §10.1:note.md 源仓库 `docs/superpowers/specs/2026-11-18-sumiwrite-extraction-design.md`(尚未提交到任何 tag)
+- 设计 §10.1:note.md 源仓库 `docs/superpowers/specs/2026-11-18-sumiwrite-extraction-design.md`(note.md 仓库 `docs/sumiwrite-extraction` 分支,提交 `0c11629f`;该分支尚未推送到任何远端,暂不公开,见 [04-known-gaps §2.2](../handoff/04-known-gaps.md))
