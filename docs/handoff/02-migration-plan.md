@@ -26,7 +26,7 @@
 - 设计与第 0 期计划已提交进 note.md(第 0 期任务 10),本文和 ADR 才能引用到带提交号的设计。
 - 第 1 期详细计划已立并获用户认可。
 - sumiwrite 有 Cargo 可拉取的公开远端。仓库公开是设计 §12 **[用户定]**;第 0 期不建远端,所以建远端是第 1 期的第一件事 **[我的判断]**(本文补充)。
-- 工具链与 note.md 基线一致:`write-core` 用 `cargo +1.99.0`(`write-core/README.md`);同步服务复用 Wrangler 3.114.17(`write-sync-worker/README.md`、`scripts/cloud-admin.py:82`)。
+- 工具链与 note.md 基线一致:`write-core` 用 `cargo +1.99.0`(`write-core/README.md`);同步服务复用 Wrangler 3.114.17(`write-sync-worker/README.md`、`write-sync-worker/scripts/cloud-admin.py:82`;迁移后为 `sync/scripts/cloud-admin.py`)。
 - 同步服务的 `.env` 迁出方式、账号 ID 的新存放位置已在详细计划里定下([01-inventory.md](01-inventory.md) §6)。
 
 ### 步骤
@@ -41,7 +41,7 @@
    # 在 sumiwrite 中:git pull --allow-unrelated-histories <notemd-extract> main
    ```
 
-2. **修模块间的相对路径**:改名后,`sync/scripts/interop.mjs` 读取的 `../../write-core/tests/fixtures/yrs-v1.json` 要改为 `../../core/...`(基线 `write-sync-worker/scripts/interop.mjs:5`)。其余跨模块路径以详细计划的 `grep` 结果为准。
+2. **修模块间的相对路径**:改名后,`sync/scripts/interop.mjs` 读取的 `../../write-core/tests/fixtures/yrs-v1.json` 要改为 `../../core/...`(基线 `write-sync-worker/scripts/interop.mjs:5`);`protocol/Cargo.toml` 里的 `write-core = { path = "../write-core" }`(基线 `sumi-protocol/Cargo.toml:10`)改名后失效,要改为指向 `../core`。其余跨模块路径以详细计划的 `grep` 结果为准。
 3. **同步服务解开对 note.md 的依赖**,按 [01-inventory.md](01-inventory.md) §5 归为四处:
    - 工具链:不再借用根下 `worker/node_modules` 的 Wrangler 与 `tsc`,连同 `link-toolchain.mjs` 的软链(`package.json:8-12`、`scripts/deploy.sh`、`scripts/cloud-admin.py:14`、`:67`);
    - 根目录 `.env`(`cloud-admin.py:42`):改为 sumiwrite 自己的配置入口,只放凭据引用,不放秘密(设计 §12);

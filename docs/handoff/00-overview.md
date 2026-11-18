@@ -37,7 +37,7 @@
 |---|---|---|
 | 1 | 迁 `core/`、`protocol/`、`sync/`,保留历史;note.md 改为按 tag 引用 | 三个模块测试全过;note.md 照常构建,Sumi 测试全过 |
 | 2 | 迁插件壳、资源、插件侧脚本;sumiwrite 出包、note.md 上架 | 从 sumiwrite 构建的包在正式宿主上通过现有验收 |
-| 3 | 会话与同步协调下沉到 `session/` | 桌面行为不变,会话、恢复、同步测试全过 |
+| 3 | 会话与同步协调下沉到 `session/` | 桌面行为不变,会话、恢复、同步测试全过;`session/` 不依赖 Tauri 和插件 SDK |
 | 4 | iOS/iPadOS 应用 | TestFlight 版可与桌面跨设备续写 |
 | 5 | 评估桌面独立应用 | 按设计 §9 给出结论 |
 

@@ -45,7 +45,8 @@
 - `shortcuts.ts` 的复制或引用、`i18n.ts` 宿主侧是否留一份、`verify-release.py` 是否拆分——第 2 期定([01-inventory.md](01-inventory.md) §6)。
 - `session/` 的切分方式、`external.rs` 的落点、`journal.rs`/`durability.rs` 的接口抽取、同一模块如何适配桌面跨进程与 iOS 单进程——第 3 期定([ADR 0012](../adr/0012-shared-session-module.md))。
 - 桌面独立的第 1 条标准“明显多于”没有量化门槛([later.md §4.1](../spec/platform/later.md))。
-- iOS 的 Bundle ID、开发者账号、应用图标(设计 §11),钥匙串服务名与访问组、沙盒目录、iPad 快捷键表、导出文件名与 frontmatter([platform/ios.md](../spec/platform/ios.md))。
+- iOS 的 Bundle ID、开发者账号、应用图标(设计 §11),钥匙串服务名与访问组、沙盒目录、撤销是否由 CRDT owner 管理(现从桌面推断)、输入日志写入失败时怎样提示、iPad 快捷键表、导出文件名与 frontmatter([platform/ios.md](../spec/platform/ios.md))。
+- Android 复用 `core/` 与 `session/`:这只是从“两份源码不分叉”的反目标推出来的,未经确认([later.md §2.1](../spec/platform/later.md))**[我的判断]**。
 
 ---
 
@@ -71,11 +72,13 @@
 
 - **主题数量**:代码有 6 个主题(`ink`、`dim`、`paper`、`sepia`、`crt`、`crt-blue`),默认 `dim`;旧主规范 §2.2 先列 4 个再追加 2 个 CRT,总览只列 4 个,也没写默认值。源:`plugins-src/write/src/contract.ts`、`src-tauri/src/sumi/mod.rs`。现行 [04 主题](../spec/04-editing-experience.md)。
 - **主题跟随系统**:旧规范要求可跟随系统深浅色;代码只有 6 个显式主题,没有任何代码读取系统深浅色。源:`contract.ts`、`mod.rs` 的 `effective_appearance`。现行 [notemd-desktop §6.1](../spec/platform/notemd-desktop.md) `[未定]`。
+- **GTK 系统主题是否渗入正文配色**:Linux 编辑面是 GTK3 TextView,系统 GTK 主题会不会改变它的颜色未测试。现行 [notemd-desktop §6.1](../spec/platform/notemd-desktop.md) `[未定]`。
 - **设置面板与原生正文配色不同**:`ink`、`dim`、`paper` 三项,Web 面板(`plugins-src/write/src/style.css`)与宿主交给原生编辑器的值(`mod.rs`)不一致;旧规范没给色值。现行 [04 主题](../spec/04-editing-experience.md) 以原生值为准。
 - **首次进入聚焦的计数**:旧主规范写 mac“首键起固定 2 秒窗”;现两端都是滑动 2 秒窗、≥4 次。源:`tauri-plugin-native-editor/src/linux_focus.rs`、CHANGELOG v6.1111.1。现行 [04 聚焦打字](../spec/04-editing-experience.md)。
 - **重复居中不跳动**:只有 Linux 的修复与单测(提交 `e8e8e26a`,`linux.rs` 的 `native_focus_center_is_idempotent_offscreen`);macOS 没有同等验收。现行 [04 聚焦打字](../spec/04-editing-experience.md) macOS `[未定]`。
 - **文末续写在 macOS 上**:修复已含在 macOS 发布 v6.1116.1 中,正式验收只有 Linux(6.1112.2 / Sumi 0.1.15)。源:`docs/superpowers/reports/2026-11-12-sumi-entry-release/README.md`。现行 [04 进入后从文末续写](../spec/04-editing-experience.md) macOS `[未定]`。
 - **固定窗口规格**:旧主规范说可在设置选少量固定规格;偏好里没有窗口尺寸字段。源:`contract.ts`、`manifest.v2.json`。现行 [04 专注窗口与全屏](../spec/04-editing-experience.md) `[未定]`。
+- **平铺窗口管理器下的固定尺寸**:Hyprland 等平铺窗口管理器怎样对待声明为固定尺寸的窗口、与 GTK 客户端装饰(CSD)怎么配合,没有结论。只在 [notemd-desktop](../spec/platform/notemd-desktop.md) 平台差异表的“窗口装饰”一行提到。`[未定]`
 - **长按自动重复发声**:旧规范写“忽略自动重复”;macOS 不发声(`native/typing-monitor.h`),Linux 保留(`src/linux_typing.rs`、CHANGELOG v6.1112.1)。目标行为未定。现行 [04 打字音](../spec/04-editing-experience.md) `[未定]`。
 - **光标呼吸周期**:CHANGELOG v6.1108.2 写六秒,v6.1108.5 改四秒;代码两端都是 4 秒(`native/editor.m`、`linux_focus.rs`)。只涉历史。现行 [04 光标](../spec/04-editing-experience.md)。
 - **快捷键、空选区样式、粘贴、Markdown 复制在 Linux 上**:交付证据只有 macOS(v6.1108.1);Linux 只有“应用命令用 Ctrl”与“剪切先写剪贴板”两条。现行 [04 编辑操作、剪贴板](../spec/04-editing-experience.md) Linux `[未定]`。
@@ -87,6 +90,7 @@
 - **两个 Plex 文件没有版本号**:manifest 只固定了 google/fonts 提交 `03c54f8f` 与 IBM/plex 提交 `222657a0`。现行 [05 七个字体文件](../spec/05-fonts.md) `[未定]`。
 - **回退字体的描述**:旧规范写“系统等宽字体及系统中文回退”;代码的回退族名是 `Sumi System`,永不联网,不是一个选项;“等宽”未核对。源:`mod.rs` 的 `ensure_font`。现行 [05 回退与离线](../spec/05-fonts.md)。
 - **许可文本是否进包**:资源目录有 6 个许可 txt 与 3 个 JSON,manifest 只把 3 个 JSON 标为 `bundled: true`;后台下载不写出许可文件(`plugins-src/write/backend/src/fonts.rs` 的测试)。许可 txt 实际是否打进插件包未核对。现行 [05 许可与来源](../spec/05-fonts.md)。
+- **原生编辑桥 README 里的字体名过时**:`tauri-plugin-native-editor/README.md` 讲 `register_font_cascade` 的那段,举例时仍写着一个已退役的拉丁字体名(本文不复述),与现行字体目录不符。该 README 归 note.md,不迁;改不改由 note.md 定。现行字体清单见 [05 七个字体文件](../spec/05-fonts.md)。
 
 ### 4.3 纸页、存储与持久
 
@@ -95,6 +99,7 @@
 - **“在当前页之后新建”**:代码以当前页为 `after_id`,同级按 UUID 排序深度优先,新页不一定紧跟当前页。源:`write-core/src/catalog.rs` L48。现行 [01 §2.1](../spec/01-pages-and-storage.md)。
 - **摘要**:旧规范是“首行摘要加简短预览”;代码取裁剪后的前 80 个字符,空时显示“空白的一页”。源:`contract.ts` L53、`mod.rs` L828。现行 [01 §1.1](../spec/01-pages-and-storage.md)。
 - **总览分页**:旧规范说分页;代码一次列出全部。源:`plugins-src/write/src/main.ts` L264。现行 [01 §2.2](../spec/01-pages-and-storage.md) `[未定]`。
+- **Linux 上的翻页与总览没有 Omarchy 验收记录**:Linux 运行同一份插件前端与宿主代码,但 Omarchy 验收没有覆盖上一页、下一页与总览(`docs/superpowers/reports/` 下 Omarchy 系列报告与 `host-final-result.json`)。现行 [01 §2.2](../spec/01-pages-and-storage.md) 只标 macOS,Linux `[未定]`。
 - **同 UUID 复制品与移动**:旧规范要求检测别名与内容分叉、移动改名后按 UUID 找候选;代码只观察本页文件名下的那对文件(`plugins-src/write/backend/src/durability.rs` L958–970),别名检测与按 UUID 移动都没有实现;从便携文件恢复总是分配新 UUID(`recovery.rs` L363–381)。现行 [01 §4.2](../spec/01-pages-and-storage.md)、[notemd-desktop §2.6](../spec/platform/notemd-desktop.md) `[未定]`。
 - **持久回执的几条断言**:“检查点与云端确认不清除回执”“后台崩溃后按原序原 ID 重放”“读与 flush 不越过前面的写”在契约层未逐条证明(契约 §1.6 `[未定]`);规范作者核对到代码里没有删除回执的语句,且只有 load、observe_page、flush 前排空,list 与 excerpts 不排空。现行 [01 §5.4](../spec/01-pages-and-storage.md)、[03-notemd-contract.md](03-notemd-contract.md) §1.6。
 - **停用、升级、重新启用的持久屏障**:只有自动化测试(`src-tauri/src/sumi/lifecycle_tests.rs`),两个平台都没有发布级实机验收;关闭单个窗口“不停后台下载”未逐行证明。现行 [01 §5.5](../spec/01-pages-and-storage.md)、契约 §1.6 `[未定]`。
@@ -139,6 +144,7 @@
 - **契约外的跨仓耦合**:`plugins-src/write/src/main.ts` 直接 import `plugins-src/shared/shortcuts.ts` 与 `src/lib/sumi/i18n`;偏好默认值与范围在 `contract.ts` 和宿主 `Preferences` 各存一份。契约 §7,第 2 期定。
 - **`Writing Page` frontmatter 没有 `generated` 署名**:是否符合 OKF §7 的人工撰写署名要求 `[未定]`。源:`write-core/src/storage.rs` 的 `serialize_pair`。契约 §3、§7。
 - **没有宿主 tag 与插件版本的对应登记**:只能从 manifest 与 CHANGELOG 推断;契约把 v6.1117.1 + 插件 0.1.16 定义为 `host-contract v1`。契约 §7。
+- **主窗口文件视图的 Tauri 命令**:已核实插件前端 `main.ts` 不调用这些 `sumi_*` 命令(调用点在宿主 `src/lib/sumi/{focus,session,recovery}.ts`);插件**后台进程**是否另有路径触达它们未逐文件审查 `[未定]`。契约 §1 的 B7 表。
 - **设计漏列的反向依赖**:`notemd-plugin-sdk/Cargo.toml:8` 依赖 `plugin-protocol/`,`native-release.py` 的 `SOURCE_DIRS` 也列了它。见 [01-inventory.md](01-inventory.md) §6、[02-migration-plan.md](02-migration-plan.md) 第 2 期。
 
 ### 4.8 迁移相关
@@ -146,6 +152,7 @@
 - **`write-core` 声明 MIT 但没有 LICENSE 文件**;`sumi-protocol` 没有声明。设计 §12 要第 1 期统一改为 Apache-2.0 **[我的判断]**。见 [02-migration-plan.md](02-migration-plan.md) 第 1 期。
 - **同步服务的依赖多于设计列的三处**:另有 `link-toolchain.mjs` 软链、`deploy.sh:12` 写 `../tasks/sumi-sync`、`cloud-admin.py:11` 以源仓库根为基准、`:82` 写死 Wrangler 版本;账号 ID 只在 `worker/wrangler.toml`。见 [01-inventory.md](01-inventory.md) §5。
 - **写死的源路径**:`scripts/sumi/native-release.py:11`、`test_native_release.py:42`,以及 `write-sync-worker/scripts/interop.mjs:5` 读 `write-core` 夹具,第 1 期改名后都要改。
+- **读取宿主源文件的测试脚本**:`scripts/sumi/test-linux-credentials.sh` 编译 `src-tauri/src/sumi/credentials.rs`,`test_fullscreen_appearance.py` 读取 `src-tauri/src/sumi/mod.rs`;两者留在 note.md,但第 3 期切分这些文件后读取路径要核对,凭据逻辑若下沉,测试跟着拆([01-inventory.md](01-inventory.md) §3、[02-migration-plan.md](02-migration-plan.md) 第 3 期第 5 步)。
 - **文件位置的更正**(给第 1–3 期计划):`journal.rs` 在宿主 `src-tauri/src/sumi/journal.rs`(由 `durability.rs` 经 `#[path]` 引入),不在插件后台;`desktop_policy.rs` 在 `src-tauri/src/desktop_policy.rs`,不在 `src-tauri/src/sumi/`。
 - **规模**:原生编辑桥设计写约 12k 行,实测 `native/*.m` + `src/*.rs` 为 10,673 行(不含 .h 与 examples);宿主会话 8,686 行、插件后台三文件 5,926 行,与设计一致。
 - **投影代码在内核里**:投影与三方导入在 `write-core/src/projection.rs`、`import.rs`;按设计 §5.4 投影只有桌面做,iOS 会链接到用不上的代码。是否移出内核、何时移 `[未定]`([ADR 0009](../adr/0009-page-store-vs-vault-projection.md))。
@@ -153,7 +160,7 @@
 
 ### 4.9 规范内部待统一
 
-- **macOS 独立窗口是否可缩放**:[04 专注窗口与全屏](../spec/04-editing-experience.md) 写“macOS 遵循 manifest,即不可拖动改变大小”;[notemd-desktop §1.2](../spec/platform/notemd-desktop.md) 写 macOS 窗口可缩放、可最大化。基线代码 `src-tauri/src/plugin_runtime/windows.rs` L419–424 对 Sumi 窗口 `resizable(true).maximizable(true)`,与后者一致。04 该条需按代码修正 **[我的判断]**。
+- **macOS 独立窗口是否可缩放**:[04 专注窗口与全屏](../spec/04-editing-experience.md) 写“macOS 遵循 manifest,即不可拖动改变大小”;[notemd-desktop §1.2](../spec/platform/notemd-desktop.md) 写 macOS 窗口可缩放、可最大化。基线代码 `src-tauri/src/plugin_runtime/windows.rs` L419–424 对 Sumi 窗口 `resizable(true).maximizable(true)`,与后者一致。代码注释说明了用意:可缩放的原生 NSWindow 才能让绿色全屏按钮保持可用(退出全屏后也是),而插件 manifest 本身是固定尺寸。04 该条需按代码修正 **[我的判断]**。
 
 ### 4.10 iOS 相关
 
