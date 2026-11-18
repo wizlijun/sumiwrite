@@ -176,6 +176,13 @@
 
 **便携文件格式**:与平台无关,见 [02-markdown-and-line-time.md](02-markdown-and-line-time.md) §2。
 
+**同 UUID 的副本**:一张页只观察自己文件名下的那对投影文件,证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/plugins-src/write/backend/src/durability.rs?plain=1#L958。所以复制出来、带着相同 UUID 的文件放在别处,不会被并入这张页。
+
+**未实现的部分**:以下两项在基线上没有实现。[未定]
+
+- 专门检测同 UUID 副本的别名与内容分叉。
+- 文件移动或改名后,按页 UUID 寻找候选文件并校验。
+
 **iOS**:只有纸页存储,没有 vault 投影,改由系统分享导出 Markdown。[计划:iOS]
 
 ### 4.3 迁移层级与导出
@@ -266,3 +273,68 @@
 **不能绕过未持久的草稿**:关闭窗口、切换纸页、停用插件都不行。宿主会拒绝,或者要求先完成保存。
 
 **来自同步的冲突**:不覆盖本机草稿,见 [03-sync.md](03-sync.md) §4.2。
+
+### 5.4 持久回执
+
+状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/plugins-src/write/backend/src/durability.rs?plain=1#L48 · https://github.com/wizlijun/note.md/blob/v6.1117.1/plugins-src/write/backend/src/durability.rs?plain=1#L550 · https://github.com/wizlijun/note.md/blob/v6.1117.1/src-tauri/src/sumi/durability.rs?plain=1#L213 · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-09-sumi-local-safety-release.md?plain=1#L22 · https://github.com/wizlijun/note.md/blob/v6.1117.1/CHANGELOG.md?plain=1#L72 · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-10-sumi-omarchy-validation.md?plain=1#L28
+
+**每次编辑都带身份**:编辑携带以下内容:
+
+- 稳定的操作 ID(`op_id`)
+- 页、`epoch`、`generation` 和修订号
+- 完整载荷的摘要
+
+**回执与数据同事务**:后台先查回执,再校验修订号。回执与实际数据在同一个 SQLite 事务里提交。
+
+**重放与 ID 复用**:
+
+- 相同请求重放,返回原来的回执。
+- 同一个 ID 带不同的内容,一律拒绝。
+- 检查点和云端确认都不会清除回执。
+
+**回声幂等**:本机已确认的一次编辑,经云端同步回到本机时,带的是新的修订号。
+
+- 这次回声只要能证明是同一个 CRDT 更新,就视为幂等,保留两份精确回执,不重复写入增量。
+- 真正不同的载荷仍然拒绝。
+
+**两个事件分开报告**:
+
+- 宿主核对持久回执与待确认修改一致之后,才报告 `Committed`,并释放这次待确认的编辑。
+- 文件投影完成后,另报 `Saved`,带上是否已投影(`projected`)。
+
+**后台崩溃或应答丢失**:未确认的本机编辑,按原顺序、原 ID 重放,见 §5.2。后台处理读取页面、观察投影文件和 flush 这三类请求时,先排空前面已入队的写,所以它们不会越过前面的写(durability.rs L202)。
+
+宿主与后台之间的请求与事件类型,见 [../handoff/03-notemd-contract.md](../handoff/03-notemd-contract.md) §1.4。
+
+### 5.5 关闭、退出、停用与升级的持久屏障
+
+状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/src-tauri/src/sumi/mod.rs?plain=1#L3096 · https://github.com/wizlijun/note.md/blob/v6.1117.1/src-tauri/src/sumi/mod.rs?plain=1#L3242 · https://github.com/wizlijun/note.md/blob/v6.1117.1/src-tauri/src/sumi/mod.rs?plain=1#L3272 · https://github.com/wizlijun/note.md/blob/v6.1117.1/src-tauri/src/sumi/mod.rs?plain=1#L3350 · https://github.com/wizlijun/note.md/blob/v6.1117.1/src-tauri/src/sumi/service.rs?plain=1#L147 · https://github.com/wizlijun/note.md/blob/v6.1117.1/src-tauri/src/sumi/lifecycle_tests.rs?plain=1#L163 · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-10-sumi-omarchy-validation.md?plain=1#L18 · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-10-sumi-omarchy-validation.md?plain=1#L49
+
+**关闭一个窗口**:
+
+- 只交接这个窗口里的编辑面。交接时一并处理输入法组字中的文字,不留半截组字。
+- 不停止网络,也不影响后台下载和其他纸页的同步。
+
+**退出应用、停用或升级插件**:覆盖所有已打开的写作空间,包括隐藏的纸页。顺序如下:
+
+1. 写作空间进入停用中状态,停止打字音。
+2. 逐个关闭持有纸页的窗口编辑面。
+3. 关闭远端与目录修改的回调入口,停止网络,并等待已经进入宿主的回调完成。等待网络停止时,不持有回调所需的写作空间生命周期锁。
+4. 排空持久队列,并尝试最终投影。
+5. 为每个持有者的纸页保存一份冻结快照。
+
+**投影被外部冲突挡住时**:
+
+- 逐页核对:内存里已接受的修订号,与 SQLite 里的修订号一致。
+- 全部一致时,允许交接 `projected=false` 的快照,磁盘上的原稿和待投影状态都保留。
+- 有未确认的编辑,或者数据库错误无法验证,就拒绝停用或退出。此时写作空间回到可写状态,网络和窗口都恢复。
+
+**启动票据**:停止网络会让旧的启动票据失效。已排队但还没开始的启动,不能重新打开同步。
+
+**再次启用**:
+
+- 逐页核对 `epoch`、`generation` 和修订号与冻结快照一致,然后才恢复网络与窗口。
+- 恢复失败时保持可重试,冻结快照仍然可用。
+- 停用后清理主编辑器 Tab,只能交接停用前已确认的冻结快照。修订号或持有者代际变化,都拒绝交接。
+
+**实机验收**:停用、升级和重新启用这些路径只有自动化测试,两个平台都没有发布级的实机验收记录。[未定]
