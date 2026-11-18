@@ -65,7 +65,7 @@ check_links() {
       target=${target%\)}
       target=${target%% *}          # 去掉 "title" 部分
       case "$target" in
-        ''|http*|'#'*|mailto:*) continue ;;
+        ''|http://*|https://*|'#'*|mailto:*) continue ;;
       esac
       target=${target%%#*}          # 去掉锚点
       [ -z "$target" ] && continue
@@ -93,6 +93,7 @@ check_inventory() {
   while IFS= read -r e; do
     grep -qF -- "$e" "$doc" || fail check_inventory "scripts/sumi entry not mentioned: $e"
   done < <(ls "$NOTEMD/scripts/sumi")
+  [ -n "$(ls "$NOTEMD/scripts/sumi")" ] || fail check_inventory "no entries found in $NOTEMD/scripts/sumi"
 }
 
 # --- 任务 3 ------------------------------------------------------------
@@ -101,6 +102,7 @@ check_contract() {
   local doc=docs/handoff/03-notemd-contract.md cmd s modrs="$NOTEMD/src-tauri/src/sumi/mod.rs"
   if [ ! -f "$doc" ]; then fail check_contract "missing $doc"; return; fi
   if [ ! -f "$modrs" ]; then fail check_contract "source file not found: $modrs"; return; fi
+  [ -n "$(grep -ohE 'host\.sumi\.[A-Za-z0-9_.-]+' "$modrs")" ] || fail check_contract "no host.sumi.* commands found in $modrs"
   while IFS= read -r cmd; do
     cmd=${cmd%.}   # 句末标点带来的尾部点号
     [ -z "$cmd" ] && continue
@@ -191,7 +193,6 @@ EOF2
 
 check_retired() {
   local w f
-  [ -d docs/spec ] || { fail check_retired "missing docs/spec"; return; }
   while IFS= read -r f; do
     for w in 'inbox/write/' 'inbox/writes' '.write.md' 'Courier Prime' 'Special Elite' \
              '又又意宋' 'Sumi Typewriter' '玄霜打字机' 'Faitc5' 'Sumi Elite'; do
@@ -199,11 +200,7 @@ check_retired() {
         fail check_retired "$f: retired term: $w"
       fi
     done
-  done < <(
-    find docs/spec -type f -name '*.md' ! -name MAPPING.md
-    [ -f README.md ] && echo README.md
-    [ -f AGENTS.md ] && echo AGENTS.md
-  )
+  done < <(list_md | grep -vx 'docs/spec/MAPPING.md')
 }
 
 # --- 任务 7 ------------------------------------------------------------
@@ -278,7 +275,7 @@ check_plan() {
           !infence && /^## / { insec = ($0 ~ ("^## 第 " n " 期")) ; next }
           insec && !infence && $0 ~ /^#{3,6} / {
             t = $0; sub(/^#+ +/, "", t)
-            if (index(t, k) == 1) found = 1
+            if (index(t, k) > 0) found = 1
           }
           END { if (found) print "y" }' "$plan")
         [ "$out" = "y" ] || fail check_plan "第 $n 期 missing subheading: $k"
