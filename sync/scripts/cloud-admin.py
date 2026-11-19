@@ -1,20 +1,26 @@
 #!/usr/bin/env python3
-"""Sumi-only deployment/onboarding through the repository's Wrangler 3 Account API Token.
+"""Sumi-only deployment/onboarding through the pinned Wrangler 3 and an Account API Token.
+Credentials come only from the environment or macOS Keychain (see sync/README.md), never from files.
 All authentication material and raw cloud responses live in a mode-0700 temp directory.
 The public report contains only allowlisted resource identities and source hashes.
 """
+from __future__ import annotations
 import argparse, hashlib, json, os, re, secrets, subprocess, tempfile, urllib.request, urllib.error
 from email.parser import BytesParser
 from email.policy import default
 from pathlib import Path
 os.umask(0o077)
+from typing import Callable, Mapping
 ROOT=Path(__file__).resolve().parents[2]
-WORKER=ROOT/'write-sync-worker'
-TASK=ROOT/'tasks/sumi-sync'
-WRANGLER=ROOT/'worker/node_modules/.bin/wrangler'
+WORKER=ROOT/'sync'
+TASK=WORKER/'.local'
+WRANGLER=WORKER/'node_modules/.bin/wrangler'
 SERVICE='sumi-sync'
 BUCKET='sumi-sync-backups'
-TASK.mkdir(parents=True,exist_ok=True)
+# Keychain generic-password service names; values are never stored in the repository.
+KEYCHAIN_SERVICES={'CLOUDFLARE_API_TOKEN':'sumiwrite.cloudflare.api-token','CLOUDFLARE_ACCOUNT_ID':'sumiwrite.cloudflare.account-id'}
+# Initialized by init() so that importing this module has no side effects.
+PRIVATE=ENV=ACCOUNT=None
 
 def private_write(path,data):
     raw=data if isinstance(data,bytes) else (json.dumps(data,ensure_ascii=False,indent=2)+'\n').encode()
@@ -35,18 +41,33 @@ def private_dir():
         raise RuntimeError('Private state directory ownership/mode mismatch')
     path=Path(tempfile.mkdtemp(prefix='sumi-cloud-',dir='/private/tmp'));os.chmod(path,0o700)
     marker.write_text(str(path)+'\n');return path
-PRIVATE=private_dir()
+
+def keychain_secret(service:str)->str|None:
+    """Read a generic password from the login Keychain; the value stays in memory only."""
+    result=subprocess.run(['security','find-generic-password','-s',service,'-w'],capture_output=True,text=True)
+    return result.stdout.rstrip('\n') if result.returncode==0 else None
+
+def resolve_credentials(environ:Mapping[str,str],keychain:Callable[[str],str|None])->dict[str,str]:
+    """Environment variable first, then Keychain. Errors name what is missing, never a value."""
+    found,missing={},[]
+    for name,service in KEYCHAIN_SERVICES.items():
+        value=environ.get(name) or keychain(service)
+        if value:found[name]=value
+        else:missing.append(f'{name} (environment, or Keychain service {service})')
+    if missing:raise RuntimeError('Missing Cloudflare credentials: '+'; '.join(missing))
+    return found
 
 def environment():
     result=os.environ.copy()
-    for line in (ROOT/'.env').read_text().splitlines():
-        match=re.match(r'(?:export\s+)?CLOUDFLARE_API_TOKEN\s*=\s*(.*)',line)
-        if match:result['CLOUDFLARE_API_TOKEN']=match[1].strip().strip('"\'')
-    if not result.get('CLOUDFLARE_API_TOKEN'):raise RuntimeError('Existing Account API Token is required')
-    account=re.search(r'^account_id\s*=\s*"([0-9a-f]+)"',(ROOT/'worker/wrangler.toml').read_text(),re.M).group(1)
-    result.update(CLOUDFLARE_ACCOUNT_ID=account,WRANGLER_SEND_METRICS='false',WRANGLER_LOG='error',WRANGLER_LOG_PATH=str(PRIVATE/'wrangler-debug.log'),CI='true')
+    result.update(resolve_credentials(os.environ,keychain_secret))
+    result.update(WRANGLER_SEND_METRICS='false',WRANGLER_LOG='error',WRANGLER_LOG_PATH=str(PRIVATE/'wrangler-debug.log'),CI='true')
     return result
-ENV=environment();ACCOUNT=ENV['CLOUDFLARE_ACCOUNT_ID']
+
+def init(credentials=True):
+    global PRIVATE,ENV,ACCOUNT
+    TASK.mkdir(parents=True,exist_ok=True)
+    PRIVATE=private_dir()
+    if credentials:ENV=environment();ACCOUNT=ENV['CLOUDFLARE_ACCOUNT_ID']
 
 def cf(path,method='GET',body=None,allow_missing=False):
     request=urllib.request.Request('https://api.cloudflare.com/client/v4'+path,method=method,headers={'Authorization':'Bearer '+ENV['CLOUDFLARE_API_TOKEN'],'Content-Type':'application/json'},data=None if body is None else json.dumps(body).encode())
@@ -64,7 +85,7 @@ def cf(path,method='GET',body=None,allow_missing=False):
     return payload.get('result') if payload is not None else (raw,headers)
 
 def wrangler(args,label):
-    version=json.loads((ROOT/'worker/node_modules/wrangler/package.json').read_text())['version']
+    version=json.loads((WORKER/'node_modules/wrangler/package.json').read_text())['version']
     if version!='3.114.17':raise RuntimeError('Unverified Wrangler version')
     log=PRIVATE/(label+'.log')
     fd=os.open(log,os.O_WRONLY|os.O_CREAT|os.O_TRUNC,0o600)
@@ -77,7 +98,7 @@ def wrangler(args,label):
 def source_proof():
     names=['package.json','package-lock.json','wrangler.toml']+[str(p.relative_to(WORKER)) for p in (WORKER/'src').glob('*.ts')]
     files={name:hashlib.sha256((WORKER/name).read_bytes()).hexdigest() for name in sorted(names)}
-    status=subprocess.run(['git','status','--porcelain','--','write-sync-worker'],cwd=ROOT,capture_output=True,text=True,check=True).stdout
+    status=subprocess.run(['git','status','--porcelain','--','sync'],cwd=ROOT,capture_output=True,text=True,check=True).stdout
     commit=subprocess.run(['git','rev-parse','HEAD'],cwd=ROOT,capture_output=True,text=True,check=True).stdout.strip()
     return {'uncommitted':bool(status.strip()),'commit':commit,'files':files,'source_sha256':hashlib.sha256(json.dumps(files,sort_keys=True,separators=(',',':')).encode()).hexdigest(),'wrangler':'3.114.17'}
 
@@ -94,8 +115,9 @@ def keychain(mode):
 
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('mode',choices=['preflight','prepare','bucket','deploy','secrets','retention','verify','verify-source','quota','bootstrap','invite','private-path']);args=parser.parse_args()
+    if args.mode=='private-path':init(credentials=False);print(PRIVATE);return
+    init()
     base=f'/accounts/{ACCOUNT}'
-    if args.mode=='private-path':print(PRIVATE);return
     if args.mode=='preflight':
         script=cf(base+f'/workers/scripts/{SERVICE}/settings',allow_missing=True)
         bucket=cf(base+f'/r2/buckets/{BUCKET}',allow_missing=True)

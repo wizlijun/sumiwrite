@@ -61,7 +61,16 @@ First-device provisioning, live-network performance, and production recovery mus
 
 ## Deployment and first connection
 
-Use `python3 scripts/cloud-admin.py MODE` from this repository (the script resolves the root). It reuses the existing Account API Token from root `.env`, the account ID from `worker/wrangler.toml`, and only Wrangler 3.114.17. It never prints secret values. Modes are `preflight`, `prepare`, `bucket`, `deploy`, `secrets`, `retention`, `verify`, and `verify-source`, in that order. `quota` reads aggregate shared-account SQL use before capacity acceptance. `verify-source` downloads the deployed module and compares its SHA-256 with a fresh dry-run bundle. A failed network mutation must be checked by readback before retry. Do not rotate an existing service's owner keys when Keychain retrieval fails.
+Use `python3 scripts/cloud-admin.py MODE` from this repository (the script resolves the root). It uses only the pinned Wrangler 3.114.17 and never prints secret values.
+
+Credentials are read from the environment first, then from the macOS login Keychain; no file in this repository holds them:
+
+| Value | Environment variable | Keychain generic-password service |
+|---|---|---|
+| Account API Token | `CLOUDFLARE_API_TOKEN` | `sumiwrite.cloudflare.api-token` |
+| Account ID | `CLOUDFLARE_ACCOUNT_ID` | `sumiwrite.cloudflare.account-id` |
+
+Store them once with `security add-generic-password -U -a "$USER" -s sumiwrite.cloudflare.api-token -w` (and the same for `sumiwrite.cloudflare.account-id`); with `-w` last and no value, `security` prompts instead of putting the secret in shell history. If either is missing, the script stops and names the missing item without printing any value. `python3 -I scripts/test_cloud_admin.py` tests this resolution offline. Modes are `preflight`, `prepare`, `bucket`, `deploy`, `secrets`, `retention`, `verify`, and `verify-source`, in that order. `quota` reads aggregate shared-account SQL use before capacity acceptance. `verify-source` downloads the deployed module and compares its SHA-256 with a fresh dry-run bundle. A failed network mutation must be checked by readback before retry. Do not rotate an existing service's owner keys when Keychain retrieval fails.
 
 The Sumi-only owner bundle is generated locally, kept in macOS Keychain `net.notemd.sumi.admin.v1` / `cloudflare:sumi-sync`, and copied only into a mode-0700 temporary directory with mode-0600 files. `secrets` sends only the newly generated Sumi signing/provision keys to this dedicated Worker's secret store. The bootstrap administrator key never enters a host preference, Markdown, sidecar, plugin package, or invitation.
 
