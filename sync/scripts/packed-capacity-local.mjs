@@ -3,11 +3,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 import { randomUUID, createHash } from 'node:crypto';
-const root=path.resolve(import.meta.dirname,'../..'), task=path.join(root,'tasks/sumi-sync');
+const root=path.resolve(import.meta.dirname,'..'), task=path.join(root,'.local');
 const endpoint='http://127.0.0.1:18788';
 const sha=b=>createHash('sha256').update(b).digest('hex');
 const fixture=JSON.parse(fs.readFileSync(path.join(task,'capacity-fixture.json')));
-const runtimeProof=()=>Object.fromEntries(fs.readdirSync(path.join(root,'write-sync-worker/src')).filter(name=>name.endsWith('.ts')).sort().map(name=>['src/'+name,sha(fs.readFileSync(path.join(root,'write-sync-worker/src',name)))]));
+const runtimeProof=()=>Object.fromEntries(fs.readdirSync(path.join(root,'src')).filter(name=>name.endsWith('.ts')).sort().map(name=>['src/'+name,sha(fs.readFileSync(path.join(root,'src',name)))]));
 const initialRuntimeHashes=runtimeProof();
 async function api(route,method='GET',body,token,status=200){const r=await fetch(endpoint+route,{method,headers:{'content-type':'application/json',...(token?{authorization:'Bearer '+token}:{})},body:body===undefined?undefined:JSON.stringify(body),signal:AbortSignal.timeout(180000)});const text=await r.text();let value;try{value=JSON.parse(text);}catch{throw Error(`${route}: HTTP ${r.status} non-JSON ${text.slice(0,80)}`);}assert.equal(r.status,status,`${route}: ${JSON.stringify(value)}`);return value;}
 const a=await api('/admin/provision','POST',{},'test-admin-secret',201);

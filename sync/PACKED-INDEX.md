@@ -25,7 +25,7 @@ Deletion checks distinguish a valid same-value map replacement from a later pend
 Run the dedicated real workerd/SQLite suite:
 
 ```sh
-../worker/node_modules/.bin/vitest run tests/packed-validator.test.ts
+npx vitest run tests/packed-validator.test.ts
 ```
 
 It covers actual Rust forward/reverse fixtures, 180 edits from four offline peers plus duplicate delivery against the legacy oracle, every ordering of a deferred identity violation, long UTF-16 text crossing blocks, large external timing values, UUID spelling, valid field segmentation, adversarial dense buckets with complete rollback, reopening, protected-field mutation, quarantine with surviving same-value fields, and both processing orders of a malicious pending final-field deletion while retaining the legitimate body edit.

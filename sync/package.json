@@ -2,16 +2,23 @@
   "name": "sumi-sync-worker",
   "version": "0.1.0",
   "private": true,
+  "license": "Apache-2.0",
   "type": "module",
   "scripts": {
     "test": "node scripts/test.mjs",
-    "check": "../worker/node_modules/.bin/tsc --noEmit",
-    "dev": "../worker/node_modules/.bin/wrangler dev",
-    "deploy": "../worker/node_modules/.bin/wrangler deploy",
-    "pretest": "node scripts/link-toolchain.mjs",
-    "precheck": "node scripts/link-toolchain.mjs"
+    "check": "tsc --noEmit",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
   },
   "dependencies": {
     "yjs": "13.6.33"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "0.5.41",
+    "@cloudflare/workers-types": "4.20260702.1",
+    "typescript": "5.9.3",
+    "vitest": "2.1.9",
+    "wrangler": "3.114.17",
+    "ws": "8.18.0"
   }
 }
