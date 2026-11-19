@@ -16,9 +16,9 @@ fail() { # fail <检查名> <原因>
   FAILED=1
 }
 
-# 列出仓库内的 *.md(跳过 .git 与 .superpowers)
+# 列出仓库内的 *.md(跳过 .git、.superpowers,以及模块的安装/构建产物 node_modules、target、.wrangler、.local)
 list_md() {
-  find . \( -name .git -o -name .superpowers \) -prune -o -type f -name '*.md' -print | sed 's|^\./||' | sort
+  find . \( -name .git -o -name .superpowers -o -name node_modules -o -name target -o -name .wrangler -o -name .local \) -prune -o -type f -name '*.md' -print | sed 's|^\./||' | sort
 }
 
 # 去掉 ``` 围栏代码块里的行(围栏行本身也去掉),只留正文

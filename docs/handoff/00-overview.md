@@ -25,10 +25,11 @@
 
 逐项归属见 [01-inventory.md](01-inventory.md);两仓之间的耦合面见 [03-notemd-contract.md](03-notemd-contract.md)(`host-contract v1`)。
 
-## 当前状态(第 0 期)
+## 当前状态(第 1 期进行中)
 
-- **已完成**:本仓库只有文档——交接方案(`docs/handoff/`)、按主题重写的现行规范(`docs/spec/`,含旧文档去向表 [MAPPING.md](../spec/MAPPING.md))、12 条技术选型记录(`docs/adr/`)、`README.md`、`AGENTS.md`、`LICENSE`(Apache-2.0)和自检脚本 `docs/check.sh`。
-- **未动**:代码全部仍在 note.md,本期对 note.md 零改动,构建与发版照旧(设计 §2 **[用户定]**)。代码目录到对应期次再建,不放空壳(设计 §6 **[我的判断]**)。
+- **第 0 期已完成**:交接方案(`docs/handoff/`)、按主题重写的现行规范(`docs/spec/`,含旧文档去向表 [MAPPING.md](../spec/MAPPING.md))、12 条技术选型记录(`docs/adr/`)、`README.md`、`AGENTS.md`、`LICENSE`(Apache-2.0)和自检脚本 `docs/check.sh`。
+- **第 1 期已完成(本仓库内)**:`core/`、`protocol/`、`sync/` 用 git-filter-repo 从 note.md `3c710c9e` 提取并保留历史并入;模块间相对路径已修,内核夹具在 `fixtures` feature 后导出;同步服务自带固定工具链,部署脚本凭据只从环境变量或钥匙串读;两个 crate 改为 Apache-2.0;有了 `CHANGELOG.md` / `CHANGELOG.zh-CN.md`。三个模块的测试在本仓库全部通过,线格式不变。
+- **第 1 期未做**:note.md 仍用自己的副本,改为按 tag 引用、删除旧目录要等本仓库有远端和 tag(见 [02-migration-plan.md](02-migration-plan.md) 第 1 期)。
 - **未建**:本仓库还没有远端,也没有 tag。
 
 ## 五期路线
