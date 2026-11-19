@@ -49,4 +49,4 @@
 - 同步服务接口与运维:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-sync-worker/README.md
 - 时限常量 `authSeconds: 900`、`invitationSeconds: 300` 与各项限额:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-sync-worker/src/protocol.ts
 - DO 与 R2 绑定:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-sync-worker/wrangler.toml
-- 设计 §10.1(邀请文本配对):note.md 源仓库 `docs/superpowers/specs/2026-11-18-sumiwrite-extraction-design.md`(note.md 仓库 `docs/sumiwrite-extraction` 分支,提交 `0c11629f`;该分支尚未推送到任何远端,暂不公开,见 [04-known-gaps §2.2](../handoff/04-known-gaps.md))
+- 设计 §10.1(邀请文本配对):note.md 源仓库 [`docs/superpowers/specs/2026-11-18-sumiwrite-extraction-design.md`](https://github.com/wizlijun/note.md/blob/0c11629f976226c688d186b13d4812da31073dc2/docs/superpowers/specs/2026-11-18-sumiwrite-extraction-design.md)(note.md 提交 `0c11629f`)

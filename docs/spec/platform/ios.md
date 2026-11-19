@@ -2,7 +2,7 @@
 
 玄霜写作(Sumi Write)的 iOS/iPadOS 版是一个独立的原生应用,不依赖 note.md,也没有 vault。**本附录全部是计划**:还没有任何 iOS 发布,本仓库里也没有 iOS 代码。下文每一条都标 `[计划:iOS]` 或 `[未定]`,不能当作已存在的行为引用。2026-11 做过两次一次性试做(界面试做、M0 内核试做),代码不进仓库,结论记在 [§8](#8-试做记录),并写回了下文对应小节;试做结论是证据,不是交付。
 
-- **来源**:设计文档 `docs/superpowers/specs/2026-11-18-sumiwrite-extraction-design.md` §2、§4.3、§4.4、§5.4、§8、§10、§12(note.md 仓库 `docs/sumiwrite-extraction` 分支,提交 `0c11629f`;该分支尚未推送到任何远端,暂不公开,见 [04-known-gaps §2.2](../../handoff/04-known-gaps.md))。旧主规范 `2026-11-07-immersive-write-design.md` 中涉及移动端的条目也已对照。
+- **来源**:设计文档 [`docs/superpowers/specs/2026-11-18-sumiwrite-extraction-design.md`](https://github.com/wizlijun/note.md/blob/0c11629f976226c688d186b13d4812da31073dc2/docs/superpowers/specs/2026-11-18-sumiwrite-extraction-design.md) §2、§4.3、§4.4、§5.4、§8、§10、§12(note.md 提交 `0c11629f`)。旧主规范 `2026-11-07-immersive-write-design.md` 中涉及移动端的条目也已对照。
 - **归属标记**:**[用户定]** 是用户亲自拍板的;**[我的判断]** 是设计者的判断,用户可以推翻。两者均沿用设计文档原文。
 - **共用规则**:iOS 与桌面共用纸页、Markdown 与行时间、同步、编辑体验、字体的规则,分别见 [01](../01-pages-and-storage.md)、[02](../02-markdown-and-line-time.md)、[03](../03-sync.md)、[04](../04-editing-experience.md)、[05](../05-fonts.md)。本附录只写 iOS 独有的部分。
 - **技术选型**:[ADR 0010](../../adr/0010-ios-uikit-textkit2-uniffi.md)(UIKit + TextKit 2 + UniFFI)、[ADR 0011](../../adr/0011-ios-personal-use-identity-layer.md)(先自用,身份层分开)、[ADR 0012](../../adr/0012-shared-session-module.md)(共用会话模块 `session/`)、[ADR 0009](../../adr/0009-page-store-vs-vault-projection.md)(纸页存储与 vault 投影分开)。

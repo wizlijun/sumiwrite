@@ -2,7 +2,7 @@
 
 本文逐目录列出玄霜写作(Sumi Write,插件 ID `notemd.sumi`)目前散落在 note.md 仓库里的代码与资产,给出归属判定。基线:note.md `main` 969f8e73,宿主 tag `v6.1117.1`,插件 0.1.16。
 
-归属判定与迁入期次以设计文档 `docs/superpowers/specs/2026-11-18-sumiwrite-extraction-design.md`(note.md 仓库 `docs/sumiwrite-extraction` 分支,提交 `0c11629f`;该分支尚未推送到任何远端,暂不公开,见 [04-known-gaps §2.2](04-known-gaps.md))的 §5.2 归属表和 §8 分期为准(下称“设计”)。设计没有明说的条目,由本文判定并标 **[我的判断]**,附一行理由。
+归属判定与迁入期次以设计文档 [`docs/superpowers/specs/2026-11-18-sumiwrite-extraction-design.md`](https://github.com/wizlijun/note.md/blob/0c11629f976226c688d186b13d4812da31073dc2/docs/superpowers/specs/2026-11-18-sumiwrite-extraction-design.md)(note.md 提交 `0c11629f`)的 §5.2 归属表和 §8 分期为准(下称“设计”)。设计没有明说的条目,由本文判定并标 **[我的判断]**,附一行理由。
 
 ## 读法
 

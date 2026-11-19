@@ -45,7 +45,7 @@
 - `shortcuts.ts` 的复制或引用、`i18n.ts` 宿主侧是否留一份、`verify-release.py` 是否拆分——第 2 期定([01-inventory.md](01-inventory.md) §6)。
 - `session/` 的切分方式、`external.rs` 的落点、`journal.rs`/`durability.rs` 的接口抽取、同一模块如何适配桌面跨进程与 iOS 单进程——第 3 期定([ADR 0012](../adr/0012-shared-session-module.md))。
 - 桌面独立的第 1 条标准“明显多于”没有量化门槛([later.md §4.1](../spec/platform/later.md))。
-- **设计与计划文档尚未公开**:本仓库引用的 `docs/superpowers/specs/2026-11-18-sumiwrite-extraction-design.md` 及第 0 期计划在 note.md 仓库的 `docs/sumiwrite-extraction` 分支上(提交 `0c11629f`),该分支尚未推送到任何远端,公开读者打不开。推送 note.md 分支后把引用改为固定提交的 blob 链接;何时推送由用户定。第 1 期执行时(2026-11-20)仍未推送,引用照旧保留路径。见 [02-migration-plan.md](02-migration-plan.md) 第 1 期前置条件。
+- **设计与计划文档公开(已解决,2026-11-20)**:设计与第 0 期计划的提交 `0c11629f` 已并入 note.md `main` 并公开;本仓库的引用已改为固定到该提交的 blob 链接。
 - iOS 的 Bundle ID、开发者账号、应用图标(设计 §11),钥匙串服务名与访问组、沙盒目录、撤销是否由 CRDT owner 管理(现从桌面推断)、输入日志写入失败时怎样提示、iPad 快捷键表、导出文件名与 frontmatter([platform/ios.md](../spec/platform/ios.md))。
 - Android 复用 `core/` 与 `session/`:这只是从“两份源码不分叉”的反目标推出来的,未经确认([later.md §2.1](../spec/platform/later.md))**[我的判断]**。
 

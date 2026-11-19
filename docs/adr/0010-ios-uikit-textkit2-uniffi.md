@@ -50,7 +50,7 @@
 
 ## 来源
 
-- 抽离设计 §4.4、§10.1、§10.2、§10.3:note.md 源仓库 `docs/superpowers/specs/2026-11-18-sumiwrite-extraction-design.md`(note.md 仓库 `docs/sumiwrite-extraction` 分支,提交 `0c11629f`;该分支尚未推送到任何远端,暂不公开,见 [04-known-gaps §2.2](../handoff/04-known-gaps.md))
+- 抽离设计 §4.4、§10.1、§10.2、§10.3:note.md 源仓库 [`docs/superpowers/specs/2026-11-18-sumiwrite-extraction-design.md`](https://github.com/wizlijun/note.md/blob/0c11629f976226c688d186b13d4812da31073dc2/docs/superpowers/specs/2026-11-18-sumiwrite-extraction-design.md)(note.md 提交 `0c11629f`)
 - 编辑事务与组字规定:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/README.md
 - 互操作夹具:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/tests/fixtures/yrs-v1.json
 - WebSocket 与 TLS 依赖:https://github.com/wizlijun/note.md/blob/v6.1117.1/plugins-src/write/backend/Cargo.toml

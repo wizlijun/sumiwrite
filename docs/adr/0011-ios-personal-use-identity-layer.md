@@ -50,7 +50,7 @@
 
 ## 来源
 
-- 抽离设计 §4.3、§10.1、§10.4:note.md 源仓库 `docs/superpowers/specs/2026-11-18-sumiwrite-extraction-design.md`(note.md 仓库 `docs/sumiwrite-extraction` 分支,提交 `0c11629f`;该分支尚未推送到任何远端,暂不公开,见 [04-known-gaps §2.2](../handoff/04-known-gaps.md))
+- 抽离设计 §4.3、§10.1、§10.4:note.md 源仓库 [`docs/superpowers/specs/2026-11-18-sumiwrite-extraction-design.md`](https://github.com/wizlijun/note.md/blob/0c11629f976226c688d186b13d4812da31073dc2/docs/superpowers/specs/2026-11-18-sumiwrite-extraction-design.md)(note.md 提交 `0c11629f`)
 - 同步服务的部署形态、开通、邀请与吊销:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-sync-worker/README.md
 - 邀请与身份结构:https://github.com/wizlijun/note.md/blob/v6.1117.1/sumi-protocol/src/sync.rs
 - 桌面侧签发与输出邀请:https://github.com/wizlijun/note.md/blob/v6.1117.1/plugins-src/write/backend/src/sync.rs 、https://github.com/wizlijun/note.md/blob/v6.1117.1/src-tauri/src/sumi/mod.rs 、https://github.com/wizlijun/note.md/blob/v6.1117.1/plugins-src/write/src/main.ts

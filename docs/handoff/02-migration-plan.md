@@ -2,7 +2,7 @@
 
 本文只定**顺序与验收口径**。第 1、2、3 期开工前各自另立详细计划(设计 §8、§11),逐条细化本文的步骤;详细计划与本文冲突时,先改本文再动手。
 
-来源:设计 `docs/superpowers/specs/2026-11-18-sumiwrite-extraction-design.md`(note.md 仓库 `docs/sumiwrite-extraction` 分支,提交 `0c11629f`;该分支尚未推送到任何远端,暂不公开,见 [04-known-gaps §2.2](04-known-gaps.md))§8、§9、§10.3;逐目录清单 [01-inventory.md](01-inventory.md);契约 [03-notemd-contract.md](03-notemd-contract.md)。基线 note.md `main` 969f8e73 / `v6.1117.1`。
+来源:设计 [`docs/superpowers/specs/2026-11-18-sumiwrite-extraction-design.md`](https://github.com/wizlijun/note.md/blob/0c11629f976226c688d186b13d4812da31073dc2/docs/superpowers/specs/2026-11-18-sumiwrite-extraction-design.md)(note.md 提交 `0c11629f`)§8、§9、§10.3;逐目录清单 [01-inventory.md](01-inventory.md);契约 [03-notemd-contract.md](03-notemd-contract.md)。基线 note.md `main` 969f8e73 / `v6.1117.1`。
 
 标注:**[用户定]**、**[我的判断]** 沿用设计原标注;本文自己补充的做法标 **[我的判断]**(本文补充)。
 
@@ -22,7 +22,7 @@
 
 ### 前置条件
 
-- **第一步:公开设计与第 0 期计划**。两者已提交在 note.md 的 `docs/sumiwrite-extraction` 分支(提交 `0c11629f`),但该分支尚未推送到任何远端。推送时机由用户定;推送后把本仓库所有对设计与计划的路径引用改为固定提交的 blob 链接(`https://github.com/wizlijun/note.md/blob/<提交>/<路径>`)**[我的判断]**(本文补充)。见 [04-known-gaps §2.2](04-known-gaps.md)。
+- **第一步:公开设计与第 0 期计划**。(已完成,2026-11-20)两者在提交 `0c11629f`,已并入 note.md `main` 并公开;本仓库对它们的引用已改为固定到该提交的 blob 链接(`https://github.com/wizlijun/note.md/blob/<提交>/<路径>`)**[我的判断]**(本文补充)。
 - 第 0 期完成的标志已达成。
 - 第 1 期详细计划已立并获用户认可:[第 1 期详细计划](../plans/2026-11-20-phase1-core-protocol-sync.md)(2026-11-20 认可)。
 - sumiwrite 有 Cargo 可拉取的公开远端。仓库公开是设计 §12 **[用户定]**;第 0 期不建远端,所以建远端是第 1 期的第一件事 **[我的判断]**(本文补充)。
