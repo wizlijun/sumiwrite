@@ -1,5 +1,6 @@
 """Credential resolution for cloud-admin.py: environment first, then macOS Keychain, never files."""
-import importlib.util, tempfile, unittest
+import importlib.util, os, tempfile, unittest
+from unittest import mock
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -37,19 +38,21 @@ class ResolveCredentials(unittest.TestCase):
         self.assertIn(ACCOUNT, str(caught.exception))
 
     def test_never_reads_dotenv(self):
+        """environment() must not pick credentials up from .env or wrangler.toml under ROOT."""
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / '.env').write_text(f'{TOKEN}=dotenv-token\n')
             (root / 'worker').mkdir()
             (root / 'worker/wrangler.toml').write_text('account_id = "0123456789abcdef0123456789abcdef"\n')
-            saved = cloud_admin.ROOT
-            cloud_admin.ROOT = root
+            saved = cloud_admin.ROOT, cloud_admin.PRIVATE
+            cloud_admin.ROOT, cloud_admin.PRIVATE = root, root
             try:
-                with self.assertRaises(RuntimeError):
-                    cloud_admin.resolve_credentials({}, lambda service: None)
+                with mock.patch.dict(os.environ, {}, clear=True), \
+                        mock.patch.object(cloud_admin, 'keychain_secret', lambda service: None):
+                    with self.assertRaises(RuntimeError):
+                        cloud_admin.environment()
             finally:
-                cloud_admin.ROOT = saved
-
+                cloud_admin.ROOT, cloud_admin.PRIVATE = saved
 
 class Layout(unittest.TestCase):
     def test_paths_point_inside_sumiwrite(self):

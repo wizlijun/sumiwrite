@@ -2,6 +2,17 @@
 
 Private, single-user multi-device service. Deployment and acceptance evidence are recorded separately; uploading code does not certify authentication or end-to-end readiness. The toolchain is pinned exactly in `package.json` (Wrangler **3.114.17**, vitest 2.1.9, `@cloudflare/vitest-pool-workers` 0.5.41, TypeScript 5.9.3, ws 8.18.0) next to Yjs 13.6.33. From this directory run `npm ci`, then `npm test` and `npm run check`. Local state (logs, dry-run bundle, acceptance evidence) lives in the git-ignored `.local/`. Local runtime compatibility date is pinned to 2024-12-30 because that is the latest date supported by the existing workerd. Tests use real workerd SQLite DO and R2; each test provisions separate random spaces rather than unsupported old-runtime per-test WAL stacking. The test script runs each test file in its own runtime because the pinned workerd cannot register multiple test-file runners together.
 
+
+## Verification
+
+From this directory, after `npm ci`:
+
+```sh
+npm test                                  # 6 test files in separate workerd runtimes; fails if fewer run
+npm run check                             # tsc --noEmit
+node scripts/interop.mjs                  # Yjs ↔ core fixture interop; prints "fixture keys:"
+python3 -I scripts/test_cloud_admin.py    # credential resolution for cloud-admin.py, offline
+```
 ## Identity
 
 Secrets: `SIGNING_KEY` (at least 32 random characters) and `PROVISION_KEY` (deployment administrator only). Neither belongs in an application bundle. All production access uses HTTPS/WSS. There is no anonymous page endpoint or public registration.

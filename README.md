@@ -6,9 +6,9 @@
 
 代码目录按期迁入(见下文“当前期次”),不放空壳。改了哪个模块,提交前跑该模块的测试命令。
 
-- `core/`:编辑内核(Rust,Yrs),说明见 [`core/README.md`](core/README.md)。测试:`cargo +1.99.0 test --manifest-path core/Cargo.toml`,`cargo +1.99.0 clippy --manifest-path core/Cargo.toml --all-targets --all-features -- -D warnings`。
+- `core/`:编辑内核(Rust,Yrs),说明见 [`core/README.md`](core/README.md)。测试:`cargo +1.99.0 test --manifest-path core/Cargo.toml --all-features`,`cargo +1.99.0 clippy --manifest-path core/Cargo.toml --all-targets --all-features -- -D warnings`。
 - `protocol/`:宿主与插件后台之间的服务契约类型,依赖 `core/`,说明见 [`protocol/README.md`](protocol/README.md)。测试:`cargo +1.99.0 test --manifest-path protocol/Cargo.toml`,`cargo +1.99.0 clippy --manifest-path protocol/Cargo.toml --all-targets -- -D warnings`。
-- `sync/`:同步服务(Cloudflare Worker),自带固定版本的工具链,说明见 [`sync/README.md`](sync/README.md)。测试:在 `sync/` 下 `npm ci`,再 `npm test` 与 `npm run check`;部署脚本的凭据测试 `python3 -I scripts/test_cloud_admin.py`。
+- `sync/`:同步服务(Cloudflare Worker),自带固定版本的工具链,说明见 [`sync/README.md`](sync/README.md)。测试见 [`sync/README.md`](sync/README.md)「Verification」段。
 - `CHANGELOG.md` / `CHANGELOG.zh-CN.md`:面向用户的变更记录,倒序,顶部是“未发布”区。
 - `LICENSE`:Apache-2.0,覆盖全部模块。
 - `AGENTS.md`:给 agent 的规程入口。
