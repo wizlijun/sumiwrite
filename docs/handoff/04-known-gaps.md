@@ -45,7 +45,7 @@
 - `shortcuts.ts` 的复制或引用、`i18n.ts` 宿主侧是否留一份、`verify-release.py` 是否拆分——第 2 期定([01-inventory.md](01-inventory.md) §6)。
 - `session/` 的切分方式、`external.rs` 的落点、`journal.rs`/`durability.rs` 的接口抽取、同一模块如何适配桌面跨进程与 iOS 单进程——第 3 期定([ADR 0012](../adr/0012-shared-session-module.md))。
 - 桌面独立的第 1 条标准“明显多于”没有量化门槛([later.md §4.1](../spec/platform/later.md))。
-- **设计与计划文档尚未公开**:本仓库引用的 `docs/superpowers/specs/2026-11-18-sumiwrite-extraction-design.md` 及第 0 期计划在 note.md 仓库的 `docs/sumiwrite-extraction` 分支上(提交 `0c11629f`),该分支尚未推送到任何远端,公开读者打不开。推送 note.md 分支后把引用改为固定提交的 blob 链接;何时推送由用户定。见 [02-migration-plan.md](02-migration-plan.md) 第 1 期前置条件。
+- **设计与计划文档尚未公开**:本仓库引用的 `docs/superpowers/specs/2026-11-18-sumiwrite-extraction-design.md` 及第 0 期计划在 note.md 仓库的 `docs/sumiwrite-extraction` 分支上(提交 `0c11629f`),该分支尚未推送到任何远端,公开读者打不开。推送 note.md 分支后把引用改为固定提交的 blob 链接;何时推送由用户定。第 1 期执行时(2026-11-20)仍未推送,引用照旧保留路径。见 [02-migration-plan.md](02-migration-plan.md) 第 1 期前置条件。
 - iOS 的 Bundle ID、开发者账号、应用图标(设计 §11),钥匙串服务名与访问组、沙盒目录、撤销是否由 CRDT owner 管理(现从桌面推断)、输入日志写入失败时怎样提示、iPad 快捷键表、导出文件名与 frontmatter([platform/ios.md](../spec/platform/ios.md))。
 - Android 复用 `core/` 与 `session/`:这只是从“两份源码不分叉”的反目标推出来的,未经确认([later.md §2.1](../spec/platform/later.md))**[我的判断]**。
 
@@ -150,14 +150,17 @@
 
 ### 4.8 迁移相关
 
-- **`write-core` 声明 MIT 但没有 LICENSE 文件**;`sumi-protocol` 没有声明。设计 §12 要第 1 期统一改为 Apache-2.0 **[我的判断]**。见 [02-migration-plan.md](02-migration-plan.md) 第 1 期。
+- **许可(已解决)**:`write-core` 原声明 MIT 但没有 LICENSE 文件,`sumi-protocol` 没有声明;第 1 期迁入后两者都改为 Apache-2.0,由根目录 `LICENSE` 覆盖(设计 §12 **[我的判断]**)。见 [02-migration-plan.md](02-migration-plan.md) 第 1 期。
 - **同步服务的依赖多于设计列的三处**:另有 `link-toolchain.mjs` 软链、`deploy.sh:12` 写 `../tasks/sumi-sync`、`cloud-admin.py:11` 以源仓库根为基准、`:82` 写死 Wrangler 版本;账号 ID 只在 `worker/wrangler.toml`。见 [01-inventory.md](01-inventory.md) §5。
 - **写死的源路径**:`scripts/sumi/native-release.py:11`、`test_native_release.py:42`,以及 `write-sync-worker/scripts/interop.mjs:5` 读 `write-core` 夹具,第 1 期改名后都要改。
 - **读取宿主源文件的测试脚本**:`scripts/sumi/test-linux-credentials.sh` 编译 `src-tauri/src/sumi/credentials.rs`,`test_fullscreen_appearance.py` 读取 `src-tauri/src/sumi/mod.rs`;两者留在 note.md,但第 3 期切分这些文件后读取路径要核对,凭据逻辑若下沉,测试跟着拆([01-inventory.md](01-inventory.md) §3、[02-migration-plan.md](02-migration-plan.md) 第 3 期第 5 步)。
 - **文件位置的更正**(给第 1–3 期计划):`journal.rs` 在宿主 `src-tauri/src/sumi/journal.rs`(由 `durability.rs` 经 `#[path]` 引入),不在插件后台;`desktop_policy.rs` 在 `src-tauri/src/desktop_policy.rs`,不在 `src-tauri/src/sumi/`。
 - **规模**:原生编辑桥设计写约 12k 行,实测 `native/*.m` + `src/*.rs` 为 10,673 行(不含 .h 与 examples);宿主会话 8,685 行(`src-tauri/src/sumi/` 下 17 个文件,按 tag `v6.1117.1` 计)、插件后台三文件 5,926 行,与设计一致。
 - **投影代码在内核里**:投影与三方导入在 `write-core/src/projection.rs`、`import.rs`;按设计 §5.4 投影只有桌面做,iOS 会链接到用不上的代码。是否移出内核、何时移 `[未定]`([ADR 0009](../adr/0009-page-store-vs-vault-projection.md))。
-- **`sumi-protocol` 没有 README**,第 1 期验证命令只能按 `write-core` 的写法补。见 [02-migration-plan.md](02-migration-plan.md)。
+- **本机 Rust 1.99.0 工具链残缺**(2026-11-20):下载卡住留下的安装报 `missing manifest`,第 1 期开工前重装;重装失败不得以 stable 代替。
+- **同步服务在 note.md 里没有可运行的本机基线**:`write-sync-worker` 借用 `../worker/node_modules/.bin`,本机该目录缺失,本目录也未装 `yjs`,`npm test`/`npm run check` 都跑不起来;第 1 期以“自带工具链下全部通过”作验收。
+- **本机没有同步服务的部署状态**:`tasks/sumi-sync/` 不存在,第 1 期没有要迁移的本地状态。
+- **`sumi-protocol` 没有 README(已解决)**:第 1 期补了 [`protocol/README.md`](../../protocol/README.md),验证命令按 `write-core` 的写法。见 [02-migration-plan.md](02-migration-plan.md)。
 
 ### 4.9 规范内部待统一
 

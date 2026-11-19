@@ -4,9 +4,13 @@
 
 ## 仓库地图
 
-本仓库目前只有文档,代码目录按期迁入(见下文“当前期次”),不放空壳。
+代码目录按期迁入(见下文“当前期次”),不放空壳。改了哪个模块,提交前跑该模块的测试命令。
 
-- `LICENSE`:Apache-2.0。
+- `core/`:编辑内核(Rust,Yrs),说明见 [`core/README.md`](core/README.md)。测试:`cargo +1.99.0 test --manifest-path core/Cargo.toml --all-features`,`cargo +1.99.0 clippy --manifest-path core/Cargo.toml --all-targets --all-features -- -D warnings`。
+- `protocol/`:宿主与插件后台之间的服务契约类型,依赖 `core/`,说明见 [`protocol/README.md`](protocol/README.md)。测试:`cargo +1.99.0 test --manifest-path protocol/Cargo.toml`,`cargo +1.99.0 clippy --manifest-path protocol/Cargo.toml --all-targets -- -D warnings`。
+- `sync/`:同步服务(Cloudflare Worker),自带固定版本的工具链,说明见 [`sync/README.md`](sync/README.md)。测试见 [`sync/README.md`](sync/README.md)「Verification」段。
+- `CHANGELOG.md` / `CHANGELOG.zh-CN.md`:面向用户的变更记录,倒序,顶部是“未发布”区。
+- `LICENSE`:Apache-2.0,覆盖全部模块。
 - `AGENTS.md`:给 agent 的规程入口。
 - `docs/handoff/`:交接方案(总览、清单、迁移计划、与 note.md 的契约、已知缺口)。
 - `docs/spec/`:现行规范,按主题组织;`MAPPING.md` 记录旧规范到新规范的去向。
@@ -15,7 +19,7 @@
 
 ## 当前期次
 
-第 0 期:只交接文档,不搬代码,不改 note.md 的构建与发版。后续各期的步骤、前置条件、验证与回退见 [迁移计划](docs/handoff/02-migration-plan.md)。
+第 1 期(进行中):`core/`、`protocol/`、`sync/` 已连同历史迁入,三个模块的测试在本仓库全部通过;note.md 改为按 tag 引用尚未开始。第 0 期只交接文档。后续各期的步骤、前置条件、验证与回退见 [迁移计划](docs/handoff/02-migration-plan.md)。
 
 ## 阅读顺序
 

@@ -153,6 +153,21 @@
 | 源仓库根下的任务目录 | `write-sync-worker/scripts/deploy.sh:12`(日志写 `../tasks/sumi-sync/wrangler.log`) | 路径假设了 note.md 的目录布局 |
 | `ROOT` 推导 | `write-sync-worker/scripts/cloud-admin.py:11`(`ROOT=Path(__file__).resolve().parents[2]`,即源仓库根) | 路径假设整体都以 note.md 仓库根为基准 |
 
+### 5.1 规划第 1 期时才发现的
+
+以下是盘点时漏列、写第 1 期详细计划时 `grep` 出来的跨模块依赖(note.md `3c710c9e`),处理办法见[详细计划](../plans/2026-11-20-phase1-core-protocol-sync.md)任务 1 的表:
+
+| 依赖 | 位置 |
+|---|---|
+| 同步服务测试经相对路径导入内核夹具 | `write-sync-worker/tests/{service,wire-validator,packed-validator}.test.ts` 第 7–9 行 |
+| 验收脚本借用 note.md 的 `ws` | `write-sync-worker/scripts/cloud-acceptance.mjs:10` |
+| 容量脚本假设 note.md 的目录布局 | `write-sync-worker/scripts/packed-capacity-local.mjs:6` |
+| 文档里写着旧命令 | `write-sync-worker/PACKED-INDEX.md:28` |
+| 插件后台测试用 `include_str!` 读内核夹具 | `plugins-src/write/backend/src/sync.rs:1907-1908` |
+| 发布与基准脚本对内核源码算摘要或当构建目录 | `scripts/sumi/verify-release.py:44`、`build.mjs:19`、`run-native.mjs:12`、`:14-15` |
+| `.gitignore` 写着旧目录 | note.md `.gitignore:71`、`:73` |
+| 内核测试读同步服务的 Yjs 夹具 | `write-core/tests/document.rs:159`(`../write-sync-worker/tests/yjs-v1.json`;执行时才发现) |
+
 资源名(便于核对,不属依赖):Worker 名 `sumi-sync`(`wrangler.toml:1`)、Durable Object `SumiSpace`(`:10`)、备份桶 `sumi-sync-backups`(`:18`)。
 
 ## 6. 需要记入 known-gaps 的事项
