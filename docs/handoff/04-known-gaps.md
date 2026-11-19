@@ -157,6 +157,9 @@
 - **文件位置的更正**(给第 1–3 期计划):`journal.rs` 在宿主 `src-tauri/src/sumi/journal.rs`(由 `durability.rs` 经 `#[path]` 引入),不在插件后台;`desktop_policy.rs` 在 `src-tauri/src/desktop_policy.rs`,不在 `src-tauri/src/sumi/`。
 - **规模**:原生编辑桥设计写约 12k 行,实测 `native/*.m` + `src/*.rs` 为 10,673 行(不含 .h 与 examples);宿主会话 8,685 行(`src-tauri/src/sumi/` 下 17 个文件,按 tag `v6.1117.1` 计)、插件后台三文件 5,926 行,与设计一致。
 - **投影代码在内核里**:投影与三方导入在 `write-core/src/projection.rs`、`import.rs`;按设计 §5.4 投影只有桌面做,iOS 会链接到用不上的代码。是否移出内核、何时移 `[未定]`([ADR 0009](../adr/0009-page-store-vs-vault-projection.md))。
+- **本机 Rust 1.99.0 工具链残缺**(2026-11-20):下载卡住留下的安装报 `missing manifest`,第 1 期开工前重装;重装失败不得以 stable 代替。
+- **同步服务在 note.md 里没有可运行的本机基线**:`write-sync-worker` 借用 `../worker/node_modules/.bin`,本机该目录缺失,本目录也未装 `yjs`,`npm test`/`npm run check` 都跑不起来;第 1 期以“自带工具链下全部通过”作验收。
+- **本机没有同步服务的部署状态**:`tasks/sumi-sync/` 不存在,第 1 期没有要迁移的本地状态。
 - **`sumi-protocol` 没有 README**,第 1 期验证命令只能按 `write-core` 的写法补。见 [02-migration-plan.md](02-migration-plan.md)。
 
 ### 4.9 规范内部待统一

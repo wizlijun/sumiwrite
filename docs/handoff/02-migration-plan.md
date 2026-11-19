@@ -24,7 +24,7 @@
 
 - **第一步:公开设计与第 0 期计划**。两者已提交在 note.md 的 `docs/sumiwrite-extraction` 分支(提交 `0c11629f`),但该分支尚未推送到任何远端。推送时机由用户定;推送后把本仓库所有对设计与计划的路径引用改为固定提交的 blob 链接(`https://github.com/wizlijun/note.md/blob/<提交>/<路径>`)**[我的判断]**(本文补充)。见 [04-known-gaps §2.2](04-known-gaps.md)。
 - 第 0 期完成的标志已达成。
-- 第 1 期详细计划已立并获用户认可。
+- 第 1 期详细计划已立并获用户认可:[第 1 期详细计划](../plans/2026-11-20-phase1-core-protocol-sync.md)(2026-11-20 认可)。
 - sumiwrite 有 Cargo 可拉取的公开远端。仓库公开是设计 §12 **[用户定]**;第 0 期不建远端,所以建远端是第 1 期的第一件事 **[我的判断]**(本文补充)。
 - 工具链与 note.md 基线一致:`write-core` 用 `cargo +1.99.0`(`write-core/README.md`);同步服务复用 Wrangler 3.114.17(`write-sync-worker/README.md`、`write-sync-worker/scripts/cloud-admin.py:82`;迁移后为 `sync/scripts/cloud-admin.py`)。
 - 同步服务的 `.env` 迁出方式、账号 ID 的新存放位置已在详细计划里定下([01-inventory.md](01-inventory.md) §6)。
@@ -41,7 +41,7 @@
    # 在 sumiwrite 中:git pull --allow-unrelated-histories <notemd-extract> main
    ```
 
-2. **修模块间的相对路径**:改名后,`sync/scripts/interop.mjs` 读取的 `../../write-core/tests/fixtures/yrs-v1.json` 要改为 `../../core/...`(基线 `write-sync-worker/scripts/interop.mjs:5`);`protocol/Cargo.toml` 里的 `write-core = { path = "../write-core" }`(基线 `sumi-protocol/Cargo.toml:10`)改名后失效,要改为指向 `../core`。其余跨模块路径以详细计划的 `grep` 结果为准。
+2. **修模块间的相对路径**:改名后,`sync/scripts/interop.mjs` 读取的 `../../write-core/tests/fixtures/yrs-v1.json` 要改为 `../../core/...`(基线 `write-sync-worker/scripts/interop.mjs:5`);`protocol/Cargo.toml` 里的 `write-core = { path = "../write-core" }`(基线 `sumi-protocol/Cargo.toml:10`)改名后失效,要改为指向 `../core`。其余跨模块路径以详细计划的 `grep` 结果为准:同步服务三个测试文件的夹具导入、插件后台 `sync.rs:1907` 的 `include_str!`(改由内核以 `fixtures` feature 导出常量),见 [01-inventory.md](01-inventory.md) §5.1。
 3. **同步服务解开对 note.md 的依赖**,按 [01-inventory.md](01-inventory.md) §5 归为四处:
    - 工具链:不再借用根下 `worker/node_modules` 的 Wrangler 与 `tsc`,连同 `link-toolchain.mjs` 的软链(`package.json:8-12`、`scripts/deploy.sh`、`scripts/cloud-admin.py:14`、`:67`);
    - 根目录 `.env`(`cloud-admin.py:42`):改为 sumiwrite 自己的配置入口,只放凭据引用,不放秘密(设计 §12);
@@ -55,6 +55,7 @@
    - 三处 path 依赖改为指向 sumiwrite `core-v0.1.0` 的 git tag 依赖:`src-tauri/Cargo.toml`(L39–40:`write-core`、`sumi-protocol`)、`plugins-src/write/backend/Cargo.toml`(L12–13)、`scripts/sumi/native/Cargo.toml`(L6);
    - 删除 `write-core/`、`sumi-protocol/`、`write-sync-worker/`;
    - 同步更新写死这些路径的脚本与测试:`scripts/sumi/native-release.py:11` 的 `SOURCE_DIRS`、`scripts/sumi/test_native_release.py:42`,以及基线上 `grep` 命中的 `scripts/sumi/{verify-release.py,build.mjs,run-native.mjs,native/src/main.rs,README.md,verify-release.md}`(逐个在详细计划里判定);
+   - 另有详细计划规划时发现的:`verify-release.py:44`、`build.mjs:19`、`run-native.mjs:12`/`:14-15`(构建目录在 `write-core/target`;`--offline` 遇 git 依赖须先 `cargo fetch`)、note.md `.gitignore:71`/`:73`,见 [01-inventory.md](01-inventory.md) §5.1;
    - 本地联调用 `[patch]` 指向本地目录(设计 §5.3)。
 8. **旧文档指引**:旧文档集每份文首加一行“现行规范已迁至 sumiwrite”的指引。这是设计中对 note.md 文档的唯一改动(设计 §7.2 **[我的判断]**)。单独成一个提交。
 9. note.md 一侧的改动继续受其 `CLAUDE.md` 约束(CHANGELOG 门禁、OKF 写入规矩,设计 §3)。
