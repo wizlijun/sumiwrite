@@ -51,7 +51,7 @@
 | `auth.rs` | 407 | 钥匙串/鉴权代理,只把短期令牌交给插件后台;使用 `tauri::http`(`:334`) | 宿主适配(不迁) **[我的判断]** | 理由:紧贴 WebView 与钥匙串边界,含 Tauri 响应类型 |
 | `coordinator.rs` | 59 | 宿主侧 UI/会话门面,使用 `tauri::async_runtime::spawn`(`:53`) | 宿主适配(不迁) | 网络调度已在插件后台,这里只是薄门面 |
 | `service.rs` | 307 | 宿主到插件后台的私有传输,依赖 `crate::plugin_runtime`、`tauri::Manager`(`:5-6`) | 宿主适配(不迁) | 属于 `host-contract v1` 的实现侧 |
-| `sound.rs` | 668 | 打字音效队列,依赖 `native::TypingSoundEvent`(原生输入监视) | 宿主适配(不迁) | 依赖原生桥,iOS 第一阶段不做打字音(设计 §10.1) |
+| `sound.rs` | 668 | 打字音效队列,依赖 `native::TypingSoundEvent`(原生输入监视) | 宿主适配(不迁) | 依赖原生桥。iOS 第一阶段也做打字音(2026-11-20 用户定,推翻设计 §10.1),但在 Swift 编辑面里按正文变更发声,不复用此模块,见 [ios §3.4](../spec/platform/ios.md#34-打字音) |
 | `external.rs` | 125 | 已知页面文件视为投影,依赖 `write_core` | 可下沉(第 3 期)待定 **[我的判断]** | 无 Tauri 引用;但 vault 投影是桌面专有(设计 §5.4),iOS 无 vault,所以落点不是共用 `session/`,由第 3 期计划决定 |
 | `fonts.rs` | 52 | 宿主侧字体桥,依赖 `service::Connector` | 宿主适配(不迁) | 字体下载在插件后台,这里只转接 |
 | `paste.rs` | 103 | 剪贴板转换:`html5ever` 把 HTML 转纯文本或 Markdown,无 Tauri | 可下沉(第 3 期) **[我的判断]** | 与平台无关;iOS 粘贴同样需要同一套转换 |
