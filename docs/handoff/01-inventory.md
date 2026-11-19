@@ -166,6 +166,7 @@
 | 插件后台测试用 `include_str!` 读内核夹具 | `plugins-src/write/backend/src/sync.rs:1907-1908` |
 | 发布与基准脚本对内核源码算摘要或当构建目录 | `scripts/sumi/verify-release.py:44`、`build.mjs:19`、`run-native.mjs:12`、`:14-15` |
 | `.gitignore` 写着旧目录 | note.md `.gitignore:71`、`:73` |
+| 内核测试读同步服务的 Yjs 夹具 | `write-core/tests/document.rs:159`(`../write-sync-worker/tests/yjs-v1.json`;执行时才发现) |
 
 资源名(便于核对,不属依赖):Worker 名 `sumi-sync`(`wrangler.toml:1`)、Durable Object `SumiSpace`(`:10`)、备份桶 `sumi-sync-backups`(`:18`)。
 

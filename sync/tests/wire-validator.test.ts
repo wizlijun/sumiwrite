@@ -4,9 +4,9 @@ import * as Y from 'yjs'
 import { WireValidator } from '../src/wire-validator'
 import { unb64 } from '../src/protocol'
 import { Env } from '../src/index'
-import fixture from '../../write-core/tests/fixtures/yrs-v1.json'
-import pending from '../../write-core/tests/fixtures/pending-invalid-v1.json'
-import fork from '../../write-core/tests/fixtures/fork-v1.json'
+import fixture from '../../core/tests/fixtures/yrs-v1.json'
+import pending from '../../core/tests/fixtures/pending-invalid-v1.json'
+import fork from '../../core/tests/fixtures/fork-v1.json'
 const bindings=env as unknown as Env
 async function sqlTest(fn:(validator:WireValidator,tx:<T>(f:()=>T)=>T)=>void) {
   const stub=bindings.SPACES.get(bindings.SPACES.idFromName(crypto.randomUUID()))

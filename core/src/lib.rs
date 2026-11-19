@@ -1,6 +1,8 @@
 //! Sumi's platform-independent text and durability core.
 //! The Markdown body is a Y.Text; timing is an immutable event set in the same document.
 pub mod document;
+#[cfg(feature = "fixtures")]
+pub mod fixtures;
 pub use document::*;
 
 pub mod storage;

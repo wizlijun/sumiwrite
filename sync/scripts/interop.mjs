@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import assert from 'node:assert/strict'
 import * as Y from 'yjs'
 const fixture = JSON.parse(
-  fs.readFileSync(new URL('../../write-core/tests/fixtures/yrs-v1.json', import.meta.url), 'utf8'),
+  fs.readFileSync(new URL('../../core/tests/fixtures/yrs-v1.json', import.meta.url), 'utf8'),
 )
 console.log('fixture keys:', Object.keys(fixture).join(','))
 const decode = (s) => new Uint8Array(Buffer.from(s, 'base64'))

@@ -20,6 +20,10 @@ pulldown-cmark = "0.13"
 similar = { version = "=2.7.0", features = ["unicode"] }
 rusqlite = { version = "0.40", features = ["bundled"] }
 
+[features]
+# 导出 tests/fixtures 下的夹具常量,供下游(note.md 插件后台)测试使用。
+fixtures = []
+
 [dev-dependencies]
 tempfile = "3"
 

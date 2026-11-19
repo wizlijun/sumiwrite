@@ -1,1 +1,6 @@
 .superpowers/
+core/target/
+protocol/target/
+sync/node_modules/
+sync/.wrangler/
+sync/.local/

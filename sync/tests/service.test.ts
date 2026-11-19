@@ -4,8 +4,8 @@ import * as Y from 'yjs';
 import { b64, hash, unb64 } from '../src/protocol';
 import { SumiSpace, Env } from '../src/index';
 import { JournalDecoder } from '../src/journal';
-import rustFixture from '../../write-core/tests/fixtures/yrs-v1.json';
-import maliciousPending from '../../write-core/tests/fixtures/pending-invalid-v1.json';
+import rustFixture from '../../core/tests/fixtures/yrs-v1.json';
+import maliciousPending from '../../core/tests/fixtures/pending-invalid-v1.json';
 const bindings = env as unknown as Env;
 const uuid = () => crypto.randomUUID();
 async function request(path: string, method = 'GET', body?: unknown, token?: string) {

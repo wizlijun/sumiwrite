@@ -156,7 +156,7 @@ fn undo_preserves_remote_and_line_identity() {
 fn yjs_reverse_interop() {
     use base64::{engine::general_purpose::STANDARD, Engine};
     let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../write-sync-worker/tests/yjs-v1.json");
+        .join("../sync/tests/yjs-v1.json");
     let value: serde_json::Value = serde_json::from_slice(&std::fs::read(p).unwrap()).unwrap();
     let base = STANDARD.decode(value["base"].as_str().unwrap()).unwrap();
     let mut d = Document::load(PAGE, 1, 999, &base).unwrap();

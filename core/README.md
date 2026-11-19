@@ -19,9 +19,9 @@ Portable files contain a small YAML identity header and unchanged Markdown body.
 ## Verification
 
 ```sh
-cargo +1.99.0 test --manifest-path write-core/Cargo.toml
-cargo +1.99.0 clippy --manifest-path write-core/Cargo.toml --all-targets -- -D warnings
-cargo +1.99.0 run --release --manifest-path write-core/Cargo.toml --example full_path_benchmark
+cargo +1.99.0 test --manifest-path core/Cargo.toml
+cargo +1.99.0 clippy --manifest-path core/Cargo.toml --all-targets -- -D warnings
+cargo +1.99.0 run --release --manifest-path core/Cargo.toml --example full_path_benchmark
 ```
 
 Regression coverage includes reverse and duplicate update delivery, offline concurrent splitting and merging, local undo with remote edits, Unicode boundaries, indexed-versus-reference provenance replay, source mapping, three-way imports, durability rollback and portable-file conflicts. The sibling Worker generates the reverse Yjs fixture used by `yjs_reverse_interop`.
