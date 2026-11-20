@@ -151,6 +151,7 @@
 | 字体目录被 note.md 脚本与探针按路径读 | `scripts/prepare-sumi-font.py:13`;`tauri-plugin-native-editor/native/focus-probe.m:543`、`focus-return-probe.m:115`;`scripts/sumi/verify-extracted-assets.mjs:42-43`;`scripts/sumi/acceptance/build.sh:13`、`:22-26`、`:65`、`prepare.py:43` |
 | 开发安装脚本从树内构建插件 | `scripts/dev-install-plugin.sh:493-512` |
 | pnpm 工作区包含插件 | `pnpm-workspace.yaml:26`(`plugins-src/*`)、`pnpm-lock.yaml:812` |
+| 后台测试模块 `host_proxy_harness` 用 `include!` 读 note.md 的 `src-tauri/src/sumi/durability.rs` | `plugins-src/write/backend/src/lib.rs:205`(note.md `e82e2f81`);处理:第 2 期计划任务 8 移回 note.md |
 | 原生签名的源码证明写死插件路径 | `scripts/sumi/native-release.py:11`、`:30` |
 | `.gitattributes` 许可文件规则 | note.md `.gitattributes:55`、`:56`、`:59` |
 | 插件发版脚本借用 note.md 根的 `tsc`、`vite` | `scripts/release-plugins.sh:384`、`dev-install-plugin.sh:499` |
