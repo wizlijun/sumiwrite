@@ -34,6 +34,14 @@ if [[ "$profile" == release ]] && ! git -C "$repo" diff --quiet HEAD; then
   echo "Refusing a release build: tracked files are modified, so source_commit would be untruthful. Commit or stash, or use --debug." >&2
   exit 1
 fi
+if [[ "$profile" == release ]]; then
+  untracked="$(git -C "$repo" ls-files --others --exclude-standard -- apps/notemd-plugin)"
+  if [[ -n "$untracked" ]]; then
+    echo "Refusing a release build: untracked files under apps/notemd-plugin would not be described by source_commit:" >&2
+    echo "$untracked" >&2
+    exit 1
+  fi
+fi
 if [[ -e "$out" ]] && [[ -n "$(ls -A "$out" 2>/dev/null || echo x)" ]]; then
   echo "Output directory exists and is not empty: $out" >&2
   exit 1
