@@ -25,6 +25,8 @@ targets:
     info:
       path: build/Info-app.plist
       properties:
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         UIAppFonts:
           - IBMPlexMono-Light.ttf
           - IBMPlexSansSC-Light.otf
@@ -32,6 +34,8 @@ targets:
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "2"
         INFOPLIST_KEY_CFBundleDisplayName: "Sumi Write"
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
