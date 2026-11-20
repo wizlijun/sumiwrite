@@ -472,4 +472,13 @@ final class EditorControllerTests: XCTestCase {
         c.textView.unmarkText()
         XCTAssertTrue(c.canSwitchPage)
     }
+
+    /// 「复制全文」给的是 Markdown 原文(内核 `body()`),不是编辑面上去掉标记的可见文本(ios.md §3.5.1)。
+    func test_copyWholePageGivesTheMarkdownSource() throws {
+        let (c, _, page) = try makeController(tempDir())
+        paste("# 标题\n[a](https://b)", into: c)
+        let copied = try XCTUnwrap(c.pageTextForCopy())
+        XCTAssertEqual(copied, page.body())
+        XCTAssertTrue(copied.contains("#") && copied.contains("https://b"), copied)
+    }
 }

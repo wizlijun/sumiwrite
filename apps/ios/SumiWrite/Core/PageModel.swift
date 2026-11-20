@@ -29,6 +29,9 @@ final class PageModel {
         self.rendered = page.rendered()
     }
 
+    /// 正文的 Markdown 原文(内核的 `body()`);编辑面上的文字是去掉标记后的可见文本。
+    var markdown: String { page.body() }
+
     var canUndo: Bool { page.canUndo() }
     var canRedo: Bool { page.canRedo() }
 

@@ -108,10 +108,18 @@ final class EditorController: UIViewController, UITextViewDelegate {
         aside { rimeAdapter?.flush() }
     }
 
-    /// 设置面板「复制全文」:与全选后复制相同,只写纯文本正文。系统输入法组字中返回 nil;空页返回空串。
+    /// 设置面板「复制全文」的按钮是否置灰;面板每次重算都问,所以不跨 FFI。
+    var pageIsEmpty: Bool { textView.textStorage.length == 0 }
+
+    /// 设置面板「复制全文」:正文的 Markdown 原文(ios.md §3.5.1)。内置输入法的组字先上屏;系统输入法组字中返回 nil。
     func pageTextForCopy() -> String? {
-        textView.markedTextRange == nil ? textView.text ?? "" : nil
+        prepareToSwitch()
+        guard canSwitchPage else { return nil }
+        return model?.markdown ?? ""
     }
+
+    /// 「已复制 N 字」的 N:可见文本的字符数,不算转义用的 `\`。
+    var pageCharacterCount: Int { textView.text.count }
 
     // MARK: 视图
 

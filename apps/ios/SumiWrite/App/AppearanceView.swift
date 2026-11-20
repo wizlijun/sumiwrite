@@ -3,19 +3,26 @@ import SwiftUI
 
 struct AppearanceView: View {
     @ObservedObject var prefs: PrefsModel
-    var copyText: () -> String? = { "" }
+    /// 「复制全文」(ios.md §3.5.1):Markdown 原文与「已复制 N 字」的 N;系统输入法组字中为 nil。
+    var copyText: () -> (markdown: String, characters: Int)? = { ("", 0) }
+    /// 空页时按钮置灰;面板每次重算都问,要便宜。
+    var pageIsEmpty: () -> Bool = { true }
     @State private var copyNote: String?
+    /// 每点一次加一:1.5 秒后只清自己那次的提示。
+    @State private var copySeq = 0
 
     var body: some View {
         NavigationStack {
             Form {
                 Section {
-                    let empty = copyText()?.isEmpty ?? false
+                    let empty = pageIsEmpty()
                     Button {
-                        guard let text = copyText() else { copyNote = "请先完成输入"; return }
-                        UIPasteboard.general.string = text
-                        copyNote = "已复制 \(text.count) 字"
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { copyNote = nil }
+                        copySeq += 1
+                        let mine = copySeq
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { if copySeq == mine { copyNote = nil } }
+                        guard let copy = copyText() else { copyNote = "请先完成输入"; return }
+                        UIPasteboard.general.string = copy.markdown
+                        copyNote = "已复制 \(copy.characters) 字"
                     } label: { Label("复制全文", systemImage: "doc.on.doc") }
                     .disabled(empty)
                     if empty { Text("本页是空的").font(.footnote).foregroundStyle(.secondary) }
