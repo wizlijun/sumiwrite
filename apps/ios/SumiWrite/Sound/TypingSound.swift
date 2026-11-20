@@ -1,117 +1,223 @@
 import AVFoundation
 import Foundation
+import UIKit
 
 /// 打字音。会话为 `.ambient` + `.mixWithOthers`,所以跟随静音开关、不打断别的音频。
-/// 引擎启动与样本加载都在后台队列;`play` 在输入路径上只取锁、挑节点、排一个缓冲,失败即无声。
+/// 引擎、节点与样本都只在声音队列上动;`play` 在输入路径上只读偏好、取锁看一眼就绪标志,失败即无声。
+///
+/// - 打字音关着时不建引擎;打开设置或第一次需要发声时才建,并且只加载选中的音色。
+/// - 打断结束、回到前台、引擎配置变化时重新激活会话并启动引擎;媒体服务重置时从头重建引擎与节点。
+/// - 由输入触发的启动失败后,`retryInterval` 内不再由输入重试;由事件触发的失败稍后再试一次。
 final class TypingSound: TypingSoundPlaying {
-    private struct Slot: Hashable {
-        let pack: SoundPack
-        let kind: KeyKind
-    }
-
     private struct Bank {
         var buffers: [AVAudioPCMBuffer] = []
         var players: [AVAudioPlayerNode] = []
         var next = 0
     }
 
+    private enum Trigger { case input, event, retry }
+
+    private enum SetUpError: Error { case noSamples }
+
     private static let playersPerKind = 4
+    private static let kinds: [KeyKind] = [.key, .space, .enter, .delete]
+    private static let retryInterval: TimeInterval = 1
 
     private let bundle: Bundle
     private let prefs: () -> EditorPrefs
+    private let center: NotificationCenter
     private let queue = DispatchQueue(label: "sumi.typingsound", qos: .userInitiated)
-    private let engine = AVAudioEngine()
     private var observers: [NSObjectProtocol] = []
 
-    /// 以下三项由 `lock` 保护:后台队列写,`play` 读。
+    /// 以下只在 `queue` 上读写。
+    private var engine: AVAudioEngine?
+    private var loadedPack: SoundPack?
+    private var banks: [KeyKind: Bank] = [:]
+    /// 想要的音色;`nil` 表示打字音关着。
+    private var wanted: SoundPack?
+    private var lastInputFailure: Date?
+    /// 收到打断 `.began` 后为真;这期间输入与稍后重试都不启动,等 `.ended`、回到前台、媒体服务重置或偏好变化。
+    private var interrupted = false
+    private var retryPending = false
+
+    /// 以下由 `lock` 保护:声音队列写,`play` 与测试读。
     private let lock = NSLock()
     private var ready = false
-    private var banks: [Slot: Bank] = [:]
     private var played = 0
+    private var attempts = 0
+    private var rebuilds = 0
 
     /// 实际排进缓冲的 `play` 次数;只供测试读取。
-    var playedCount: Int {
-        lock.lock(); defer { lock.unlock() }
-        return played
-    }
+    var playedCount: Int { locked { played } }
+    /// 尝试激活会话、启动引擎的次数;只供测试读取。
+    var startAttempts: Int { locked { attempts } }
+    /// 因媒体服务重置而从头重建的次数;只供测试读取。
+    var rebuildCount: Int { locked { rebuilds } }
+    /// 当前建好的引擎所加载的音色;没有引擎时为 `nil`。只供测试读取。
+    var builtPack: SoundPack? { queue.sync { engine == nil ? nil : loadedPack } }
 
-    init(bundle: Bundle, prefs: @escaping () -> EditorPrefs) {
+    init(bundle: Bundle, prefs: @escaping () -> EditorPrefs, center: NotificationCenter = .default) {
         self.bundle = bundle
         self.prefs = prefs
-        queue.async { [weak self] in self?.setUp() }
-        let center = NotificationCenter.default
+        self.center = center
         observers.append(center.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: nil) { [weak self] note in
             let raw = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt
             switch raw.flatMap(AVAudioSession.InterruptionType.init(rawValue:)) {
-            case .began: self?.setReady(false)
+            case .began: self?.interrupt()
             case .ended: self?.restart()
             default: break
             }
         })
-        observers.append(center.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: nil) { [weak self] _ in
-            self?.setReady(false)
+        // 系统不保证每个打断都配一个 `.ended`;回到前台时再试一次。
+        observers.append(center.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: nil) { [weak self] _ in
             self?.restart()
+        })
+        observers.append(center.addObserver(forName: AVAudioSession.mediaServicesWereResetNotification, object: nil, queue: nil) { [weak self] _ in
+            self?.rebuild()
+        })
+        observers.append(center.addObserver(forName: .AVAudioEngineConfigurationChange, object: nil, queue: nil) { [weak self] note in
+            let source = (note.object as AnyObject?).map(ObjectIdentifier.init)
+            self?.queue.async { [weak self] in
+                guard let self, let engine = self.engine, source == ObjectIdentifier(engine) else { return }
+                self.setReady(false)
+                self.activate(.event)
+            }
         })
     }
 
     deinit {
-        for o in observers { NotificationCenter.default.removeObserver(o) }
-        engine.stop()
+        for o in observers { center.removeObserver(o) }
+        engine?.stop()
     }
 
-    /// 输入路径上只读偏好与就绪标志;分类与排缓冲都在声音队列上做。
+    /// 输入路径上只读偏好;引擎没就绪时在声音队列上按需启动,分类与排缓冲也都在声音队列上做。
     func play(before: String, after: String) {
-        guard prefs().typingSound else { return }
-        let pack = prefs().soundPack
-        lock.lock()
-        let isReady = ready
-        lock.unlock()
-        guard isReady else { return }
-        queue.async { [weak self] in self?.schedule(before: before, after: after, pack: pack) }
+        let p = prefs()
+        guard p.typingSound else { return }
+        let pack = p.soundPack
+        queue.async { [weak self] in
+            guard let self else { return }
+            self.wanted = pack
+            if !self.isReady || self.loadedPack != pack { self.activate(.input) }
+            self.schedule(before: before, after: after)
+        }
+    }
+
+    /// 偏好变化:关掉就停引擎并放掉节点;打开或换音色就按选中的音色重建。
+    func preferencesChanged(_ p: EditorPrefs) {
+        let pack: SoundPack? = p.typingSound ? p.soundPack : nil
+        queue.async { [weak self] in
+            guard let self else { return }
+            self.wanted = pack
+            if pack == nil {
+                self.teardown(stop: true)
+            } else if !self.isReady || self.loadedPack != pack {
+                self.activate(.event)
+            }
+        }
     }
 
     /// 等声音队列排空;只供测试。
     func waitUntilIdle() { queue.sync {} }
 
-    private func schedule(before: String, after: String, pack: SoundPack) {
-        guard engine.isRunning, let kind = KeyKind.classify(before: before, after: after) else { return }
-        lock.lock()
-        defer { lock.unlock() }
-        let slot = Slot(pack: pack, kind: kind)
-        guard ready, var bank = banks[slot], !bank.buffers.isEmpty, !bank.players.isEmpty else { return }
+    // MARK: 声音队列
+
+    private func schedule(before: String, after: String) {
+        guard let engine, engine.isRunning, isReady,
+              let kind = KeyKind.classify(before: before, after: after),
+              var bank = banks[kind], !bank.buffers.isEmpty, !bank.players.isEmpty else { return }
         let player = bank.players[bank.next % bank.players.count]
         bank.next += 1
-        banks[slot] = bank
+        banks[kind] = bank
         player.scheduleBuffer(bank.buffers.randomElement()!, at: nil, options: .interrupts)
-        played += 1
+        locked { played += 1 }
     }
 
-    // MARK: 后台
+    private func interrupt() {
+        setReady(false)
+        queue.async { [weak self] in self?.interrupted = true }
+    }
 
-    private func setUp() {
+    private func restart() {
+        queue.async { [weak self] in
+            self?.interrupted = false
+            self?.activate(.event)
+        }
+    }
+
+    /// 媒体服务重置后旧的引擎与节点全部失效:丢掉它们(不再调用),再从头建。
+    private func rebuild() {
+        queue.async { [weak self] in
+            guard let self else { return }
+            self.locked { self.rebuilds += 1 }
+            self.interrupted = false
+            self.teardown(stop: false)
+            self.activate(.event)
+        }
+    }
+
+    /// 按 `wanted` 激活会话、必要时建引擎并启动;任何失败都只是无声。
+    private func activate(_ trigger: Trigger) {
+        guard let pack = wanted else { return }
+        if trigger != .event && interrupted { return }
+        if trigger == .input, let t = lastInputFailure, Date().timeIntervalSince(t) < Self.retryInterval { return }
+        locked { attempts += 1 }
         do {
+            if engine == nil || loadedPack != pack { try build(pack) }
             let session = AVAudioSession.sharedInstance()
             try session.setCategory(.ambient, options: .mixWithOthers)
-            let manifest = try SoundManifest.load(from: bundle.bundleURL.appendingPathComponent("sounds"))
-            var loaded: [Slot: Bank] = [:]
-            for pack in SoundPack.allCases {
-                for kind in [KeyKind.key, .space, .enter, .delete] {
-                    if let bank = makeBank(manifest.files(pack: pack, kind: kind)) { loaded[Slot(pack: pack, kind: kind)] = bank }
-                }
-            }
-            guard !loaded.isEmpty else { return }
-            lock.lock(); banks = loaded; lock.unlock()
             try session.setActive(true)
-            try engine.start()
+            guard let engine else { throw SetUpError.noSamples }
+            if !engine.isRunning { try engine.start() }
             startPlayers()
             setReady(engine.isRunning)
         } catch {
             setReady(false)
         }
+        guard !isReady else {
+            lastInputFailure = nil
+            return
+        }
+        switch trigger {
+        case .input:
+            lastInputFailure = Date()
+        case .event where !retryPending:
+            retryPending = true
+            queue.asyncAfter(deadline: .now() + Self.retryInterval) { [weak self] in
+                guard let self else { return }
+                self.retryPending = false
+                if !self.isReady { self.activate(.retry) }
+            }
+        case .event, .retry:
+            break
+        }
+    }
+
+    /// 只加载选中的音色;一种按键都没加载成功就不留引擎。
+    private func build(_ pack: SoundPack) throws {
+        teardown(stop: true)
+        let manifest = try SoundManifest.load(from: bundle.bundleURL.appendingPathComponent("sounds"))
+        let e = AVAudioEngine()
+        var loaded: [KeyKind: Bank] = [:]
+        for kind in Self.kinds {
+            if let bank = makeBank(manifest.files(pack: pack, kind: kind), engine: e) { loaded[kind] = bank }
+        }
+        guard !loaded.isEmpty else { throw SetUpError.noSamples }
+        engine = e
+        banks = loaded
+        loadedPack = pack
+    }
+
+    private func teardown(stop: Bool) {
+        setReady(false)
+        if stop { engine?.stop() }
+        engine = nil
+        banks = [:]
+        loadedPack = nil
     }
 
     /// 同一 role 的文件取第一个文件的格式;格式不同的文件跳过。
-    private func makeBank(_ files: [String]) -> Bank? {
+    private func makeBank(_ files: [String], engine: AVAudioEngine) -> Bank? {
         let dir = bundle.bundleURL.appendingPathComponent("sounds")
         var bank = Bank()
         var format: AVAudioFormat?
@@ -135,28 +241,16 @@ final class TypingSound: TypingSoundPlaying {
 
     private func startPlayers() {
         // 节点在引擎停着时 `play()` 会抛出无法捕获的异常,所以只在引擎运行时启动。
-        guard engine.isRunning else { return }
-        lock.lock()
-        let nodes = banks.values.flatMap(\.players)
-        lock.unlock()
-        for n in nodes { n.play() }
+        guard let engine, engine.isRunning else { return }
+        for n in banks.values.flatMap(\.players) { n.play() }
     }
 
-    private func setReady(_ value: Bool) {
-        lock.lock(); ready = value; lock.unlock()
-    }
+    private var isReady: Bool { locked { ready } }
 
-    private func restart() {
-        queue.async { [weak self] in
-            guard let self else { return }
-            do {
-                try AVAudioSession.sharedInstance().setActive(true)
-                if !self.engine.isRunning { try self.engine.start() }
-                self.startPlayers()
-                self.setReady(self.engine.isRunning)
-            } catch {
-                self.setReady(false)
-            }
-        }
+    private func setReady(_ value: Bool) { locked { ready = value } }
+
+    private func locked<T>(_ body: () -> T) -> T {
+        lock.lock(); defer { lock.unlock() }
+        return body()
     }
 }

@@ -223,6 +223,7 @@ final class EditorController: UIViewController, UITextViewDelegate {
         // 组字中不重设属性;下一次被接受的输入会重设。
         if textView.markedTextRange == nil { programmatic { restyle() } }
         if !prefs.focusTyping { leaveFocus() }
+        sound?.preferencesChanged(prefs)
         applyInterfaceStyle()
         view.setNeedsLayout()
         textView.updateCaret()

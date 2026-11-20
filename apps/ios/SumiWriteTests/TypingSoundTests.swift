@@ -1,3 +1,4 @@
+import AVFoundation
 import XCTest
 @testable import SumiWrite
 
@@ -92,11 +93,108 @@ final class TypingSoundTests: XCTestCase {
         XCTAssertEqual(sound.playedCount, 0)
     }
 
+    // MARK: 按需启动与恢复(终审 I-3、M-1)
+
+    func test_engineIsBuiltOnlyWhileSoundIsOn() {
+        var prefs = EditorPrefs()
+        prefs.typingSound = false
+        let sound = TypingSound(bundle: .main, prefs: { prefs }, center: NotificationCenter())
+        sound.preferencesChanged(prefs)
+        sound.play(before: "a", after: "ab")
+        sound.waitUntilIdle()
+        XCTAssertNil(sound.builtPack, "no engine while the sound is off")
+        XCTAssertEqual(sound.startAttempts, 0)
+
+        prefs.typingSound = true
+        sound.preferencesChanged(prefs)
+        sound.waitUntilIdle()
+        XCTAssertEqual(sound.builtPack, .typewriter, "turning the sound on builds only the selected pack")
+
+        prefs.soundPack = .thock
+        sound.preferencesChanged(prefs)
+        sound.waitUntilIdle()
+        XCTAssertEqual(sound.builtPack, .thock)
+
+        prefs.typingSound = false
+        sound.preferencesChanged(prefs)
+        sound.waitUntilIdle()
+        XCTAssertNil(sound.builtPack, "turning the sound off stops and releases the engine")
+
+        prefs.typingSound = true
+        sound.play(before: "a", after: "ab")
+        sound.waitUntilIdle()
+        XCTAssertEqual(sound.builtPack, .thock, "the first sound after turning it back on rebuilds lazily")
+    }
+
+    func test_foregroundAndMediaResetRestart() {
+        let center = NotificationCenter()
+        let sound = TypingSound(bundle: .main, prefs: { EditorPrefs() }, center: center)
+        sound.preferencesChanged(EditorPrefs())
+        sound.waitUntilIdle()
+        let base = sound.startAttempts
+        XCTAssertGreaterThanOrEqual(base, 1)
+
+        center.post(name: UIApplication.didBecomeActiveNotification, object: nil)
+        sound.waitUntilIdle()
+        XCTAssertGreaterThan(sound.startAttempts, base, "becoming active retries the start")
+
+        let beforeReset = sound.startAttempts
+        center.post(name: AVAudioSession.mediaServicesWereResetNotification, object: nil)
+        sound.waitUntilIdle()
+        XCTAssertEqual(sound.rebuildCount, 1)
+        XCTAssertGreaterThan(sound.startAttempts, beforeReset)
+        XCTAssertEqual(sound.builtPack, .typewriter, "the engine is rebuilt from scratch")
+    }
+
+    func test_interruptionBlocksInputStartsUntilEndedOrForeground() {
+        let center = NotificationCenter()
+        let sound = TypingSound(bundle: .main, prefs: { EditorPrefs() }, center: center)
+        sound.preferencesChanged(EditorPrefs())
+        sound.waitUntilIdle()
+        center.post(name: AVAudioSession.interruptionNotification, object: nil,
+                    userInfo: [AVAudioSessionInterruptionTypeKey: AVAudioSession.InterruptionType.began.rawValue])
+        sound.waitUntilIdle()
+        let during = sound.startAttempts
+        for _ in 0..<5 { sound.play(before: "a", after: "ab") }
+        sound.waitUntilIdle()
+        XCTAssertEqual(sound.startAttempts, during, "typing during an interruption does not fight it")
+        XCTAssertEqual(sound.playedCount, 0)
+
+        center.post(name: AVAudioSession.interruptionNotification, object: nil,
+                    userInfo: [AVAudioSessionInterruptionTypeKey: AVAudioSession.InterruptionType.ended.rawValue])
+        sound.waitUntilIdle()
+        XCTAssertGreaterThan(sound.startAttempts, during)
+
+        // 只有 `.began`、没有 `.ended` 时,回到前台也能恢复。
+        center.post(name: AVAudioSession.interruptionNotification, object: nil,
+                    userInfo: [AVAudioSessionInterruptionTypeKey: AVAudioSession.InterruptionType.began.rawValue])
+        sound.waitUntilIdle()
+        let again = sound.startAttempts
+        center.post(name: UIApplication.didBecomeActiveNotification, object: nil)
+        sound.waitUntilIdle()
+        XCTAssertGreaterThan(sound.startAttempts, again)
+    }
+
+    func test_foregroundWhileOffDoesNothing() {
+        var prefs = EditorPrefs()
+        prefs.typingSound = false
+        let center = NotificationCenter()
+        let sound = TypingSound(bundle: .main, prefs: { prefs }, center: center)
+        sound.preferencesChanged(prefs)
+        center.post(name: UIApplication.didBecomeActiveNotification, object: nil)
+        center.post(name: AVAudioSession.mediaServicesWereResetNotification, object: nil)
+        sound.waitUntilIdle()
+        XCTAssertEqual(sound.startAttempts, 0)
+        XCTAssertNil(sound.builtPack)
+    }
+
     // MARK: 编辑面接线
 
     private final class SpySound: TypingSoundPlaying {
         var calls: [(String, String)] = []
+        var prefsSeen: [EditorPrefs] = []
         func play(before: String, after: String) { calls.append((before, after)) }
+        func preferencesChanged(_ prefs: EditorPrefs) { prefsSeen.append(prefs) }
     }
 
     private func makeController(sound: SpySound, writable: Bool = true) throws -> EditorController {
@@ -145,5 +243,15 @@ final class TypingSoundTests: XCTestCase {
         XCTAssertTrue(spy.calls.isEmpty)
         type("hello!", into: c)
         XCTAssertEqual(spy.calls.map { "\($0.0)|\($0.1)" }, ["hello|hello!"])
+    }
+
+    func test_controllerForwardsPrefsToSound() throws {
+        let spy = SpySound()
+        let c = try makeController(sound: spy)
+        XCTAssertEqual(spy.prefsSeen.last?.typingSound, true, "loading the editor reports the prefs")
+        var p = c.prefs
+        p.typingSound = false
+        c.updatePrefs(p)
+        XCTAssertEqual(spy.prefsSeen.last?.typingSound, false)
     }
 }
