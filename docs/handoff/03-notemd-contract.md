@@ -57,9 +57,9 @@
 | `host.sumi.fullscreen` | 可选 `queryOnly:boolean` | `{fullscreen:boolean}` | `queryOnly=true` 只查询;否则切换全屏并返回切换后的值 |
 | `host.sumi.command` | `action`(必填)。`close`:隐藏 Sumi 窗口(先走 `before_close`)。其余动作作用于当前激活页:`save`(重试待提交编辑、落地原生草稿、`flush`);`zoom_in`、`zoom_out`(字号 ±2,夹在 8–96)、`zoom_reset`(回到默认 22) | `null` | 窗口与文档级命令。其他 `action` 值返回 `不支持的写作命令`;无激活页返回 `没有当前纸页`;输入法组字中拒绝 |
 | `host.sumi.restore_projection` | `pageId` | `{page_id, raw, revision, recovery_path}` | 把归档目录里被外部改坏或缺失的投影文件,按本机事实源重新写出;原文件先保全到 `recovery_path`。该页有未关闭的编辑面时拒绝(草稿不丢弃) |
-| `host.sumi.archive_get` **v2 新增 `[未定]`** | 无 | `{"archive":string\|null,"available":bool,"untaken":[string]}`:当前归档目录(`null` 表示尚未设置)、是否可用、未接管的旧纸页库列表 | 读取归档目录设置 |
-| `host.sumi.archive_choose` **v2 新增 `[未定]`** | 无 | 与 `archive_get` 同形 | 宿主弹出系统目录选择框,并执行“停会话、改配置、重开”的改目录流程(旧目录文件不删不搬,见 [notemd-desktop §2.0](../spec/platform/notemd-desktop.md))。用户取消则返回当前设置 |
-| `host.sumi.recovery_choose` **v2 新增 `[未定]`** | 无 | `{"path":string\|null}`(用户取消为 `null`) | 宿主弹出系统文件选择框,起点为归档目录,供“从归档目录选文件恢复”。用户选定文件后,由宿主自己打开它(走外部路径打开,进入现有 SumiRecovery 流程);返回的 `{path}` 只是回执,界面不必再做任何事 |
+| `host.sumi.archive_get` **v2 新增 `[未定]`**(宿主实现在 note.md 本地提交 `3dc0673c`,未推送) | 无 | `{"archive":string\|null,"available":bool,"untaken":[string]}`:当前归档目录(`null` 表示尚未设置)、是否可用、未接管的旧纸页库列表 | 读取归档目录设置 |
+| `host.sumi.archive_choose` **v2 新增 `[未定]`**(同上,`3dc0673c`) | 无 | 与 `archive_get` 同形 | 宿主弹出系统目录选择框,并执行“停会话、改配置、重开”的改目录流程(旧目录文件不删不搬,见 [notemd-desktop §2.0](../spec/platform/notemd-desktop.md))。用户取消则返回当前设置 |
+| `host.sumi.recovery_choose` **v2 新增 `[未定]`**(同上,`3dc0673c`) | 无 | `{"path":string\|null}`(用户取消为 `null`) | 宿主弹出系统文件选择框,起点为归档目录,供“从归档目录选文件恢复”。用户选定文件后,由宿主自己打开它(走外部路径打开,进入现有 SumiRecovery 流程);返回的 `{path}` 只是回执,界面不必再做任何事 |
 | `host.sumi.export` | `pageId`;`format`:`markdown`(只含正文,保存名 `Sumi Write.md`)或 `archive`(含逐行时间,保存名 `Sumi Write.zip`) | `{saved:boolean}`(用户在系统保存对话框取消则为 `false`) | 导出纸页。若该页由别处持有,拒绝;由当前窗口持有则先 `flush` |
 | `host.sumi.pair` | `serviceUrl`(非空字符串);`invitation`(配对码的 JSON 字符串,字段 `spaceId`、`code`、`expiresAt`) | `SumiState` | 本设备接受配对码,加入同步空间。同步连接未初始化时返回 `同步连接正在初始化` |
 | `host.sumi.invite` | 无 | `{invitation:string}`(配对码的 JSON 字符串) | 为本空间生成给另一台设备用的配对码 |
@@ -365,7 +365,7 @@ owner 是“当前持有某纸页编辑面的 `(窗口, 标签页, 编辑面)`�
 |---|---|
 | 只改插件壳或内核,**契约版本不变**(`host-contract` 不变,`engines.notemd` 不需上调) | **只发插件包**:sumiwrite 产出待签名构建物 → note.md 签名并上架。宿主不必发版 |
 | 契约**次版本**升级(新增可选能力) | 宿主先发布带新能力的版本;插件随后提高 `engines.notemd` 到该宿主版本并使用新能力。插件可在旧宿主上继续以旧能力运行时,不必提高下限 |
-| 契约**主版本**升级,或服务协议 `VERSION` 变化 | **配套发版**:两边同一轮发布;宿主在握手失败时给出“请同时更新宿主和插件”(现有文案),就是为这一情形准备的。**本轮(归档目录,`host-contract v2`)属于这一行**:宿主与插件配套发版 `[未定]` |
+| 契约**主版本**升级,或服务协议 `VERSION` 变化 | **配套发版**:两边同一轮发布;宿主在握手失败时给出“请同时更新宿主和插件”(现有文案),就是为这一情形准备的。**本轮(归档目录,`host-contract v2`)属于这一行**:宿主与插件配套发版 `[未定]`。交付现状:sumiwrite 已合并并推送 main(提交 [`ad414a0`](https://github.com/wizlijun/sumiwrite/commit/ad414a0ca3afdae1dc9355a394889e69c71a5cd7),内核 tag `core-v0.2.0` 已推送),插件 tag `notemd-plugin-v0.2.0` 待发版日打;note.md 侧在本地分支 `sumi/archive-directory`(提交 `a2d7f93b`、`c369aca1`、`565d7468`、`3dc0673c`),待合并、推送与配套发版。发版日步骤见 [04-known-gaps.md](04-known-gaps.md) §4.8 |
 | 宿主改了契约内的命令或推送消息 | 属于上两行之一;宿主一侧的 `check_contract` 对应检查是防止“宿主静默改了一个未登记命令”的最后一道网 |
 
 现行流程(基线):插件包由 `scripts/release-plugins.sh sumi` 的 `release_sumi()` 构建、打 `.notemdpkg`(每个架构一个 ZIP),用 minisign 分离签名为同名 `.minisig`,索引由 `scripts/gen-plugin-index.mjs` 生成;脚本**只打包与签名,不上传**。宿主发版见源仓库 `scripts/release.sh` 与 `CLAUDE.md` 的“发版:每次都写增量 CHANGELOG”。

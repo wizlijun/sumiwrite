@@ -165,6 +165,8 @@
 
 状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/README.md · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-08-sumi-release.md?plain=1#L30 · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-10-sumi-omarchy-validation.md?plain=1#L18
 
+归档目录改动(ADR 0013)未交付,状态见 [notemd-desktop §2.0](platform/notemd-desktop.md)。交付现状:sumiwrite 已合并并推送 main(提交 [`ad414a0`](https://github.com/wizlijun/sumiwrite/commit/ad414a0ca3afdae1dc9355a394889e69c71a5cd7),内核 tag `core-v0.2.0` 已推送),插件 tag `notemd-plugin-v0.2.0` 待发版日打;note.md 侧在本地分支 `sumi/archive-directory`(提交 `a2d7f93b`、`c369aca1`、`565d7468`、`3dc0673c`),待合并、推送与配套发版。
+
 **纸页存储**:§4.1 所述,每个客户端都有。
 
 **归档投影**:

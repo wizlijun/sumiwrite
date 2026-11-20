@@ -51,6 +51,8 @@
 
 状态:[未定] 待配套发版(`host-contract v2`),交付后补证据。决定与取舍见 [ADR 0013](../../adr/0013-workspace-and-archive-off-vault.md),接口见[契约](../../handoff/03-notemd-contract.md)。
 
+交付现状:sumiwrite 已合并并推送 main(提交 [`ad414a0`](https://github.com/wizlijun/sumiwrite/commit/ad414a0ca3afdae1dc9355a394889e69c71a5cd7),内核 tag `core-v0.2.0` 已推送),插件 tag `notemd-plugin-v0.2.0` 待发版日打;note.md 侧在本地分支 `sumi/archive-directory`(提交 `a2d7f93b`、`c369aca1`、`565d7468`、`3dc0673c`),待合并、推送与配套发版。
+
 **写作工作区**:
 
 - 桌面每台机器一个工作区,由一个不透明的**工作区 ID** 标识。一个工作区对应一套纸页库、一份输入日志、一组同步凭据,与打开哪个 vault 无关。
@@ -95,6 +97,8 @@
 ### 2.1 投影文件
 
 状态:[未定] 待配套发版(`host-contract v2`),交付后补证据。v6.1117.1 已交付的是 `<vault>/inbox/writings/` 版本,出处:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/src/projection.rs
+
+交付现状:sumiwrite 已合并并推送 main(提交 [`ad414a0`](https://github.com/wizlijun/sumiwrite/commit/ad414a0ca3afdae1dc9355a394889e69c71a5cd7),内核 tag `core-v0.2.0` 已推送),插件 tag `notemd-plugin-v0.2.0` 待发版日打;note.md 侧在本地分支 `sumi/archive-directory`(提交 `a2d7f93b`、`c369aca1`、`565d7468`、`3dc0673c`),待合并、推送与配套发版。
 
 - 正文文件是 `<归档目录>/YYYY-MM-DD-NN.writing.md`,同目录另有 sidecar `YYYY-MM-DD-NN.writing.meta.json`,记录行级时间与行 ID。日期是首次有效输入时的本机日期,`NN` 是两位序号。一页的身份是 `page_id`,不是文件名。
 - 归档目录必须已存在;它本身可以是符号链接;运行时不创建。目录不存在或不可访问,投影暂缓,见 §2.0。
