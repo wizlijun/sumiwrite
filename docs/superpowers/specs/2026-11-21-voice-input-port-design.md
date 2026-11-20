@@ -1,6 +1,6 @@
 # 把 rapp 的语音输入搬进 Sumi Write(iOS)· 设计
 
-状态:设计稿,等用户看过效果图后确认。2026-11-21。
+状态:已确认。2026-11-21 用户看过效果图后说:「开始吧，先实现第一把，注意代码和它对齐。然后 LMM 的地址先不填。」据此改了两处:AI 整理改走 rapp 的 LLM 网关,接入点先空着(§3、§6.4);代码按 rapp 对齐(§5「对齐规则」)。
 
 调研底稿:`.superpowers/voice-port/rapp-voice-survey.md`(不入库;rapp HEAD `05bae340`,语音最后一个提交 `d58dbc25` v0.15.8)。本文的 rapp 路径都相对 `/Users/bruce/git/rapp`。
 
@@ -39,22 +39,22 @@
    - 底部的麦克风按钮,按住说话;
    - 实体键盘长按右 ⌥ 说话;
    - 结果落进纸页,走现有编辑桥。
-3. 长语音的 AI 整理用 **Apple 端侧模型**(Foundation Models,iOS 26+、开了 Apple 智能才有),不联网、不要密钥。
+3. 长语音的 AI 整理与 rapp 相同,走 rapp 的 LLM 网关(rapp-llm,`POST /v1/apps/dictation`,流式)。接入点和 key 在设置里填,**默认空着**;空着时不整理,直接插入原话。
 4. 补上 rapp 遗留的几项:
    - iOS 上的一次性语言提示;
    - AirPods 中途接入时安全收尾;
    - VoiceOver 下可用,双击开始、双击结束。
 
 **非目标(这一轮不做)**
-- 远程大模型整理:rapp-llm 或自填接入点。`TidyProvider` 协议留了口子,实现放到以后。
+- 端侧模型整理(Foundation Models)。以后再说。
 - 热词、词表、用户记忆上下文。Sumi 没有这些来源。
 - 输入历史。Sumi 没有输入板,也没有历史。
 - 按钮拖到左边并镜像。几何函数支持镜像,但 Sumi 先固定在右边。
 - 桌面端语音;让 rapp 改用 VoiceKit。
-- 「AI 整理时先思考」这个开关。端侧模型不适用。
+- 「AI 整理时先思考」这个开关。`think` 参数照 rapp 保留,第一版恒为 false。
 
 **反目标(做了也算失败)**
-- 说的话离开本机去第三方。端侧识别做不到时,系统会把音频送到 Apple 服务器,这一点要在设置里写明。
+- 说的话离开本机去第三方。例外只有两个:用户自己填的整理接入点;端侧识别做不到时,系统把音频送到 Apple 服务器。后者要在设置里写明。
 - 语音结果绕过编辑桥直接改内核,或在 Swift 里写合并逻辑(AGENTS.md 红线 4)。
 - 组字中的拼音、或者说了一半的话,丢了或被吞了。
 - 打断用户正在听的音乐:只在按住说话的那几秒拿走音频会话,结束后还给打字音并通知别的应用恢复。
@@ -82,8 +82,14 @@
 | `voice_tidy.dart` | `VoiceTidy` | tidying → ready → 等 1.5 s → 落地;0.8 s 停顿时预取;逐字显示;失败静默回落原话 |
 | `voice_tidy_card.dart` | `VoiceKitUI/TidyCardView` | shimmer、光标、倒计时条、按钮 |
 | `tidy_held.dart` | `TidyHeld` | 整理期间先把原话落盘(文件保护 complete),崩溃后不丢 |
-| `llm_api.dart` | `TidyProvider` 协议 + `OnDeviceTidy` | 提示词取自 `rapp-llm:apps/dictation.md` |
-| `VoiceKeyGate.swift` | `VoiceKeyGate` | 改用 iOS 的 HID 键码;共享用例表照抄一份 |
+| `llm_api.dart` | `Tidy/LlmApi.swift`(`LlmEndpoint`、`LlmApi.run`、`LlmCall`、`LlmResult`) | 只搬 `run` 与 `normalizeLlmUrl`;连通测试 `probe` 不搬。提示词在网关上,客户端不带 |
+| `VoiceKeyGate.swift` | `VoiceKeyGate` | 原样搬,仍用 mac 虚拟键码;另加 HID → mac 键码表。`UIKeyModifierFlags` 的位与 mac 相同,直接用。共享用例表照抄一份 |
+
+**对齐规则。** 用户要求「代码和它对齐」:
+- Swift 文件、类型、方法、常量、注释的顺序都按 rapp 对应文件来,名字照用。例如 `VoicePick.send / .edit / .cancel`、`VoiceKeyPhase.edit`、`TidyPhase`、`VoiceStart`。
+- 数值照抄,注释里注明出处(rapp 文件名)。
+- 只在 Sumi 宿主层把 `edit` 叫「原话」、行为是「不整理直接插入」;VoiceKit 不知道这个名字,标签由宿主传入。
+- rapp 里跟 Flutter、输入板、会话、热词、历史有关的部分不搬,在原处留一行注释说明去向。
 
 ## 6. Sumi 里的行为(拍板)
 
@@ -135,7 +141,7 @@
 
 ### 6.4 AI 整理
 
-- **触发:** 选「插入」、去掉空白后超过 10 个字、设置开着、端侧模型可用,四条同时成立。
+- **触发:** 选「插入」、去掉空白后超过 10 个字、设置开着、接入点已填(地址有效且 key 不空),四条同时成立。
 - **整理卡:**
   - 整理卡就是原来那个气泡,原地变身。
   - 第一个字到来之前,原话上扫过一道微光;之后 AI 的字从前往后替换原话。
@@ -152,16 +158,14 @@
   - 整理中按任何键,立刻插入原话,然后照常处理这个键。
   - 失败一律静默插入原话。
   - 总时限 30 s。
-- **预取:** 按住时停顿 0.8 s,就先拿当前的部分结果去整理;最终结果相同就复用这次。端侧模型没有费用,只多耗一点电。
-- **提示词:** 移植 `dictation.md` 的规则:
-  - 纠正识别错误;
-  - 去掉口头语;
-  - 不删事实;
-  - 列表排成「1. 2. 3.」;
-  - 只输出正文。
+- **预取:** 按住时停顿 0.8 s,就先拿当前的部分结果去整理;最终结果相同就复用这次。和 rapp 一样。
+- **提示词:** 在网关的 `dictation` 应用里,客户端只发 `{"input", "stream": true}`,与 rapp 相同。
 - **设置**,放在「输入法」一节:
-  - 「长语音先让 AI 整理」,默认开,说明「超过 10 个字时，先在本机整理再插入」;
-  - 不可用时这一行变灰,写明原因:「需要 iOS 26 并开启 Apple 智能」。
+  - 「长语音先让 AI 整理」,默认开,说明「超过 10 个字时，先发给下面填的接入点整理再插入」;
+  - 「接入点」文本框,占位 `http://localhost:28001`(rapp 的 `llmUrlHint`),默认空;
+  - 「key」密文框,默认空,存在钥匙串(仅本机),不进 UserDefaults、不进日志;
+  - 接入点没填好时开关变灰,写明原因:「先填写接入点和 key」。
+- **网络:** Info.plist 加 `NSAllowsLocalNetworking`(网关常是 `http://` 内网地址)与本地网络用途说明「连接你在设置里填写的 AI 整理接入点」。
 
 ### 6.5 权限、语言、音频
 
@@ -198,7 +202,7 @@
 3. `VoiceRing`、`VoiceHold`、VoiceKitUI 覆盖层;在模拟器上截图核对。
 4. 接入 Sumi:麦克风按钮、落地路径、Rime 上屏、音频交接、Info.plist、提示文案、语言提示。
 5. 实体键盘右 ⌥。
-6. AI 整理:`TidyProvider`、`OnDeviceTidy`、`VoiceTidy`、整理卡、预取、分两步落地、`TidyHeld`、设置行。
+6. AI 整理:`LlmApi`、`VoiceTidy`、整理卡、预取、分两步落地、`TidyHeld`、设置行(接入点先空着)。
 7. README 真机清单;装到 iPhone DUO。
 
 ## 9. 留给实现者的
