@@ -9,6 +9,7 @@
 - `core/`:编辑内核(Rust,Yrs),说明见 [`core/README.md`](core/README.md)。测试:`cargo +1.99.0 test --manifest-path core/Cargo.toml --all-features`,`cargo +1.99.0 clippy --manifest-path core/Cargo.toml --all-targets --all-features -- -D warnings`。
 - `protocol/`:宿主与插件后台之间的服务契约类型,依赖 `core/`,说明见 [`protocol/README.md`](protocol/README.md)。测试:`cargo +1.99.0 test --manifest-path protocol/Cargo.toml`,`cargo +1.99.0 clippy --manifest-path protocol/Cargo.toml --all-targets -- -D warnings`。
 - `sync/`:同步服务(Cloudflare Worker),自带固定版本的工具链,说明见 [`sync/README.md`](sync/README.md)。测试见 [`sync/README.md`](sync/README.md)「Verification」段。
+- `apps/notemd-plugin/`:桌面插件壳(`notemd.sumi`),前端、Rust 后台、资源与插件侧校验脚本,说明见 [`apps/notemd-plugin/README.md`](apps/notemd-plugin/README.md)。测试见 [`apps/notemd-plugin/README.md`](apps/notemd-plugin/README.md)「Verification」段。
 - `CHANGELOG.md` / `CHANGELOG.zh-CN.md`:面向用户的变更记录,倒序,顶部是“未发布”区。
 - `LICENSE`:Apache-2.0,覆盖全部模块。
 - `AGENTS.md`:给 agent 的规程入口。
