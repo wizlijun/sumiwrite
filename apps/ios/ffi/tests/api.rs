@@ -212,7 +212,7 @@ fn open_adopts_pages_missing_from_catalog() {
     want.sort();
     let store = CoreStore::open(path.clone()).unwrap();
     assert_eq!(ids(&store), want);
-    let n = mk(&store, None);
+    let n = mk(&store, Some(&ids(&store)[1]));
     let got = ids(&store);
     assert_eq!(&got[..2], &want[..]);
     assert_eq!(got[2], n);
@@ -248,4 +248,19 @@ fn create_page_with_missing_anchor_fails() {
     let r = store.create_page(Some(new_page_id()), "op-x".into());
     assert!(matches!(r, Err(CoreError::Storage { .. })));
     assert_eq!(store.pages().unwrap(), before);
+}
+
+#[test]
+fn create_page_none_on_nonempty_catalog_is_a_root() {
+    let (_d, path) = temp_db();
+    let store = CoreStore::open(path).unwrap();
+    let a = mk(&store, None);
+    let b = mk(&store, Some(&a));
+    let r = mk(&store, None);
+    let got = ids(&store);
+    assert_eq!(got.len(), 3);
+    // b 挂在 a 下;r 是与 a 并列的根,按 UUID 与 a 排序,b 紧随 a。
+    let ia = got.iter().position(|x| *x == a).unwrap();
+    assert_eq!(got[ia + 1], b);
+    assert!(got.contains(&r));
 }

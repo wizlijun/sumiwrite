@@ -422,7 +422,7 @@ impl CoreStore {
             .collect()
     }
 
-    /// 新建一页并登记目录,同一事务落盘;`after` 为空则追加到目录末尾(目录为空时即根)。
+    /// 新建一页并登记目录,同一事务落盘;`after` 为空则挂在目录根下(01 §2.1);要追加到末尾须显式传最后一页的 id。
     pub fn create_page(&self, after: Option<String>, op_id: String) -> R<Arc<CorePage>> {
         let id = new_page_id();
         let doc = Document::new(&id, 1, random_client_id()).map_err(store_err)?;
@@ -431,11 +431,7 @@ impl CoreStore {
             .lock()
             .unwrap()
             .commit_local_with(&doc, &op_id, &doc.encode_full(), &pair, |tx| {
-                let anchor = match &after {
-                    Some(a) => Some(a.clone()),
-                    None => catalog::list(tx)?.last().map(|e| e.id.clone()),
-                };
-                catalog::create(tx, &id, anchor.as_deref()).map(|_| ())
+                catalog::create(tx, &id, after.as_deref()).map(|_| ())
             })
             .map_err(store_err)?;
         Ok(CorePage::wrap(doc))
