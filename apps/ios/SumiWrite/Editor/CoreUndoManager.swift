@@ -16,7 +16,7 @@ final class CoreUndoManager: UndoManager {
         performRedo = redo
         super.init()
         groupsByEvent = false
-        // 兜底:即使有调用方绕过下面的空实现(例如基于 block 的注册),也不进系统栈。
+        // 关闭注册:基于 invocation 与基于 block 的注册(后者无法在 Swift 里重写)都由系统实现直接丢弃。
         disableUndoRegistration()
     }
 
@@ -26,7 +26,11 @@ final class CoreUndoManager: UndoManager {
     override func redo() { performRedo() }
 
     override func registerUndo(withTarget target: Any, selector: Selector, object anObject: Any?) {}
-    override func prepare(withInvocationTarget target: Any) -> Any { self }
+    /// 交回系统代理:注册已关闭,经它发出的消息被系统实现吞掉。不能返回 self——
+    /// 那样代理收到的下一条消息会因 unrecognized selector 让进程崩溃。
+    override func prepare(withInvocationTarget target: Any) -> Any {
+        super.prepare(withInvocationTarget: target)
+    }
     override func beginUndoGrouping() {}
     override func endUndoGrouping() {}
     override func removeAllActions() {}

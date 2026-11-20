@@ -35,4 +35,18 @@ final class CoreUndoManagerTests: XCTestCase {
         XCTAssertFalse(m.canRedo)
         XCTAssertEqual(undos, 0)
     }
+
+    /// 基于 invocation 的注册:经代理发出的消息被吞掉,不崩、不入栈;基于 block 的注册同样不入栈。
+    func test_invocationAndBlockRegistrationsAreSwallowed() {
+        let m = CoreUndoManager(canUndo: { false }, canRedo: { false }, undo: {}, redo: {})
+        let t = Target()
+        XCTAssertFalse(m.isUndoRegistrationEnabled)
+        let proxy = m.prepare(withInvocationTarget: t) as AnyObject
+        _ = proxy.perform(#selector(Target.noop(_:)), with: nil)
+        var handled = false
+        m.registerUndo(withTarget: t) { _ in handled = true }
+        m.setActionName("系统动作")
+        XCTAssertEqual(m.undoActionName, "", "nothing may reach the system undo stack")
+        XCTAssertFalse(handled)
+    }
 }
