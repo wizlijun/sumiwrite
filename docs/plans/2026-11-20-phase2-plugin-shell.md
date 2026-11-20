@@ -62,7 +62,7 @@
 
 ---
 
-### 任务 1:把新发现补进交接文档
+### Task 1(任务 1):把新发现补进交接文档
 
 01-inventory §4 漏列了以下反向依赖,按 02 文首的规矩先改文档再动手。
 
@@ -84,7 +84,7 @@
 - [ ] 04 记两件事:`i18n.ts` 两仓库各一份,分开演进;第 2 期不发新插件包。
 - [ ] `bash docs/check.sh` 输出 `OK`,提交:`Record plugin reverse dependencies found while planning phase 2`。
 
-### 任务 2:提取历史并并入本仓库
+### Task 2(任务 2):提取历史并并入本仓库
 
 **产出**:本仓库 `phase2` 分支(从 `main` 开出)上有 `apps/notemd-plugin/`,带原有历史。
 
@@ -104,7 +104,7 @@
 - [ ] 核对:`git ls-files apps/notemd-plugin | wc -l` 等于 52 + 4(三个脚本与 `i18n.ts`);`apps/notemd-plugin/resources/` 下每个文件的 SHA-256 与 note.md 工作区对应文件一致。
 - [ ] 提交 `.gitattributes`:`Keep license files byte-exact in the plugin resources`。
 
-### 任务 3:插件后台按 tag 引用 SDK [需 G2]
+### Task 3(任务 3):插件后台按 tag 引用 SDK [需 G2]
 
 **文件**:改 `apps/notemd-plugin/backend/Cargo.toml:11`、`apps/notemd-plugin/backend/Cargo.lock`;改 `apps/notemd-plugin/README.md`(新建)。
 
@@ -119,7 +119,7 @@
   ```
 - [ ] 提交:`Depend on note.md plugin-sdk-v0.1.0 by tag`。
 
-### 任务 4:前端自带工具链,断开对 note.md 源码的导入
+### Task 4(任务 4):前端自带工具链,断开对 note.md 源码的导入
 
 **文件**:改 `apps/notemd-plugin/package.json`、`src/main.ts:2-3`、`src/i18n.test.ts:2`;新建 `src/shortcuts.ts`、`src/shortcuts.test.ts`、`package-lock.json`;改 `apps/notemd-plugin/backend/src/fonts.rs:44`;根 `.gitignore` 加 `apps/notemd-plugin/node_modules/`、`apps/notemd-plugin/dist/`、`apps/notemd-plugin/backend/target/`。
 
@@ -151,7 +151,7 @@ export function primaryShortcut(event: KeyboardEvent, key: string, shift?: boole
 - [ ] `npm ci && npm test && npm run check && npm run build`,全过;把新 `dist/` 的列表与 SHA-256 和 `dist-before.txt` 比较,应完全相同(评审重点 5)。不同就停下报告,不许改源码去凑。
 - [ ] 提交:`Give the plugin shell its own pinned toolchain and drop note.md imports`。
 
-### 任务 5:待签名构建物与校验清单
+### Task 5(任务 5):待签名构建物与校验清单
 
 **文件**:新建 `apps/notemd-plugin/scripts/build-artifact.sh`、`scripts/verify-stage.py`、`scripts/test_verify_stage.py`;改 `docs/handoff/03-notemd-contract.md` §5。
 
@@ -194,7 +194,7 @@ def verify_checklist(stage: Path, checklist: dict) -> None  # 重算 SHA-256;缺
 - [ ] 改 03 §5:写上交付格式;“note.md 收到后”一段改为:比对 `source_commit` → `verify_checklist` → macOS 目标签名公证二进制并替换 `bin/notemd-sumi` → 打包 → minisign → 索引 → 上架。状态行保持 `[未定]` 直到任务 8 交付后补证据。
 - [ ] `bash docs/check.sh` 输出 `OK`,提交:`Build unsigned plugin artifacts with a verifiable checklist`。
 
-### 任务 6:说明文件、许可与变更记录
+### Task 6(任务 6):说明文件、许可与变更记录
 
 **文件**:改 `apps/notemd-plugin/package.json`(已在任务 4)、`apps/notemd-plugin/backend/Cargo.toml`(`license = "Apache-2.0"`);改 `README.md`、`CHANGELOG.md`、`CHANGELOG.zh-CN.md`、`docs/handoff/00-overview.md`、`AGENTS.md`。
 
@@ -203,13 +203,13 @@ def verify_checklist(stage: Path, checklist: dict) -> None  # 重算 SHA-256;缺
 - [ ] `AGENTS.md` 第 7 条**提议**把 `apps/notemd-plugin/` 加进“改模块先跑模块测试”的范围。规程改动,用户认可本计划即视为认可;否则删掉这一步。
 - [ ] `bash docs/check.sh` 输出 `OK`,提交:`Document the plugin shell layout and checks`。
 
-### 任务 7:全量验证、合并与打 tag [需 G3]
+### Task 7(任务 7):全量验证、合并与打 tag [需 G3]
 
 - [ ] 在 `phase2` 上跑 `apps/notemd-plugin/README.md` Verification 段全部命令,加任务 5 的本机构建;另把产物装进本机正式宿主:按 `dev-install-plugin.sh:503-512` 的布局手工拷到插件目录,打开玄霜写作,跑现有验收清单(设计 §8)里不需要第二台设备的条目。全部应通过;不通过就停下,记下差异报告用户。
 - [ ] `--no-ff` 合并回本地 `main`,打附注 tag `notemd-plugin-v0.1.16`(信息:`Sumi Write plugin 0.1.16 imported from note.md <提交>`)。
 - [ ] 推送 `main` 与 tag,推送前再向用户确认一次。推完后在空目录用临时 crate 验证能拉到:`notemd-sumi-backend = { git = "https://github.com/wizlijun/sumiwrite", tag = "notemd-plugin-v0.1.16" }`,`cargo +1.99.0 fetch`。
 
-### 任务 8:note.md 改依赖、改脚本、删目录(一个提交)[需 G4]
+### Task 8(任务 8):note.md 改依赖、改脚本、删目录(一个提交)[需 G4]
 
 **分支**:note.md 上的 `sumi/plugin-from-sumiwrite`,从当时的 `main` 开出。
 
@@ -250,12 +250,12 @@ def verify_checklist(stage: Path, checklist: dict) -> None  # 重算 SHA-256;缺
   失败时先查是不是迁移引起的;不迁移也一样失败的,记下来报告用户,不顺手修。
 - [ ] 一个提交:`Build Sumi Write from sumiwrite notemd-plugin-v0.1.16 and drop the in-tree plugin`。
 
-### 任务 9:旧位置加指引、补证据(note.md 与本仓库各一个提交)[需 G4]
+### Task 9(任务 9):旧位置加指引、补证据(note.md 与本仓库各一个提交)[需 G4]
 
 - [ ] note.md:`plugins-src/shared/shortcuts.ts` 文首加注释,说明玄霜写作已在 sumiwrite 自带一份,两者不再同步;`src/lib/sumi/i18n.ts` 同样加一行说明。提交:`Note that Sumi Write keeps its own shortcuts and i18n copies`。
 - [ ] 本仓库:03 §5 与 02 第 2 期的状态补上任务 8 提交的 blob 证据链接(按 `docs/check.sh` 的规则);00-overview 的当前状态改为“第 2 期已完成”。`bash docs/check.sh` 输出 `OK`,提交:`Record phase 2 completion`。然后停下,把 note.md 分支交给用户决定合并与推送。
 
-### 任务 10:归档目录与写作工作区(另立计划)
+### Task 10(任务 10):归档目录与写作工作区(另立计划)
 
 依据 `docs/superpowers/specs/2026-11-20-archive-directory-design.md`(已认可)。任务 7 合并、插件后台已在本仓库之后,另写 `docs/superpowers/plans/2026-11-20-archive-directory.md`:那时插件后台的文件路径已定,改动直接落在 `apps/notemd-plugin/backend/`。它涉及内核破坏性变更(`core-v0.2.0`)、契约升到 v2、宿主与插件配套发版,规模与本期迁移相当,单独评审。
 
