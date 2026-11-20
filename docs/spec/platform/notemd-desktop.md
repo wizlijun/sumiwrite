@@ -2,7 +2,7 @@
 
 玄霜写作(Sumi Write)在桌面上不是独立应用,而是 note.md 的一个插件(插件 ID `notemd.sumi`),编辑区用宿主提供的原生文本控件。这样定的理由见 [ADR 0005](../../adr/0005-native-text-controls.md)、[ADR 0006](../../adr/0006-plugin-backend-vs-host-session.md)、[ADR 0008](../../adr/0008-standalone-repo-desktop-stays-plugin.md)。
 
-本附录只写**桌面插件独有**的规则。各端共用的规则在主题规范里:纸页与存储见 [01](../01-pages-and-storage.md),Markdown 与行时间见 [02](../02-markdown-and-line-time.md),同步见 [03](../03-sync.md),编辑体验见 [04](../04-editing-experience.md),字体见 [05](../05-fonts.md)。宿主与插件之间的接口以 [`host-contract v2`](../../handoff/03-notemd-contract.md) 为准;本附录与契约冲突时,以契约为准。
+本附录只写**桌面插件独有**的规则。各端共用的规则在主题规范里:纸页与存储见 [01](../01-pages-and-storage.md),Markdown 与行时间见 [02](../02-markdown-and-line-time.md),同步见 [03](../03-sync.md),编辑体验见 [04](../04-editing-experience.md),字体见 [05](../05-fonts.md)。宿主与插件之间的接口以 [`host-contract`](../../handoff/03-notemd-contract.md) 为准(已交付的基线是 v1;v2 `[未定]`:待配套发版);本附录与契约冲突时,以契约为准。
 
 - **基线**:宿主 tag `v6.1117.1`(`main` 的 `969f8e73`),插件 `0.1.16`。证据链接都指向这个 tag。
 - **读法**:每个小节首行的 `状态:` 标注该节整体状态。节内某条规则状态不同,就在该条末尾另标。由实现方选定的数值(尺寸、时间、阈值)后缀 `(工程细则)`,表示它不是产品决定。

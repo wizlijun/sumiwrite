@@ -138,7 +138,7 @@ Linux 的交付范围:该平台共用同一套 Markdown/CRDT/持久日志,第 3 
 
 取舍理由见 [../adr/0006-plugin-backend-vs-host-session.md](../adr/0006-plugin-backend-vs-host-session.md)。
 
-双方互相约定的接口叫 `host-contract v2`,全部写在 [../handoff/03-notemd-contract.md](../handoff/03-notemd-contract.md)。它包括:
+双方互相约定的接口叫 `host-contract`。已交付的基线是 `host-contract v1`;v2 `[未定]`:待配套发版。契约全文在 [../handoff/03-notemd-contract.md](../handoff/03-notemd-contract.md)。它包括:
 
 - 宿主命令
 - 原生编辑面能力
@@ -155,7 +155,7 @@ Linux 的交付范围:该平台共用同一套 Markdown/CRDT/持久日志,第 3 
 迁移完成后的归属已经定下(设计 §5.1–5.2):
 
 - **sumiwrite 定义**:产品规则、内核、同步协议、同步服务与平台无关的会话逻辑。
-- **note.md 实现**:`host-contract v2`。
+- **note.md 实现**:`host-contract v1`(已交付基线);v2 `[未定]`:待配套发版。
 
 但这一归属**尚未执行**:在基线上,源码仍全部在 note.md 仓库。逐项归属判定见 [../handoff/01-inventory.md](../handoff/01-inventory.md),迁移分期见 [../handoff/02-migration-plan.md](../handoff/02-migration-plan.md)。
 
