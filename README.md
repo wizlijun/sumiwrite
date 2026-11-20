@@ -19,7 +19,7 @@
 
 ## 当前期次
 
-第 1 期(进行中):`core/`、`protocol/`、`sync/` 已连同历史迁入,三个模块的测试在本仓库全部通过;note.md 改为按 tag 引用尚未开始。第 0 期只交接文档。后续各期的步骤、前置条件、验证与回退见 [迁移计划](docs/handoff/02-migration-plan.md)。
+第 1 期已完成:`core/`、`protocol/`、`sync/` 已连同历史迁入,三个模块的测试在本仓库全部通过;本仓库已推送 tag `core-v0.1.0`,note.md 已改为按该 tag 引用并删除树内副本(note.md [`c2889dd4`](https://github.com/wizlijun/note.md/commit/c2889dd4f6c60fb43d8f58be78ebb09f561b14a0))。下一步是第 2 期,开工前要先立详细计划。第 0 期只交接文档。后续各期的步骤、前置条件、验证与回退见 [迁移计划](docs/handoff/02-migration-plan.md)。
 
 ## 阅读顺序
 
