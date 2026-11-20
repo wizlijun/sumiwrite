@@ -59,6 +59,18 @@ final class SumiTextView: UITextView, UITextDropDelegate {
         return ok
     }
 
+    // MARK: 排版
+
+    /// TextKit 2 只排可见区附近的段落,其余按估算的高度占位;光标位置、内容高度和按它们算的滚动(系统把光标
+    /// 滚进可见区、聚焦打字的居中)都会随排版补全而变:长文里打字时光标落到可见区外,文字上下跳。每次布局前
+    /// 先把全文排好,这些值就是实值(排过的段落不重排,只排改过的)。
+    override func layoutSubviews() {
+        if let layout = textLayoutManager, let content = layout.textContentManager {
+            layout.ensureLayout(for: content.documentRange)
+        }
+        super.layoutSubviews()
+    }
+
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         onTouchBegan?(event?.modifierFlags ?? [])
         super.touchesBegan(touches, with: event)

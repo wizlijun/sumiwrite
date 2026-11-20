@@ -456,11 +456,71 @@ final class RimeIntegrationTests: XCTestCase {
         XCTAssertTrue(hit === h.textView || hit.isDescendant(of: h.textView), "tap lands on \(hit)")
         let onStatus = status.convert(CGPoint(x: status.bounds.midX, y: 4), to: h.window)
         XCTAssertTrue(try XCTUnwrap(h.window.hitTest(onStatus, with: nil)) === status)
+        // 小块只比状态字宽一点;点在画出来的小块正下方落到正文上。
+        XCTAssertLessThan(status.bounds.width, 44)
+        let block = try XCTUnwrap(bar.subviews.first { !$0.isHidden && $0.backgroundColor == bar.style.background })
+        let below = bar.convert(CGPoint(x: block.frame.midX, y: block.frame.maxY + 1), to: h.window)
+        let under = try XCTUnwrap(h.window.hitTest(below, with: nil))
+        XCTAssertTrue(under === h.textView || under.isDescendant(of: h.textView), "tap below lands on \(under)")
         XCTAssertEqual(h.textView.contentInset.bottom, RimeCandidateBar.height(for: bar.style.font), accuracy: 0.5)
         // 组字时整行不透明。
         h.rime.compose("ni", menu: RimeMenu(rows: [RimeCandidate(index: 0, label: "1", text: "你")], cursor: 0))
         bar.layoutIfNeeded()
         XCTAssertTrue(bar.isOpaque)
+    }
+
+    /// 切到英文后打字(菜单切和单按 Shift 切两条路):文本视图一直是第一响应者;每打一键光标都在可见区里;
+    /// 进入聚焦打字后同一行里打字不滚动,留白与候选行(空闲小块)不变。真机「切英文后光标丢失、上下跳动」:
+    /// 长文里 TextKit 2 只估算没排过的段落,光标位置随排版补全而变,滚动按估算值算,光标落到可见区外。
+    func test_englishTypingKeepsCaretVisibleAndStill() throws {
+        for viaMenu in [true, false] {
+            let h = try harness()
+            h.textView.insertText(String(repeating: "第一段文字。\n", count: 40))
+            RunLoop.main.run(until: Date().addingTimeInterval(0.8)) // 粘贴后的滚动动画走完
+            let bar = try bar(h)
+            if viaMenu {
+                choose(.english, in: bar)
+            } else {
+                h.rime.ascii = true
+                h.rime.push(RimeUpdate(ascii: true)) // 单按左 Shift:引擎切到英文后推的那次更新
+                drainMain()
+                bar.layoutIfNeeded()
+            }
+            XCTAssertTrue(h.textView.isFirstResponder)
+            XCTAssertEqual(button("切换输入法", in: bar)?.currentAttributedTitle?.string, "英")
+            var pinned: (offset: CGFloat, inset: UIEdgeInsets, bar: CGRect)?
+            for c in "The quick, brown fox " {
+                let press = BarePress()
+                h.rime.swallowed.insert(ObjectIdentifier(press))
+                h.rime.onSwallow = { [weak rime = h.rime] _ in rime?.push(RimeUpdate(commit: String(c), ascii: true)) }
+                h.textView.pressesBegan([press], with: nil)
+                h.textView.pressesEnded([press], with: nil)
+                drainMain()
+                h.controller.view.layoutIfNeeded()
+                let at = "after \(c), via menu: \(viaMenu)"
+                let tv = h.textView
+                XCTAssertTrue(tv.isFirstResponder, at)
+                let caret = tv.caretRect(for: try XCTUnwrap(tv.selectedTextRange?.end))
+                let top = tv.contentOffset.y + tv.contentInset.top - (tv.pinnedY == nil ? 0 : tv.contentInset.top)
+                let bottom = tv.contentOffset.y + tv.bounds.height - (tv.pinnedY == nil ? tv.contentInset.bottom : 0)
+                XCTAssertTrue(caret.minY >= top - 0.5 && caret.maxY <= bottom + 0.5,
+                              "caret \(caret.minY)…\(caret.maxY) outside \(top)…\(bottom), " + at)
+                XCTAssertEqual(bar.alpha, 1, at)
+                XCTAssertFalse(bar.isOpaque, "idle chip while typing English, " + at)
+                if tv.pinnedY != nil {
+                    if let p = pinned {
+                        XCTAssertEqual(tv.contentOffset.y, p.offset, accuracy: 0.5, at)
+                        XCTAssertEqual(tv.contentInset, p.inset, at)
+                        XCTAssertEqual(bar.frame.minY, p.bar.minY, accuracy: 0.5, at)
+                        XCTAssertEqual(bar.frame.height, p.bar.height, accuracy: 0.5, at)
+                    } else {
+                        pinned = (tv.contentOffset.y, tv.contentInset, bar.frame)
+                    }
+                }
+            }
+            XCTAssertNotNil(pinned, "focus typing engaged")
+            XCTAssertTrue(h.page.body().hasSuffix("The quick, brown fox "))
+        }
     }
 
     /// 重开应用:选「系」的记录还在,接着实体键盘也不启用。

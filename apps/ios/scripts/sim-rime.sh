@@ -5,7 +5,7 @@
 # (或 agent)逐张看,对照下面写的预期判定。
 #
 # 用法:bash apps/ios/scripts/sim-rime.sh [--no-build] [场景...]
-#   场景:builtin middle repeat focus shift english switch toggle tap(默认全部,按此顺序)
+#   场景:builtin middle repeat focus shift english entype switch toggle tap(默认全部,按此顺序)
 #   环境变量:SIM_RIME_DEVICE 专用模拟器的名字(默认 sumi-rime-e2e,没有就建一台 iPad Pro 11-inch (M5));
 #            RIME 指 RimeKit 仓库(默认与本仓库同级的 rime-kit)。
 # 每个场景先按 ⌘N 新建空白页,在空白页里做。
@@ -42,6 +42,13 @@
 #          e03 a b c:「abc」直接上屏,没有组字、没有候选,仍空闲。
 #          e04 点状态字、点「中文」:状态字变回「中」。
 #          e05 n i h a o Space:「abc你好」。
+# entype   x00 ⌘V:粘进 60 段会自动换行的长文(TextKit 2 只估算没排过的段落,短文里看不出问题),光标在文末。
+#          x01 点状态字、点「英文」:状态字「英」,光标仍在文末、看得到(x01 与 x01b 隔 0.5 秒各截一张,至少一张看得到光标)。
+#          x02 连打两行英文句子(有空格、有回车):长文末尾多了两行英文,光标在末尾、看得到(x02 / x02b);打字时录像
+#              build/sim-rime/entype/x-menu.mp4,逐帧(x-menu-*.png,每秒 10 帧)看:正文只在进入聚焦打字时移一次,
+#              之后不上下跳,光标一直在(闪烁的暗帧除外),候选行(状态字小块)不变高。
+#          x04 点状态字、点「中文」;x05 单按左 Shift:状态字「英」,光标在。
+#          x06 再连打同样两行(录像 x-shift.mp4,x-shift-*.png),同 x02。
 # switch   w01 n i h a o:组字中(同 b01)。
 #          w02 ⌘]:末页按 › 新建一页:新的空白页,没有组字,空闲(只有「中」一小块),没有「请先完成输入」。
 #          w03 ⌘[:回到上一页,原文「nihao」已上屏(不是标记文字,没有下划线,也没有候选)。
@@ -67,7 +74,7 @@ NAME="${SIM_RIME_DEVICE:-sumi-rime-e2e}"
 
 build=1
 if [ "${1:-}" = --no-build ]; then build=0; shift; fi
-SC="${*:-builtin middle repeat focus shift english switch toggle tap}"
+SC="${*:-builtin middle repeat focus shift english entype switch toggle tap}"
 
 mkdir -p "$BIN"
 for t in simkey hwkb; do
@@ -182,6 +189,21 @@ tap() {
   [ "$r" = ok ] || echo "  点「${label}」:${r}" >&2
   [ -n "$n" ] && shot "$n"
 }
+# record <名> <按键...>:录像打这些键,再把录像拆成每秒 10 帧的截图 <名>-NNN.png(要 ffmpeg;没有就只录像)。
+record() {
+  local n=$1; shift
+  xcrun simctl io "$U" recordVideo --codec h264 --force "$DIR/$n.mp4" >/dev/null 2>&1 &
+  local rec=$!
+  sleep 1.5
+  key "$@"
+  sleep 1.5
+  kill -INT $rec; wait $rec 2>/dev/null
+  if command -v ffmpeg >/dev/null; then
+    ffmpeg -loglevel error -i "$DIR/$n.mp4" -vf fps=10 "$DIR/$n-%03d.png"
+  fi
+  echo "  $n.mp4"
+}
+SENTENCE="T h e SPACE q u i c k , SPACE WAIT:800 b r o w n SPACE f o x . RET WAIT:1500 j u m p s SPACE o v e r BS BS BS BS SPACE o v e r SPACE WAIT:700 t h e SPACE L a z y SPACE d o g S+1 RET"
 # choose <截图名> <菜单项>:点状态字,等菜单弹出,点菜单项。
 choose() {
   tap "" 切换输入法
@@ -193,7 +215,7 @@ for s in $SC; do
   DIR="$OUT/$s"; rm -rf "$DIR"; mkdir -p "$DIR"
   echo "$s"
   case $s in
-  english | toggle | tap) serve ;;
+  english | entype | toggle | tap) serve ;;
   esac
   step 00-new C+n
   case $s in
@@ -235,6 +257,23 @@ for s in $SC; do
     step e03-abc a b c
     choose e04-chinese 中文
     step e05-nihao n i h a o SPACE
+    ;;
+  entype)
+    para="这是一段比较长的文字，用来让它在屏幕上自动换行。Some English words that wrap as well, then more text."
+    for _ in $(seq 1 60); do printf '%s\n' "$para$para"; done | xcrun simctl pbcopy "$U"
+    step x00-paste C+v
+    sleep 1
+    choose x01-english 英文
+    sleep 0.5; shot x01b-english
+    record x-menu $SENTENCE
+    shot x02-typed
+    sleep 0.5; shot x02b-typed
+    choose x04-chinese 中文
+    step x05-shift SHIFT
+    sleep 0.5; shot x05b-shift
+    record x-shift $SENTENCE
+    shot x06-typed
+    sleep 0.5; shot x06b-typed
     ;;
   switch)
     step w01-nihao n i h a o
