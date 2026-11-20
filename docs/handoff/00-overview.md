@@ -25,12 +25,13 @@
 
 逐项归属见 [01-inventory.md](01-inventory.md);两仓之间的耦合面见 [03-notemd-contract.md](03-notemd-contract.md)(`host-contract v1`)。
 
-## 当前状态(第 1 期已完成,第 2 期待立计划)
+## 当前状态(第 2 期 sumiwrite 侧已完成,note.md 侧待用户合并)
 
 - **第 0 期已完成**:交接方案(`docs/handoff/`)、按主题重写的现行规范(`docs/spec/`,含旧文档去向表 [MAPPING.md](../spec/MAPPING.md))、12 条技术选型记录(`docs/adr/`)、`README.md`、`AGENTS.md`、`LICENSE`(Apache-2.0)和自检脚本 `docs/check.sh`。
 - **第 1 期已完成(本仓库内)**:`core/`、`protocol/`、`sync/` 用 git-filter-repo 从 note.md `3c710c9e` 提取并保留历史并入;模块间相对路径已修,内核夹具在 `fixtures` feature 后导出;同步服务自带固定工具链,部署脚本凭据只从环境变量或钥匙串读;两个 crate 改为 Apache-2.0;有了 `CHANGELOG.md` / `CHANGELOG.zh-CN.md`。三个模块的测试在本仓库全部通过,线格式不变。
 - **第 1 期已完成(note.md 侧)**:本仓库远端为 `https://github.com/wizlijun/sumiwrite`,已推送 `main` 与 tag `core-v0.1.0`(指向 `8f28b98a`)。note.md 的三处依赖改为按该 tag 引用,并删除 `write-core/`、`sumi-protocol/`、`write-sync-worker/`(note.md [`c2889dd4`](https://github.com/wizlijun/note.md/commit/c2889dd4f6c60fb43d8f58be78ebb09f561b14a0));旧文档文首已加指引(note.md [`9286d89d`](https://github.com/wizlijun/note.md/commit/9286d89dd52945dea5f71da745dcca225c73cabf))。两个提交都已在 note.md `origin/main` 上。
-- **下一步**:第 2 期(迁插件壳、资源与插件侧脚本)。开工前要先立详细计划并获认可,计划里要定下 [02-migration-plan.md](02-migration-plan.md) 第 2 期前置条件列出的四个问题。
+- **第 2 期(sumiwrite 侧已完成)**:插件壳、资源与插件侧脚本连同历史迁入 `apps/notemd-plugin/`,打了 tag `notemd-plugin-v0.1.16`;`scripts/build-artifact.sh` 产出未签名构建物与校验清单([`build-artifact.sh`](https://github.com/wizlijun/sumiwrite/blob/notemd-plugin-v0.1.16/apps/notemd-plugin/scripts/build-artifact.sh))。note.md 侧(改为从 sumiwrite 取构建物、删除树内插件、两个旧文件加指引)在本地分支 `sumi/plugin-from-sumiwrite`(9288b33d 与其后一个提交),`[未定]`:待用户合并与推送。
+- **下一步**:用户决定 note.md 分支的合并与推送;之后第 3 期(会话与同步协调下沉到 `session/`)先立详细计划。
 
 ## 五期路线
 

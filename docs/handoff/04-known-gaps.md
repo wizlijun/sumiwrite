@@ -41,8 +41,8 @@
 ### 2.2 本期交接中留给后续各期的
 
 - `core-vX.Y.Z` 与 `host-contract` 版本是否联动;服务协议 `VERSION=1` 与 `host-contract v1` 的关系。见 [03-notemd-contract.md](03-notemd-contract.md) §7。
-- sumiwrite 交给 note.md 签名的构建物与校验清单格式(契约 §5)。
-- `shortcuts.ts` 的复制或引用、`i18n.ts` 宿主侧是否留一份、`verify-release.py` 是否拆分——第 2 期定([01-inventory.md](01-inventory.md) §6)。
+- sumiwrite 交给 note.md 签名的构建物与校验清单格式(契约 §5):第 2 期已定,sumiwrite 侧已交付([`build-artifact.sh`](https://github.com/wizlijun/sumiwrite/blob/notemd-plugin-v0.1.16/apps/notemd-plugin/scripts/build-artifact.sh))。note.md 侧在分支 `sumi/plugin-from-sumiwrite`(9288b33d),待用户合并。
+- `shortcuts.ts` 的复制或引用、`i18n.ts` 宿主侧是否留一份、`verify-release.py` 是否拆分:第 2 期已定。sumiwrite 自带一份 `shortcuts.ts`,`i18n.ts` 两仓库各留一份、不做同步,`verify-release.py` 不拆、留在 note.md([第 2 期详细计划](../plans/2026-11-20-phase2-plugin-shell.md);note.md 侧已在两个旧文件文首加指引,同在待合并的分支上)。
 - `session/` 的切分方式、`external.rs` 的落点、`journal.rs`/`durability.rs` 的接口抽取、同一模块如何适配桌面跨进程与 iOS 单进程——第 3 期定([ADR 0012](../adr/0012-shared-session-module.md))。
 - 桌面独立的第 1 条标准“明显多于”没有量化门槛([later.md §4.1](../spec/platform/later.md))。
 - **设计与计划文档公开(已解决,2026-11-20)**:设计与第 0 期计划的提交 `0c11629f` 已并入 note.md `main` 并公开;本仓库的引用已改为固定到该提交的 blob 链接。
@@ -142,7 +142,7 @@
 
 - **`host.sumi.*` 命令数**:设计写“约 20 个”;实际 UI 桥可调 20 个,另有仅供后台回调的 `host.sumi.service`。`host.sumi.sound_*` 三条在 `sound::dispatch` 里实现。契约 §7。
 - **原生编辑桥不注册 JS 命令**:`tauri-plugin-native-editor` 只提供 Rust API 与 `SurfaceCommand`/`NativeEvent` 枚举;owner 状态在宿主 `mod.rs`。契约 §7。
-- **契约外的跨仓耦合**:`plugins-src/write/src/main.ts` 直接 import `plugins-src/shared/shortcuts.ts` 与 `src/lib/sumi/i18n`;偏好默认值与范围在 `contract.ts` 和宿主 `Preferences` 各存一份。契约 §7,第 2 期定。
+- **契约外的跨仓耦合**:`plugins-src/write/src/main.ts` 直接 import `plugins-src/shared/shortcuts.ts` 与 `src/lib/sumi/i18n`;偏好默认值与范围在 `contract.ts` 和宿主 `Preferences` 各存一份。契约 §7。第 2 期已解决 import 耦合(sumiwrite 自带 `shortcuts.ts` 与 `i18n.ts`);`contract.ts` 与宿主 `Preferences` 两处各存一份默认值与范围,第 2 期未处理,留待下次契约版本变化时由两边一起定 `[未定]`。
 - **`Writing Page` frontmatter 没有 `generated` 署名**:是否符合 OKF §7 的人工撰写署名要求 `[未定]`。源:`write-core/src/storage.rs` 的 `serialize_pair`。契约 §3、§7。
 - **没有宿主 tag 与插件版本的对应登记**:只能从 manifest 与 CHANGELOG 推断;契约把 v6.1117.1 + 插件 0.1.16 定义为 `host-contract v1`。契约 §7。
 - **主窗口文件视图的 Tauri 命令**:已核实插件前端 `main.ts` 不调用这些 `sumi_*` 命令(调用点在宿主 `src/lib/sumi/{focus,session,recovery}.ts`);插件**后台进程**是否另有路径触达它们未逐文件审查 `[未定]`。契约 §1 的 B7 表。
@@ -156,6 +156,9 @@
 - **读取宿主源文件的测试脚本**:`scripts/sumi/test-linux-credentials.sh` 编译 `src-tauri/src/sumi/credentials.rs`,`test_fullscreen_appearance.py` 读取 `src-tauri/src/sumi/mod.rs`;两者留在 note.md,但第 3 期切分这些文件后读取路径要核对,凭据逻辑若下沉,测试跟着拆([01-inventory.md](01-inventory.md) §3、[02-migration-plan.md](02-migration-plan.md) 第 3 期第 5 步)。
 - **文件位置的更正**(给第 1–3 期计划):`journal.rs` 在宿主 `src-tauri/src/sumi/journal.rs`(由 `durability.rs` 经 `#[path]` 引入),不在插件后台;`desktop_policy.rs` 在 `src-tauri/src/desktop_policy.rs`,不在 `src-tauri/src/sumi/`。
 - **`i18n.ts` 两仓库各一份(第 2 期)**:插件侧随插件壳迁入 sumiwrite,宿主 `SumiRecovery.svelte`、`NativeFileView.svelte` 继续用 note.md 里的那份,两边分开演进,不做同步机制([01-inventory.md](01-inventory.md) §4、[02-migration-plan.md](02-migration-plan.md) 第 2 期)。
+- **note.md 的 `pnpm build` 与 `scripts/release.sh` 依赖 sumiwrite 检出(第 2 期,已解决)**:迁移后这两处一度会跑 `scripts/prepare-sumi-font.py`,它从 `SUMIWRITE_DIR`(默认 `../sumiwrite`)读字体目录。它填充的缓存 `src-tauri/resources/sumi` 宿主并不打包(`src-tauri/tauri.conf.json` 只打包 `resources/themes/**/*`),只有验收与基准脚本用。终审后已从 `package.json` 的 `build` 与 `release.sh` 去掉,改由 `acceptance/build.sh` 自己调用,`serve.mjs`、`run-native.mjs` 的手动命令写进 note.md `scripts/sumi/README.md`。修复在 note.md 分支 `sumi/plugin-from-sumiwrite` 的 `c7c1df89`(该分支另含 `9288b33d`、`a7027f68`),待用户合并 `[未定]`。见 [03-notemd-contract.md](03-notemd-contract.md) §5。
+- **原生发版记录的 SDK 出处不精确(第 2 期)**:`scripts/sumi/native-release.py` 的 `SOURCE_DIRS` 记录的是 note.md 当前提交里 `notemd-plugin-sdk`、`plugin-protocol` 的摘要,而二进制实际按 sumiwrite `Cargo.lock` 用 `plugin-sdk-v0.1.0` 编译。今天两者相同(tag 指向分叉点 `e82e2f81`),note.md 一改 SDK 就不再描述这个二进制。后续:在 checklist 里加 `sdk_tag` 字段并由 native-release 记入 receipt `[未定]`。
+- **验收构建没有复用 `build-artifact.sh`(第 2 期,搁置)**:note.md `scripts/sumi/acceptance/build.sh` 仍自己跑 `npm ci`、构建与 cargo,没有调用 `build-artifact.sh --debug`,因此没有类型检查、声音/字体门禁与 checklist,构建逻辑在两个仓库各有一份。较大的重构,留待后续 `[未定]`。
 - **第 2 期不发新插件包**:契约版本不变,迁移只换源码位置,不产出新的上架包([第 2 期详细计划](../plans/2026-11-20-phase2-plugin-shell.md))。
 - **规模**:原生编辑桥设计写约 12k 行,实测 `native/*.m` + `src/*.rs` 为 10,673 行(不含 .h 与 examples);宿主会话 8,685 行(`src-tauri/src/sumi/` 下 17 个文件,按 tag `v6.1117.1` 计)、插件后台三文件 5,926 行,与设计一致。
 - **投影代码在内核里**:投影与三方导入在 `write-core/src/projection.rs`、`import.rs`;按设计 §5.4 投影只有桌面做,iOS 会链接到用不上的代码。是否移出内核、何时移 `[未定]`([ADR 0009](../adr/0009-page-store-vs-vault-projection.md))。
