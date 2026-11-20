@@ -340,13 +340,14 @@ git commit -m "Add the archive folder setting to the plugin UI and bump to host-
 
 - [ ] **Step 6: 停点 B**
 
-宿主的开发依赖 `notemd-sumi-backend` 也按 tag 从 GitHub 取。停下来,先对 sumiwrite 分支做一次整分支审查。审查通过后请用户同意以下三件事:
+宿主的开发依赖 `notemd-sumi-backend` 从 GitHub 取,按 `rev` = 合并后的 main 提交固定。停下来,先对 sumiwrite 分支做一次整分支审查。审查通过后请用户同意以下两件事:
 
 1. 把分支合并到 sumiwrite `main`;
-2. 在合并结果上打 `notemd-plugin-v0.2.0`;
-3. `git push origin main notemd-plugin-v0.2.0`。
+2. `git push origin main`。
 
-得到同意前不开始任务 6。任务 5 不依赖 tag,可以先做。
+此处不打插件 tag:note.md `scripts/release-plugins.sh` 要求 sumiwrite 检出恰好位于 `notemd-plugin-v<manifest 版本>` 上,所以 tag 必须打在已带发版日 `engines.notemd` 的那个提交上(见任务 8 Step 2)。
+
+得到同意前不开始任务 6。任务 5 不依赖已合并的 main,可以先做。
 
 ---
 
@@ -407,7 +408,7 @@ git commit -m "Add the Sumi writing workspace config and legacy library takeover
 ### Task 6: 宿主:工作区与 vault 脱钩(服务协议 VERSION 2)
 
 **Files:**
-- Modify: `~/git/note.md-archive/src-tauri/Cargo.toml`(L39–40 改为 `core-v0.2.0`,L140 改为 `notemd-plugin-v0.2.0`)及 `Cargo.lock`
+- Modify: `~/git/note.md-archive/src-tauri/Cargo.toml`(L39–40 改为 `core-v0.2.0`,L140 的 `notemd-sumi-backend` 改为 `{ git = "https://github.com/wizlijun/sumiwrite", rev = "<停点 B 合并后的 main 提交>" }`)及 `Cargo.lock`
 - Modify: `src-tauri/src/sumi/service.rs`(L11 `VERSION = 2`;`Backend::open` L92;open 载荷 L122;L262–285 的测试)
 - Modify: `src-tauri/src/sumi/durability.rs`(加 `set_archive`)
 - Modify: `src-tauri/src/sumi/mod.rs`:
@@ -431,7 +432,7 @@ git commit -m "Add the Sumi writing workspace config and legacy library takeover
 
 - [ ] **Step 1: 切换依赖**
 
-去掉任务 5 的临时 `[patch]`,把 tag 改成 `core-v0.2.0` 与 `notemd-plugin-v0.2.0`。运行 `cargo +1.99.0 update -p write-core -p sumi-protocol -p notemd-sumi-backend --manifest-path src-tauri/Cargo.toml`。Expected:成功解析;如果失败,说明停点 A 或 B 的推送还没做,回去等用户。
+去掉任务 5 的临时 `[patch]`,把 `write-core`、`sumi-protocol` 的 tag 改成 `core-v0.2.0`,`notemd-sumi-backend` 改为 `{ git = "https://github.com/wizlijun/sumiwrite", rev = "<停点 B 合并后的 main 提交>" }`(Cargo.lock 固定它)。运行 `cargo +1.99.0 update -p write-core -p sumi-protocol -p notemd-sumi-backend --manifest-path src-tauri/Cargo.toml`。Expected:成功解析;如果失败,说明停点 A 或 B 的推送还没做,回去等用户。
 
 - [ ] **Step 2: 写失败的测试**(`lifecycle_tests.rs`,沿用现有测试夹具)
 
@@ -463,6 +464,12 @@ Expected: 新测试失败或编译失败
 - `home-content-edit`:取 `resolve_vault_root(app)`,先 canonicalize。投影路径以它为前缀时,按相对路径拼回未 canonicalize 的选中根再发出,与现行语义一致;否则不发。
 - 五处 `projection::paths(&ws.root, …)` 改为 `ws.projection_paths(…)`;`open_path` 改为检查 canonical 归档目录前缀。
 - 删掉“请先打开 Vault”“Vault 已切换，旧编辑会话已停止”这两条报错路径。
+
+**宿主清单(本任务与任务 7 共同遵守)**
+
+- 归档目录为 `None` 且有遗留投影任务时,每次后台 open 都会发出 `Failed{page_id:""}`「尚未设置归档目录」。宿主不得对每个事件弹 toast:忽略空 `page_id`,或并入「选择归档目录」提示。
+- `retarget` 按字符串比较归档目录。宿主必须每次存储并传入同一个规范路径字符串(只 canonicalize 一次,持久化那个字符串;注意 APFS 上 NFC/NFD 差异),否则后台会当成新目录而全部重新发布。
+- v2 宿主遇到旧后台(hello 被拒,报 "unsupported Sumi Write service version")时,显示「请同时更新宿主和插件」。
 
 - [ ] **Step 5: 验证**
 
@@ -546,6 +553,8 @@ Expected: 新测试失败
 
 恢复的允许根 = [canonical 归档目录(可用时), canonical 当前 vault(打开时)]。
 
+`archive_get` 不得因 `workspace.json` 损坏而失败:返回 `archive: null`、`available: false`,并通过它自己的路径提示「写作工作区配置损坏，请检查 <路径>」,以免拖垮插件界面启动。(设计稿对损坏处理只建议原子写入,未另作规定,故按此执行。)
+
 CHANGELOG 两份各加一条(写在版本节最前面):“玄霜写作的纸页库和归档目录不再跟随 vault:升级后原有纸页与同步配对原样保留;可以在设置里选择任意文件夹作归档目录。需同时更新宿主和玄霜写作插件。”
 
 - [ ] **Step 4: 验证**
@@ -578,14 +587,16 @@ git commit -m "Add Sumi archive folder commands and archive-rooted recovery"
 
 - [ ] **Step 1: 写明交付现状**
 
-上列各处的状态行仍保持 `[未定]`。按已发生的事实写:“sumiwrite 已合并并打 tag `notemd-plugin-v0.2.0`;note.md 侧在本地分支 `sumi/archive-directory`(提交 …),待合并、推送与配套发版”。不写 note.md 的 blob 链接,因为它们还没推送。
+上列各处的状态行仍保持 `[未定]`。按已发生的事实写:“sumiwrite 已合并并推送 main(提交 …),插件 tag 待发版日打;note.md 侧在本地分支 `sumi/archive-directory`(提交 …),待合并、推送与配套发版”。不写 note.md 的 blob 链接,因为它们还没推送。
 
 - [ ] **Step 2: 写明发版日要做的事**
 
 在 `04-known-gaps.md` 的 v2 条目里写清:
 
-- 发版当天,`manifest.v2.json` 的 `engines.notemd` 改为 `>=<该日 scripts/release.sh 推出的宿主版本>`;
-- 宿主与插件同一轮发布;
+- 发版当天,`manifest.v2.json` 的 `engines.notemd` 改为 `>=<该日 scripts/release.sh 推出的宿主版本>`,并在 sumiwrite 提交这次 engines 改动;
+- 在该提交上打 `notemd-plugin-v0.2.0` 并推送;
+- 宿主把 `notemd-sumi-backend` 从 `rev` 改为 `tag = "notemd-plugin-v0.2.0"`,刷新 `Cargo.lock`;
+- 然后宿主与插件同一轮发布;
 - 发布后,把上列状态行改为已交付,并补上 note.md 的 blob 链接。
 
 这些由用户在发版时执行。

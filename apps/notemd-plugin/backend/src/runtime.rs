@@ -147,6 +147,14 @@ impl State {
             network:Mutex::new(None),events:std::sync::Mutex::new(Some(event_task))}));
         Ok(json!({"version":VERSION,"instance":self.instance,"session":request.session}))
     }
+    /// Dispatches a durability request and mirrors an archive retarget into the session binding,
+    /// so a later idempotent `open` compares against the archive the durability thread now uses.
+    async fn durability_request(session:&Session,request:Request)->Result<Value> {
+        let retarget=match &request {Request::SetArchive {archive}=>Some(archive.clone()),_=>None};
+        let reply=durability_rpc::dispatch(&session.durable,request).await?;
+        if let Some(archive)=retarget {*session.archive.lock().map_err(crate::err)?=archive;}
+        Ok(reply)
+    }
     async fn font_request(&self,envelope:FontEnvelope)->Result<Value> {
         version(envelope.version)?;
         let cache=private_directory(&envelope.cache)?;
@@ -204,11 +212,7 @@ impl State {
                 let envelope:Envelope=decode(params)?;
                 let session=self.session(&envelope).await?;
                 if method=="durability" {
-                    let request=decode::<Request>(envelope.payload)?;
-                    let retarget=match &request {Request::SetArchive {archive}=>Some(archive.clone()),_=>None};
-                    let reply=durability_rpc::dispatch(&session.durable,request).await?;
-                    if let Some(archive)=retarget {*session.archive.lock().map_err(crate::err)?=archive;}
-                    Ok(reply)
+                    Self::durability_request(&session,decode::<Request>(envelope.payload)?).await
                 }
                 else if method=="sound" {
                     let request=decode(envelope.payload)?;
@@ -294,6 +298,21 @@ mod tests {
         let other=tempfile::tempdir().unwrap();let missing=other.path().join("missing archive");
         open(&plugin.state,request(&plugin.state,other.path(),&session(),"abc-123",json!(missing))).await.unwrap();
         assert!(!missing.exists());
+    }
+    #[tokio::test]
+    async fn reopen_after_set_archive_follows_the_new_archive() {
+        let dir=tempfile::tempdir().unwrap();let plugin=Plugin::new();let id=session();
+        let (a,b)=(dir.path().join("archive-a"),dir.path().join("archive-b"));
+        std::fs::create_dir_all(&a).unwrap();std::fs::create_dir_all(&b).unwrap();
+        open(&plugin.state,request(&plugin.state,dir.path(),&id,WORKSPACE,json!(a))).await.unwrap();
+        let bound=plugin.state.sessions.lock().await.get(&id).cloned().unwrap();
+        State::durability_request(&bound,Request::SetArchive {archive:Some(b.clone())}).await.unwrap();
+        assert_eq!(*bound.archive.lock().unwrap(),Some(b.clone()));
+        // The same session opening again with the new archive is idempotent.
+        open(&plugin.state,request(&plugin.state,dir.path(),&id,WORKSPACE,json!(b))).await.unwrap();
+        // Current behaviour: the old archive no longer matches the binding and is refused.
+        let stale=request(&plugin.state,dir.path(),&id,WORKSPACE,json!(a));
+        assert_eq!(open(&plugin.state,stale).await.unwrap_err(),"workspace session paths changed");
     }
     #[tokio::test]
     async fn same_workspace_cannot_bind_two_sessions() {

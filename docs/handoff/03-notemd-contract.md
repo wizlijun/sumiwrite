@@ -35,7 +35,7 @@
 
 **通用规则**
 
-- 这 20 个命令(v2 新增 3 个,见下)全部由 UI 桥(插件窗口的 WebView)调用,**全部**要求能力 `editor.native`(`host_api.rs`),未知方法返回 `METHOD_NOT_FOUND`。
+- 共 23 个命令,其中 v2 新增 3 个(见下),全部由 UI 桥(插件窗口的 WebView)调用,**全部**要求能力 `editor.native`(`host_api.rs`),未知方法返回 `METHOD_NOT_FOUND`。
 - 参数为 JSON 对象,键名按下表原样(`pageId`、`fontFamily` 等是 camelCase)。缺少必填键时错误文案为 `缺少参数 <键名>`。
 - 失败统一以 `ERR_INTERNAL` + 中文错误文案返回;用户可读的错误文案属于契约的一部分,但其措辞不保证稳定,插件不得据文案分支。**例外**:`CAPABILITY_DENIED: …` 前缀与 `METHOD_NOT_FOUND`。
 - 除 `host.sumi.state`(不支持原生编辑的平台上直接返回 `available:false`)外,所有命令要求 Sumi 窗口(`window_label(notemd.sumi, "main")`)已打开,否则返回 `Sumi 窗口未打开`。
@@ -59,7 +59,7 @@
 | `host.sumi.restore_projection` | `pageId` | `{page_id, raw, revision, recovery_path}` | 把归档目录里被外部改坏或缺失的投影文件,按本机事实源重新写出;原文件先保全到 `recovery_path`。该页有未关闭的编辑面时拒绝(草稿不丢弃) |
 | `host.sumi.archive_get` **v2 新增 `[未定]`** | 无 | `{"archive":string\|null,"available":bool,"untaken":[string]}`:当前归档目录(`null` 表示尚未设置)、是否可用、未接管的旧纸页库列表 | 读取归档目录设置 |
 | `host.sumi.archive_choose` **v2 新增 `[未定]`** | 无 | 与 `archive_get` 同形 | 宿主弹出系统目录选择框,并执行“停会话、改配置、重开”的改目录流程(旧目录文件不删不搬,见 [notemd-desktop §2.0](../spec/platform/notemd-desktop.md))。用户取消则返回当前设置 |
-| `host.sumi.recovery_choose` **v2 新增 `[未定]`** | 无 | `{"path":string\|null}`(用户取消为 `null`) | 宿主弹出系统文件选择框,起点为归档目录,供“从归档目录选文件恢复” |
+| `host.sumi.recovery_choose` **v2 新增 `[未定]`** | 无 | `{"path":string\|null}`(用户取消为 `null`) | 宿主弹出系统文件选择框,起点为归档目录,供“从归档目录选文件恢复”。用户选定文件后,由宿主自己打开它(走外部路径打开,进入现有 SumiRecovery 流程);返回的 `{path}` 只是回执,界面不必再做任何事 |
 | `host.sumi.export` | `pageId`;`format`:`markdown`(只含正文,保存名 `Sumi Write.md`)或 `archive`(含逐行时间,保存名 `Sumi Write.zip`) | `{saved:boolean}`(用户在系统保存对话框取消则为 `false`) | 导出纸页。若该页由别处持有,拒绝;由当前窗口持有则先 `flush` |
 | `host.sumi.pair` | `serviceUrl`(非空字符串);`invitation`(配对码的 JSON 字符串,字段 `spaceId`、`code`、`expiresAt`) | `SumiState` | 本设备接受配对码,加入同步空间。同步连接未初始化时返回 `同步连接正在初始化` |
 | `host.sumi.invite` | 无 | `{invitation:string}`(配对码的 JSON 字符串) | 为本空间生成给另一台设备用的配对码 |
@@ -271,7 +271,7 @@ owner 是“当前持有某纸页编辑面的 `(窗口, 标签页, 编辑面)`�
 
 `durable`(事件通知)、`current`、`editor_state`(返回激活页、持有情况、各页 state vector)、`directory`(目录变更)、`remote`(合入远端更新)、`status`(同步状态)、`auth_load`、`auth_pair`、`auth_token`(系统钥匙串身份与令牌)。所有非 `durable` 回调须带与宿主工作区根一致的 `root`(**v2 `[未定]`**:`root` 的值为工作区 ID),否则 `Sumi后台工作区绑定不一致`;`remote`、`directory` 受“变更闸门”约束,同步停止后到达的旧事件被拒绝。
 
-**D8 后台请求 `SetArchive` `[未定]`(v2 新增)**:`Request::SetArchive { archive }`,宿主在改归档目录的流程里,于清空投影队列与各页基线之后发给后台,`archive` 为新的绝对路径或 `null`。不新增服务消息之外的握手字段。
+**D8 后台请求 `SetArchive` `[未定]`(v2 新增)**:`Request::SetArchive { archive }`,宿主在改归档目录的流程里,于清空投影队列与各页基线之后发给后台,`archive` 为新的绝对路径或 `null`。不新增 hello 握手字段与能力字符串;版本区分只靠 `VERSION = 2`。
 
 ### 1.5 版本规则
 
