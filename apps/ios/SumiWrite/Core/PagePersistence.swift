@@ -33,9 +33,15 @@ final class PagePersistence: CommitSink {
                 return .ready(p, try store.loadFresh(pageId: first))
             }
             let page = try CorePage.create(pageId: newPageId())
-            p.queue.async {
+            // 同步写完首次落盘再返回,避免后续增量先于完整状态入队。
+            var initialError: Error?
+            p.queue.sync {
                 do { try store.commitInitial(page: page, opId: UUID().uuidString) }
-                catch { p.fail("initial commit: \(error)") }
+                catch { initialError = error }
+            }
+            if let initialError {
+                log.error("initial commit failed: \(String(describing: initialError))")
+                return unreadable
             }
             return .ready(p, page)
         } catch {

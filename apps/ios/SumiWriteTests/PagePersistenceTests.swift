@@ -107,6 +107,20 @@ final class PagePersistenceTests: XCTestCase {
         withExtendedLifetime(p2) { XCTAssertFalse(page2.body().contains("之后")) }
     }
 
+    func test_firstEditRightAfterOpenIsPersisted() throws {
+        let dir = tempDir()
+        let (p, page) = try openReady(dir)
+        let failed = expectation(description: "onFailure")
+        failed.isInverted = true
+        p.onFailure = { _ in failed.fulfill() }
+        let m = PageModel(page: page, sink: p)
+        _ = m.userEdited(visible: "立刻", composing: false, caret: 2)
+        p.waitUntilIdle()
+        wait(for: [failed], timeout: 0.3)
+        let (p2, page2) = try openReady(dir)
+        withExtendedLifetime(p2) { XCTAssertEqual(page2.body(), page.body()) }
+    }
+
     func test_corruptStoreIsLeftUntouchedAndReadOnly() throws {
         let dir = tempDir()
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
