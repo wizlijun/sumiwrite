@@ -37,5 +37,6 @@ pub async fn dispatch(worker: &Durability, request: Request) -> Result<Value, St
         Request::AppliedIncoming { receipts } => call!(worker.applied_incoming(receipts)),
         Request::PendingInbox { page_id } => call!(worker.pending_inbox(page_id)),
         Request::ReceiveRemote { incoming, generation } => call!(worker.receive_remote(incoming, generation)),
+        Request::SetArchive { archive } => call!(worker.set_archive(archive)),
     }
 }

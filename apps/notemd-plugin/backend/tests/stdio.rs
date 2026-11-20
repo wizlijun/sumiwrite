@@ -3,6 +3,7 @@ use serde_json::{json,Value};
 use std::{path::Path, time::Duration};
 use tokio::{io::{AsyncBufReadExt,AsyncWriteExt,BufReader,Lines},process::{Child,ChildStdin,ChildStdout,Command}};
 use sumi_protocol::durability::{Create,LocalEdit,Request,CommitReceipt,Loaded};
+const WORKSPACE:&str="0f1e2d3c-4b5a-4968-8776-a5b4c3d2e1f0";
 struct Process {child:Child,input:ChildStdin,output:Lines<BufReader<ChildStdout>>,next:u64}
 impl Process {
     async fn start()->Self {
@@ -43,8 +44,12 @@ impl Process {
         }
     }
     async fn service(&mut self,method:&str,params:Value)->Result<Value,Value>{self.raw("service.request",json!({"method":method,"params":params})).await}
-    async fn hello(&mut self)->String {self.service("hello",json!({"version":1})).await.unwrap()["instance"].as_str().unwrap().into()}
+    async fn hello(&mut self)->String {self.service("hello",json!({"version":2})).await.unwrap()["instance"].as_str().unwrap().into()}
     async fn open(&mut self,instance:&str,session:&str,dir:&Path)->Value {
+        self.service("open",json!({"version":2,"instance":instance,"session":session,"workspace":WORKSPACE,"archive":dir.join("vault"),"database":dir.join("private/documents.sqlite3"),"fontCache":dir.join("fonts")})).await.unwrap()
+    }
+    /// The previously released executable only speaks service version 1.
+    async fn open_v1(&mut self,instance:&str,session:&str,dir:&Path)->Value {
         self.service("open",json!({"version":1,"instance":instance,"session":session,"vault":dir.join("vault"),"database":dir.join("private/documents.sqlite3"),"fontCache":dir.join("fonts")})).await.unwrap()
     }
     async fn durable(&mut self,instance:&str,session:&str,request:Request)->Result<Value,Value>{self.service("durability",json!({"instance":instance,"session":session,"payload":request})).await}
@@ -53,7 +58,8 @@ impl Process {
 async fn real_stdio_advertises_and_serves_atomic_observation() {
     let temp=tempfile::tempdir().unwrap();std::fs::create_dir(temp.path().join("vault")).unwrap();
     let mut process=Process::start().await;
-    let hello:sumi_protocol::service::Hello=serde_json::from_value(process.service("hello",json!({"version":1})).await.unwrap()).unwrap();
+    assert!(process.service("hello",json!({"version":1})).await.is_err(),"service version 1 is retired");
+    let hello:sumi_protocol::service::Hello=serde_json::from_value(process.service("hello",json!({"version":2})).await.unwrap()).unwrap();
     let page=uuid::Uuid::new_v4().to_string();let session=uuid::Uuid::new_v4().to_string();
     process.open(&hello.instance,&session,temp.path()).await;
     let doc=write_core::Document::new(&page,1,19).unwrap();
@@ -77,7 +83,7 @@ async fn real_legacy_hello_requests_plugin_update_without_blocking_fonts_or_soun
     // Production guard rejects before sending the unknown Request variant.
     // Existing service version 1 calls still work against that exact old binary.
     let temp=tempfile::tempdir().unwrap();std::fs::create_dir(temp.path().join("vault")).unwrap();
-    let session=uuid::Uuid::new_v4().to_string();legacy.open(&hello.instance,&session,temp.path()).await;
+    let session=uuid::Uuid::new_v4().to_string();legacy.open_v1(&hello.instance,&session,temp.path()).await;
     hello.check_request("fonts",&json!({"operation":"statuses"})).unwrap();
     let fonts=legacy.service("fonts",json!({"version":1,"cache":temp.path().join("fonts"),"payload":{"operation":"statuses"}})).await.unwrap();
     assert!(!fonts["statuses"].as_array().unwrap().is_empty());
@@ -98,8 +104,8 @@ async fn real_stdio_commit_kill_reopen_replay_and_private_boundary() {
     assert!(ui_error["message"].as_str().unwrap().contains("no ui handler"));
     assert!(first.durable(&instance,&uuid::Uuid::new_v4().to_string(),Request::List).await.is_err());
     assert!(first.durable("stale-instance",&session,Request::List).await.is_err());
-    assert!(first.service("open",json!({"version":1,"instance":instance,"session":uuid::Uuid::new_v4().to_string(),"vault":temp.path().join("vault"),"database":temp.path().join("private/documents.sqlite3"),"fontCache":temp.path().join("fonts")})).await.is_err());
-    let fonts=first.service("fonts",json!({"version":1,"cache":temp.path().join("fonts"),"payload":{"operation":"statuses"}})).await.unwrap();
+    assert!(first.service("open",json!({"version":2,"instance":instance,"session":uuid::Uuid::new_v4().to_string(),"workspace":WORKSPACE,"archive":temp.path().join("vault"),"database":temp.path().join("private/documents.sqlite3"),"fontCache":temp.path().join("fonts")})).await.is_err());
+    let fonts=first.service("fonts",json!({"version":2,"cache":temp.path().join("fonts"),"payload":{"operation":"statuses"}})).await.unwrap();
     assert_eq!(fonts["statuses"].as_array().unwrap().len(),6);
     assert!(fonts["statuses"].as_array().unwrap().iter().all(|v|v["status"]=="not_downloaded"));
     let sound_status=first.service("sound",json!({"instance":instance,"session":session,"payload":{"operation":"status"}})).await.unwrap();
@@ -144,6 +150,6 @@ async fn real_stdio_commit_kill_reopen_replay_and_private_boundary() {
     second.raw("$deactivate",Value::Null).await.unwrap();
     assert!(tokio::time::timeout(Duration::from_secs(5),second.child.wait()).await.unwrap().unwrap().success());
     // A clean shutdown releases its owner lock too.
-    let reopened=notemd_sumi_backend::durability::Durability::open(temp.path().join("vault"),temp.path().join("private/documents.sqlite3"), |_|{}).await.unwrap();
+    let reopened=notemd_sumi_backend::durability::Durability::open(Some(temp.path().join("vault")),temp.path().join("private/documents.sqlite3"), |_|{}).await.unwrap();
     assert_eq!(reopened.load(page).await.unwrap().revision,1);
 }

@@ -5,7 +5,7 @@ use rusqlite::{params, OptionalExtension, Transaction};
 use serde_json::Value;
 use std::{
     collections::{HashMap, HashSet, VecDeque},
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{mpsc, Arc},
     time::{Duration, Instant},
 };
@@ -38,6 +38,15 @@ fn read_u64(row: &rusqlite::Row<'_>, index: usize) -> rusqlite::Result<u64> {
             Box::new(e),
         )
     })
+}
+/// Host shows this verbatim while the writing workspace has no archive directory.
+const NO_ARCHIVE: &str = "尚未设置归档目录";
+/// Keep the kernel's archive-unavailable text exact so the host can recognize it.
+fn projection_error(e: write_core::Error) -> String {
+    match e {
+        write_core::Error::Invalid(message) if message == projection::ARCHIVE_UNAVAILABLE => message,
+        other => other.to_string(),
+    }
 }
 fn client_id() -> u64 {
     Uuid::new_v4().as_u128() as u32 as u64
@@ -94,7 +103,7 @@ impl Drop for Owner {
 }
 impl Durability {
     pub async fn open(
-        vault: PathBuf,
+        archive: Option<PathBuf>,
         database: PathBuf,
         notify: impl Fn(DurableEvent) + Send + Sync + 'static,
     ) -> Result<Self> {
@@ -103,7 +112,7 @@ impl Durability {
         let thread = std::thread::Builder::new()
             .name("sumi-durability".into())
             .spawn(move || {
-                let mut worker = match Worker::open(vault, database, Arc::new(notify)) {
+                let mut worker = match Worker::open(archive, database, Arc::new(notify)) {
                     Ok(worker) => {
                         let _ = ready.send(Ok(()));
                         worker
@@ -213,6 +222,12 @@ impl Durability {
             w.drain()?;
             w.observe_page(&page_id)
         }).await
+    }
+    /// Point projection at another archive directory, or none. A change clears
+    /// every baseline and pending job, then republishes on the checkpoint cadence.
+    /// Files in the previous directory are never moved or deleted.
+    pub async fn set_archive(&self, archive: Option<PathBuf>) -> Result<()> {
+        self.request(move |w| w.set_archive(archive)).await
     }
     pub async fn flush(&self) -> Result<()> {
         self.request(|w| {
@@ -483,7 +498,7 @@ impl Durability {
 
 struct Worker {
     _owner_lock: std::fs::File,
-    vault: PathBuf,
+    archive: Option<PathBuf>,
     store: Store,
     docs: HashMap<String, Document>,
     pending: VecDeque<Queued>,
@@ -493,13 +508,11 @@ struct Worker {
 }
 impl Worker {
     fn open(
-        vault: PathBuf,
+        archive: Option<PathBuf>,
         database: PathBuf,
         notify: Arc<dyn Fn(DurableEvent) + Send + Sync>,
     ) -> Result<Self> {
-        if !vault.is_dir() {
-            return Err("Vault must be an existing directory".into());
-        }
+        // The archive may be absent (unset, or an unplugged disk). Never create it.
         if let Some(parent) = database.parent() {
             std::fs::create_dir_all(parent).map_err(error)?;
         }
@@ -518,11 +531,12 @@ impl Worker {
                 CREATE TABLE IF NOT EXISTS sumi_dirty_projection(page_id TEXT PRIMARY KEY,revision INTEGER NOT NULL);
                 CREATE TABLE IF NOT EXISTS sumi_edit_receipts(op_id TEXT PRIMARY KEY,digest TEXT NOT NULL,page_id TEXT NOT NULL,epoch INTEGER NOT NULL,generation INTEGER NOT NULL,revision INTEGER NOT NULL);
                 CREATE TABLE IF NOT EXISTS sumi_local_update_identity(op_id TEXT PRIMARY KEY,digest TEXT NOT NULL);
-                CREATE TABLE IF NOT EXISTS sumi_echo_receipts(op_id TEXT PRIMARY KEY,digest TEXT NOT NULL,page_id TEXT NOT NULL,epoch INTEGER NOT NULL,generation INTEGER NOT NULL,revision INTEGER NOT NULL);").map_err(db)
+                CREATE TABLE IF NOT EXISTS sumi_echo_receipts(op_id TEXT PRIMARY KEY,digest TEXT NOT NULL,page_id TEXT NOT NULL,epoch INTEGER NOT NULL,generation INTEGER NOT NULL,revision INTEGER NOT NULL);
+                CREATE TABLE IF NOT EXISTS sumi_projection_target(id INTEGER PRIMARY KEY CHECK(id=1),archive TEXT);").map_err(db)
         }).map_err(error)?;
         let mut worker = Self {
             _owner_lock: owner_lock,
-            vault,
+            archive: None,
             store,
             docs: HashMap::new(),
             pending: VecDeque::new(),
@@ -530,7 +544,9 @@ impl Worker {
             dirty_since: None,
             last_edit: Instant::now(),
         };
-        // A conflict does not make the Vault unreadable. The durable pending pair remains for retry/import.
+        worker.retarget(archive)?;
+        // A conflict or a missing archive never makes the database unreadable.
+        // The durable pending pair remains for retry/import.
         if let Err(e) = worker.recover_projections() {
             (worker.notify)(DurableEvent::Failed {
                 page_id: String::new(),
@@ -580,6 +596,59 @@ impl Worker {
             if sumi_protocol::durability::edit_receipt(&local, false, None)? == original { return Ok(true); }
         }
         Ok(false)
+    }
+    fn archive(&self) -> Result<&Path> {
+        self.archive.as_deref().ok_or_else(|| NO_ARCHIVE.to_owned())
+    }
+    fn archive_paths(&self, filename: &str) -> Result<(PathBuf, PathBuf)> {
+        projection::paths(self.archive()?, filename).map_err(projection_error)
+    }
+    fn set_archive(&mut self, archive: Option<PathBuf>) -> Result<()> {
+        self.drain()?;
+        self.retarget(archive)
+    }
+    /// Record the projection target. The first record (new or pre-archive database)
+    /// adopts the current baselines; a different target starts projection over.
+    fn retarget(&mut self, archive: Option<PathBuf>) -> Result<()> {
+        if archive.as_ref().is_some_and(|path| !path.is_absolute()) {
+            return Err("archive path must be absolute".into());
+        }
+        let target = archive.as_ref()
+            .map(|path| path.to_str().ok_or("archive path must be valid UTF-8"))
+            .transpose()?;
+        let reset = self.store.transaction(|tx| {
+            let current: Option<Option<String>> = tx
+                .query_row("SELECT archive FROM sumi_projection_target WHERE id=1", [], |r| r.get(0))
+                .optional().map_err(db)?;
+            match current {
+                None => {
+                    tx.execute("INSERT INTO sumi_projection_target(id,archive) VALUES(1,?1)", [target]).map_err(db)?;
+                    Ok(false)
+                }
+                Some(current) if current.as_deref() == target => Ok(false),
+                Some(_) => {
+                    tx.execute_batch("DELETE FROM sumi_projection_queue;
+                        DELETE FROM sumi_baselines;
+                        DELETE FROM sumi_import_permissions;").map_err(db)?;
+                    for entry in catalog::list(tx)? {
+                        // A directory entry whose text has not arrived has nothing to project yet.
+                        let stored: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM documents WHERE page_id=?1)",
+                            [&entry.id], |r| r.get(0)).map_err(db)?;
+                        if !entry.deleted && entry.filename().is_some() && stored {
+                            tx.execute("INSERT OR REPLACE INTO sumi_dirty_projection(page_id,revision) VALUES(?1,0)", [&entry.id]).map_err(db)?;
+                        }
+                    }
+                    tx.execute("UPDATE projections SET complete=0", []).map_err(db)?;
+                    tx.execute("UPDATE sumi_projection_target SET archive=?1 WHERE id=1", [target]).map_err(db)?;
+                    Ok(true)
+                }
+            }
+        }).map_err(error)?;
+        self.archive = archive;
+        if reset {
+            self.dirty_since = Some(Instant::now());
+        }
+        Ok(())
     }
     fn report_failure(&self, error: String) {
         if let Some(next) = self.pending.front() {
@@ -926,7 +995,7 @@ impl Worker {
                     *saved_revision == revision && pair.markdown == raw_markdown
                 })
                 .and_then(|(filename, pair, _)| {
-                    let (path, _) = projection::paths(&self.vault, &filename).ok()?;
+                    let (path, _) = self.archive_paths(&filename).ok()?;
                     Some(ProjectionIdentity {
                         path: path.to_string_lossy().into_owned(),
                         sha256: storage::sha256(pair.markdown.as_bytes()),
@@ -968,7 +1037,7 @@ impl Worker {
         Ok(PageObservation { loaded, baseline, files })
     }
     fn observe_files(&mut self, id: &str, filename: &str, baseline: Option<&PublishedBaseline>) -> Result<ObservedFiles> {
-        let (md, meta) = projection::paths(&self.vault, filename).map_err(error)?;
+        let (md, meta) = self.archive_paths(filename)?;
         let observed = super::external::Observed::read(&md, &meta)?;
         // Our publisher cannot run within this job. An uncoordinated external
         // writer still can; refuse an unstable pair instead of importing it.
@@ -1015,11 +1084,20 @@ impl Worker {
             };
             self.store.transaction(|tx| {tx.execute("UPDATE sumi_projection_queue SET attempted=1 WHERE job_id=?1 AND attempted=0",[job_id]).map_err(db)?;Ok(())}).map_err(error)?;
             let baseline: Baseline = serde_json::from_str(&baseline).map_err(error)?;
-            projection::publish(&self.vault, &filename, &pair, &baseline).map_err(error)?;
+            let archive = self.archive()?;
+            if baseline.markdown_sha256.is_none() && baseline.metadata_sha256.is_none() {
+                // No baseline in this archive: adopt identical bytes, replace this
+                // page's own old version, never overwrite anything else.
+                match projection::publish_first(archive, &filename, &pair).map_err(projection_error)? {
+                    projection::FirstWrite::Conflict => return Err(projection::FIRST_WRITE_CONFLICT.into()),
+                    projection::FirstWrite::Written(_) | projection::FirstWrite::Adopted(_) | projection::FirstWrite::Replaced(_) => {}
+                }
+            } else {
+                projection::publish(archive, &filename, &pair, &baseline).map_err(projection_error)?;
+            }
             if let Some((old_filename, old_pair, _)) = self.published_files(id)? {
                 if old_filename != filename {
-                    let (old_md, old_meta) =
-                        projection::paths(&self.vault, &old_filename).map_err(error)?;
+                    let (old_md, old_meta) = self.archive_paths(&old_filename)?;
                     // Remove only this page's exact prior portable files; external edits are retained.
                     for (path, bytes) in [
                         (old_md, old_pair.markdown.as_bytes()),
@@ -1151,7 +1229,7 @@ impl Worker {
         let filename = entry
             .filename()
             .ok_or("blank page has no files to repair")?;
-        let (md, meta) = projection::paths(&self.vault, &filename).map_err(error)?;
+        let (md, meta) = self.archive_paths(&filename)?;
         let observed = super::external::Observed::read(&md, &meta)?;
         self.ensure_document(id)?;
         let recovery = preserve_originals(
@@ -1199,7 +1277,7 @@ impl Worker {
     fn check_observed(&mut self, id: &str, observed: &FilePair) -> Result<()> {
         let entry = self.entry(id)?;
         let filename = entry.filename().ok_or("page has no projected filename")?;
-        let (md, meta) = projection::paths(&self.vault, &filename).map_err(error)?;
+        let (md, meta) = self.archive_paths(&filename)?;
         for path in [&md, &meta] {
             let metadata = std::fs::symlink_metadata(path).map_err(error)?;
             if !metadata.is_file()
@@ -1609,7 +1687,7 @@ mod tests {
         let vault = temp.path().join("vault");
         std::fs::create_dir(&vault).unwrap();
         let db = temp.path().join("sumi.sqlite3");
-        let durable = Durability::open(vault.clone(), db.clone(), |_| {}).await.unwrap();
+        let durable = Durability::open(Some(vault.clone()), db.clone(), |_| {}).await.unwrap();
         let id = Uuid::new_v4().to_string();
         let mut document = Document::new(&id, 1, 1).unwrap();
         document.replace(0, 0, 0, &"中文第一页😀\n".repeat(200), 123).unwrap();
@@ -1620,7 +1698,7 @@ mod tests {
         }).await.unwrap();
         durable.flush().await.unwrap();
         drop(durable);
-        let reopened = Durability::open(vault, db, |_| {}).await.unwrap();
+        let reopened = Durability::open(Some(vault), db, |_| {}).await.unwrap();
         let previews = reopened.excerpts().await.unwrap();
         assert_eq!(previews[&id], body.chars().take(512).collect::<String>());
         assert!(!previews[&id].contains("page_id"));
@@ -1637,7 +1715,7 @@ mod tests {
         let events = Arc::new(Mutex::new(Vec::new()));
         let capture = events.clone();
         let worker = Worker::open(
-            temp.path().into(),
+            Some(temp.path().into()),
             db.clone(),
             Arc::new(move |e| capture.lock().unwrap().push(e)),
         )
@@ -1803,7 +1881,7 @@ mod tests {
         ).map_err(db)).unwrap();
         assert_eq!(pending, 2);
         drop(f.worker);
-        let mut reopened = Worker::open(f.temp.path().into(), f.db, Arc::new(|_| {})).unwrap();
+        let mut reopened = Worker::open(Some(f.temp.path().into()), f.db, Arc::new(|_| {})).unwrap();
         let observation = reopened.observe_page(&id).unwrap();
         assert_eq!(observation.loaded.revision, ui.revision());
         assert_eq!(reopened.store.load(&id, 91).unwrap().body(), ui.body());
@@ -1816,7 +1894,7 @@ mod tests {
     #[tokio::test]
     async fn observation_rpc_is_typed_and_remains_coherent_after_background_checkpoint() {
         let temp = tempfile::tempdir().unwrap();
-        let worker = Durability::open(temp.path().into(), temp.path().join("db"), |_| {}).await.unwrap();
+        let worker = Durability::open(Some(temp.path().into()), temp.path().join("db"), |_| {}).await.unwrap();
         let id = Uuid::new_v4().to_string();
         let mut ui = Document::new(&id, 1, 17).unwrap();
         ui.replace(0, 0, 0, "old", 100).unwrap();
@@ -1887,7 +1965,7 @@ mod tests {
             "文字"
         );
         drop(f.worker);
-        let mut reopened = Worker::open(f.temp.path().into(), f.db, Arc::new(|_| {})).unwrap();
+        let mut reopened = Worker::open(Some(f.temp.path().into()), f.db, Arc::new(|_| {})).unwrap();
         assert_eq!(reopened.loaded(&id).unwrap().revision, 1);
     }
     #[test]
@@ -1975,7 +2053,7 @@ mod tests {
         );
         // A process restart reconstructs the delta log, then publishes the latest exact pair.
         drop(f.worker);
-        let mut restarted = Worker::open(f.temp.path().into(), f.db, Arc::new(|_| {})).unwrap();
+        let mut restarted = Worker::open(Some(f.temp.path().into()), f.db, Arc::new(|_| {})).unwrap();
         assert_eq!(restarted.loaded(&id).unwrap().revision, ui.revision());
         assert_eq!(
             restarted.baseline(&id).unwrap().unwrap().revision,
@@ -1991,7 +2069,7 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let events = Arc::new(std::sync::Mutex::new(Vec::new()));
         let output = events.clone();
-        let worker = Durability::open(temp.path().into(), temp.path().join("db"), move |event| {
+        let worker = Durability::open(Some(temp.path().into()), temp.path().join("db"), move |event| {
             output.lock().unwrap().push(event)
         })
         .await
@@ -2081,7 +2159,7 @@ mod tests {
         let (md, _) = projection::paths(f.temp.path(), &entry.filename().unwrap()).unwrap();
         std::fs::write(&md, &pair.markdown).unwrap();
         drop(f.worker);
-        let mut reopened = Worker::open(f.temp.path().into(), f.db, Arc::new(|_| {})).unwrap();
+        let mut reopened = Worker::open(Some(f.temp.path().into()), f.db, Arc::new(|_| {})).unwrap();
         let baseline = reopened.baseline(&id).unwrap().unwrap();
         assert_eq!(baseline.pair.metadata, pair.metadata);
         assert_eq!(baseline.revision, 2);
@@ -2101,7 +2179,7 @@ mod tests {
         let (md, _) = projection::paths(f.temp.path(), &filename).unwrap();
         std::fs::write(&md, "external intact").unwrap();
         drop(f.worker);
-        let mut reopened = Worker::open(f.temp.path().into(), f.db, Arc::new(|_| {})).unwrap();
+        let mut reopened = Worker::open(Some(f.temp.path().into()), f.db, Arc::new(|_| {})).unwrap();
         assert!(reopened.recover_projections().is_err());
         assert_eq!(std::fs::read_to_string(&md).unwrap(), "external intact");
         assert_eq!(reopened.baseline(&id).unwrap().unwrap().revision, 1);
@@ -2136,7 +2214,7 @@ mod tests {
         };
         f.worker.record_incoming(&incoming, 0).unwrap();
         drop(f.worker);
-        let mut reopened = Worker::open(f.temp.path().into(), f.db, Arc::new(|_| {})).unwrap();
+        let mut reopened = Worker::open(Some(f.temp.path().into()), f.db, Arc::new(|_| {})).unwrap();
         let first = reopened.receive(incoming.clone(), 0).unwrap();
         assert_eq!(first.revision, 2);
         assert!(first.raw_markdown.ends_with("old remote"));
@@ -2303,7 +2381,7 @@ mod tests {
             .ends_with("accepted import"));
         drop(f.worker);
         let mut restarted =
-            Worker::open(f.temp.path().into(), f.db.clone(), Arc::new(|_| {})).unwrap();
+            Worker::open(Some(f.temp.path().into()), f.db.clone(), Arc::new(|_| {})).unwrap();
         assert!(restarted
             .loaded(&id)
             .unwrap()
@@ -2316,7 +2394,7 @@ mod tests {
         let caller = std::thread::current().id();
         let events = Arc::new(Mutex::new(Vec::new()));
         let capture = events.clone();
-        let worker = Durability::open(temp.path().into(), temp.path().join("db"), move |_| {
+        let worker = Durability::open(Some(temp.path().into()), temp.path().join("db"), move |_| {
             capture.lock().unwrap().push(std::thread::current().id())
         })
         .await
@@ -2392,7 +2470,7 @@ mod tests {
         std::fs::write(&md, &baseline.pair.markdown).unwrap();
         // Recovery must write the first attempted pair, then the coalesced latest pair.
         drop(f.worker);
-        let mut reopened = Worker::open(f.temp.path().into(), f.db, Arc::new(|_| {})).unwrap();
+        let mut reopened = Worker::open(Some(f.temp.path().into()), f.db, Arc::new(|_| {})).unwrap();
         assert_eq!(reopened.baseline(&id).unwrap().unwrap().revision, 11);
         assert_eq!(
             storage::parse_pair(
@@ -2498,7 +2576,7 @@ mod tests {
     #[tokio::test]
     async fn two_phase_remote_preserves_ui_order_and_does_not_consume_future_inbox() {
         let temp = tempfile::tempdir().unwrap();
-        let worker = Durability::open(temp.path().into(), temp.path().join("db"), |_| {})
+        let worker = Durability::open(Some(temp.path().into()), temp.path().join("db"), |_| {})
             .await
             .unwrap();
         let id = Uuid::new_v4().to_string();
@@ -2582,7 +2660,7 @@ mod tests {
     #[tokio::test]
     async fn failed_remote_commit_retries_before_the_following_local_edit() {
         let temp = tempfile::tempdir().unwrap();
-        let worker = Durability::open(temp.path().into(), temp.path().join("db"), |_| {})
+        let worker = Durability::open(Some(temp.path().into()), temp.path().join("db"), |_| {})
             .await
             .unwrap();
         let id = Uuid::new_v4().to_string();
@@ -2708,7 +2786,7 @@ mod tests {
         f.worker.store.ack(&original.op_id).unwrap();
         f.worker.store.transaction(|tx| { tx.execute("DELETE FROM sumi_outbox_generation WHERE op_id=?1", [&original.op_id]).map_err(db)?; Ok(()) }).unwrap();
         drop(f.worker); // Simulate a committed response lost before the host observed it.
-        let mut restarted = Worker::open(f.temp.path().into(), f.db, Arc::new(|_| {})).unwrap();
+        let mut restarted = Worker::open(Some(f.temp.path().into()), f.db, Arc::new(|_| {})).unwrap();
         restarted.pending.push_back(queued(original.clone()));
         restarted.drain().unwrap();
         assert_eq!(restarted.receipt(&queued(original.clone())).unwrap(), Some(receipt));
@@ -2756,7 +2834,7 @@ mod tests {
             assert_eq!(f.worker.docs[&id].body(), "before after");
             assert!(f.worker.incoming(&id).unwrap().is_empty());
             drop(f.worker);
-            let mut restarted = Worker::open(f.temp.path().into(), f.db, Arc::new(|_| {})).unwrap();
+            let mut restarted = Worker::open(Some(f.temp.path().into()), f.db, Arc::new(|_| {})).unwrap();
             restarted.pending.push_back(queued(echo.clone(), true));
             restarted.drain().unwrap();
             assert_eq!(restarted.receipt(&queued(echo.clone(), true)).unwrap(), Some(remote_receipt));
@@ -2821,7 +2899,7 @@ mod tests {
         assert!(f.worker.receipt(&queued(echo.clone(), true)).unwrap().is_none());
         assert_eq!(f.worker.incoming(&id).unwrap().len(), 1);
         drop(f.worker);
-        let mut restarted = Worker::open(f.temp.path().into(), f.db, Arc::new(|_| {})).unwrap();
+        let mut restarted = Worker::open(Some(f.temp.path().into()), f.db, Arc::new(|_| {})).unwrap();
         assert_eq!(restarted.loaded(&id).unwrap().revision, original.revision);
         assert_eq!(restarted.incoming(&id).unwrap().len(), 1);
         restarted.store.transaction(|tx| tx.execute_batch("DROP TRIGGER reject_echo_receipt;").map_err(db)).unwrap();
@@ -2864,7 +2942,7 @@ mod tests {
         let first = f.worker.receipt(&queued(remote_edit.clone())).unwrap().unwrap();
         f.worker.checkpoint_dirty().unwrap();
         drop(f.worker);
-        let mut restarted = Worker::open(f.temp.path().into(), f.db, Arc::new(|_| {})).unwrap();
+        let mut restarted = Worker::open(Some(f.temp.path().into()), f.db, Arc::new(|_| {})).unwrap();
         restarted.pending.push_back(queued(remote_edit.clone()));
         restarted.drain().unwrap();
         assert_eq!(restarted.receipt(&queued(remote_edit)).unwrap(), Some(first));
@@ -2878,8 +2956,8 @@ mod tests {
         use sumi_protocol::durability::Request;
         let temp = tempfile::tempdir().unwrap();
         let database = temp.path().join("state.sqlite3");
-        let durable = Durability::open(temp.path().into(), database.clone(), |_| {}).await.unwrap();
-        assert!(Durability::open(temp.path().into(), database.clone(), |_| {}).await.is_err());
+        let durable = Durability::open(Some(temp.path().into()), database.clone(), |_| {}).await.unwrap();
+        assert!(Durability::open(Some(temp.path().into()), database.clone(), |_| {}).await.is_err());
         let id = Uuid::new_v4().to_string();
         let mut ui = Document::new(&id,1,77).unwrap();
         durable.create(Create { page_id:id.clone(), epoch:1, full_state:ui.encode_full(), revision:0,
@@ -2891,7 +2969,7 @@ mod tests {
         durable.flush().await.unwrap();
         durable.ack(local.op_id.clone()).await.unwrap();
         drop(durable);
-        let reopened = Durability::open(temp.path().into(), database, |_| {}).await.unwrap();
+        let reopened = Durability::open(Some(temp.path().into()), database, |_| {}).await.unwrap();
         assert_eq!(reopened.commit_local(local).await.unwrap(), first);
         let loaded = reopened.load(id).await.unwrap();
         assert_eq!(loaded.revision, ui.revision());
@@ -2902,7 +2980,7 @@ mod tests {
     async fn repeated_delete_restore_requests_preserve_generation_and_outbox() {
         let temp=tempfile::tempdir().unwrap();
         let database=temp.path().join("state.sqlite3");
-        let worker=Durability::open(temp.path().into(),database.clone(), |_|{}).await.unwrap();
+        let worker=Durability::open(Some(temp.path().into()),database.clone(), |_|{}).await.unwrap();
         let id=Uuid::new_v4().to_string();let doc=Document::new(&id,1,7).unwrap();
         worker.create(Create {page_id:id.clone(),epoch:1,full_state:doc.encode_full(),revision:0,after_id:None,
             first_write_date:None,frontmatter:None,preserved_pair:None}).await.unwrap();
@@ -2913,7 +2991,7 @@ mod tests {
         let outbox=worker.directory_outbox().await.unwrap();
         for op in outbox {worker.acknowledge_directory(op.op_id).await.unwrap();}
         drop(worker);
-        let restarted=Durability::open(temp.path().into(),database, |_|{}).await.unwrap();
+        let restarted=Durability::open(Some(temp.path().into()),database, |_|{}).await.unwrap();
         assert_eq!(restarted.set_deleted(id.clone(),true).await.unwrap(),deleted);
         assert!(restarted.directory_outbox().await.unwrap().is_empty());
         let restored=restarted.set_deleted(id.clone(),false).await.unwrap();
@@ -2923,4 +3001,227 @@ mod tests {
         assert_eq!(restarted.directory_outbox().await.unwrap().len(),count);
     }
 
+    // Archive directory: projection target is configurable, optional and never created.
+    type Events = Arc<Mutex<Vec<DurableEvent>>>;
+    fn open_archived(archive: Option<PathBuf>, db: &std::path::Path, events: &Events) -> Worker {
+        let capture = events.clone();
+        Worker::open(archive, db.into(), Arc::new(move |e| capture.lock().unwrap().push(e))).unwrap()
+    }
+    fn queue_len(worker: &mut Worker) -> i64 {
+        worker.store.transaction(|tx| tx.query_row("SELECT COUNT(*) FROM sumi_projection_queue", [], |r| r.get(0)).map_err(db)).unwrap()
+    }
+    fn baseline_rows(worker: &mut Worker) -> Vec<(String, String, String)> {
+        worker.store.transaction(|tx| {
+            let mut s = tx.prepare("SELECT page_id,filename,markdown FROM sumi_baselines ORDER BY page_id").map_err(db)?;
+            let rows = s.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))).map_err(db)?
+                .collect::<std::result::Result<Vec<_>, _>>().map_err(db)?;
+            Ok(rows)
+        }).unwrap()
+    }
+    fn dir_bytes(dir: &std::path::Path) -> std::collections::BTreeMap<String, Vec<u8>> {
+        std::fs::read_dir(dir).unwrap().map(|e| {
+            let e = e.unwrap();
+            (e.file_name().to_string_lossy().into_owned(), std::fs::read(e.path()).unwrap())
+        }).collect()
+    }
+    fn last_saved(events: &Events, id: &str) -> (bool, Option<String>) {
+        events.lock().unwrap().iter().rev().find_map(|e| match e {
+            DurableEvent::Saved { page_id, projected, projection_error, .. } if page_id == id =>
+                Some((*projected, projection_error.clone())),
+            _ => None,
+        }).expect("saved event")
+    }
+    fn on_disk_body(archive: &std::path::Path, filename: &str) -> String {
+        let (md, meta) = projection::paths(archive, filename).unwrap();
+        storage::parse_pair(&std::fs::read_to_string(md).unwrap(), &std::fs::read_to_string(meta).unwrap()).unwrap().body
+    }
+    #[tokio::test]
+    async fn open_without_archive_saves_text_and_reports_pending() {
+        let private = tempfile::tempdir().unwrap();
+        let db = private.path().join("documents.sqlite3");
+        let events: Events = Arc::default();
+        let capture = events.clone();
+        let durable = Durability::open(None, db.clone(), move |e| capture.lock().unwrap().push(e)).await.unwrap();
+        let id = Uuid::new_v4().to_string();
+        let mut ui = Document::new(&id, 1, 17).unwrap();
+        durable.create(Create { page_id:id.clone(), epoch:1, full_state:ui.encode_full(), revision:0,
+            after_id:None, first_write_date:None, frontmatter:None, preserved_pair:None }).await.unwrap();
+        durable.commit_local(edit(&id, &mut ui, "没有归档目录").edit).await.unwrap();
+        assert_eq!(durable.flush().await.unwrap_err(), "尚未设置归档目录");
+        assert_eq!(last_saved(&events, &id), (false, Some("尚未设置归档目录".into())));
+        drop(durable);
+        let reopened = Durability::open(None, db, |_| {}).await.unwrap();
+        assert!(reopened.load(id).await.unwrap().raw_markdown.ends_with("没有归档目录"));
+        assert_eq!(std::fs::read_dir(private.path()).unwrap().filter(|e| e.as_ref().unwrap().file_name().to_string_lossy().contains("writing")).count(), 0);
+    }
+    #[test]
+    fn open_with_missing_archive_does_not_create_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let private = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("missing");
+        let events: Events = Arc::default();
+        let mut worker = open_archived(Some(missing.clone()), &private.path().join("db.sqlite3"), &events);
+        let (id, mut ui) = page(&mut worker, "first");
+        worker.pending.push_back(edit(&id, &mut ui, " more"));
+        worker.drain().unwrap();
+        worker.checkpoint_dirty().unwrap();
+        assert!(worker.recover_projections().unwrap_err().contains(projection::ARCHIVE_UNAVAILABLE));
+        assert!(!last_saved(&events, &id).0);
+        assert!(!missing.exists());
+        assert!(queue_len(&mut worker) > 0);
+    }
+    #[test]
+    fn archive_removed_mid_session_keeps_jobs_and_republishes_after_restore() {
+        let dir = tempfile::tempdir().unwrap();
+        let private = tempfile::tempdir().unwrap();
+        let archive = dir.path().join("archive");
+        let away = dir.path().join("unplugged");
+        std::fs::create_dir(&archive).unwrap();
+        let events: Events = Arc::default();
+        let mut worker = open_archived(Some(archive.clone()), &private.path().join("db.sqlite3"), &events);
+        let (id, mut ui) = page(&mut worker, "published");
+        let filename = worker.entry(&id).unwrap().filename().unwrap();
+        assert_eq!(on_disk_body(&archive, &filename), "published");
+        assert_eq!(queue_len(&mut worker), 0);
+        std::fs::rename(&archive, &away).unwrap();
+        worker.pending.push_back(edit(&id, &mut ui, " while away"));
+        worker.drain().unwrap();
+        worker.checkpoint_dirty().unwrap();
+        assert!(queue_len(&mut worker) > 0);
+        assert_eq!(last_saved(&events, &id), (false, Some(projection::ARCHIVE_UNAVAILABLE.into())));
+        assert!(!archive.exists(), "no shadow archive may be created at the original path");
+        std::fs::rename(&away, &archive).unwrap();
+        // The next checkpoint barrier (Durability::flush) republishes retained jobs.
+        worker.drain().unwrap();
+        worker.checkpoint_dirty().unwrap();
+        worker.recover_projections().unwrap();
+        assert_eq!(on_disk_body(&archive, &filename), ui.body());
+        assert_eq!(queue_len(&mut worker), 0);
+    }
+    #[test]
+    fn set_archive_republishes_into_new_directory_and_keeps_old_bytes() {
+        let dir = tempfile::tempdir().unwrap();
+        let private = tempfile::tempdir().unwrap();
+        let (a, b) = (dir.path().join("A"), dir.path().join("B"));
+        std::fs::create_dir(&a).unwrap();
+        std::fs::create_dir(&b).unwrap();
+        let events: Events = Arc::default();
+        let mut worker = open_archived(Some(a.clone()), &private.path().join("db.sqlite3"), &events);
+        let (p, _) = page(&mut worker, "page p");
+        let (q, _) = page(&mut worker, "page q");
+        let old = dir_bytes(&a);
+        assert_eq!(old.len(), 4);
+        worker.set_archive(Some(b.clone())).unwrap();
+        assert!(worker.dirty_since.is_some());
+        worker.checkpoint_dirty().unwrap();
+        assert_eq!(dir_bytes(&a), old);
+        for (id, body) in [(&p, "page p"), (&q, "page q")] {
+            assert_eq!(on_disk_body(&b, &worker.entry(id).unwrap().filename().unwrap()), body);
+        }
+        let rows = baseline_rows(&mut worker);
+        assert_eq!(rows.len(), 2);
+        let b_canonical = b.canonicalize().unwrap();
+        for (_, filename, markdown) in rows {
+            assert_eq!(std::fs::read_to_string(b_canonical.join(&filename)).unwrap(), markdown);
+        }
+        assert_eq!(queue_len(&mut worker), 0);
+    }
+    #[tokio::test]
+    async fn set_archive_succeeds_when_old_archive_is_gone() {
+        let dir = tempfile::tempdir().unwrap();
+        let private = tempfile::tempdir().unwrap();
+        let (a, b) = (dir.path().join("A"), dir.path().join("B"));
+        std::fs::create_dir(&a).unwrap();
+        std::fs::create_dir(&b).unwrap();
+        let durable = Durability::open(Some(a.clone()), private.path().join("db.sqlite3"), |_| {}).await.unwrap();
+        let id = Uuid::new_v4().to_string();
+        let mut ui = Document::new(&id, 1, 17).unwrap();
+        ui.replace(0, 0, 0, "survives", 100).unwrap();
+        durable.create(Create { page_id:id.clone(), epoch:1, full_state:ui.encode_full(), revision:1,
+            after_id:None, first_write_date:Some("2026-11-20".into()), frontmatter:None, preserved_pair:None }).await.unwrap();
+        std::fs::remove_dir_all(&a).unwrap();
+        let request = serde_json::from_value(serde_json::json!({"method":"set_archive","params":{"archive":b}})).unwrap();
+        crate::durability_rpc::dispatch(&durable, request).await.unwrap();
+        durable.flush().await.unwrap();
+        let baseline = durable.read_baseline(id).await.unwrap().unwrap();
+        assert_eq!(on_disk_body(&b, &baseline.filename), "survives");
+        assert!(!a.exists());
+    }
+    #[test]
+    fn switch_back_overwrites_own_old_version_but_not_edited_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let private = tempfile::tempdir().unwrap();
+        let (a, b) = (dir.path().join("A"), dir.path().join("B"));
+        std::fs::create_dir(&a).unwrap();
+        std::fs::create_dir(&b).unwrap();
+        let events: Events = Arc::default();
+        let mut worker = open_archived(Some(a.clone()), &private.path().join("db.sqlite3"), &events);
+        let (p, mut p_ui) = page(&mut worker, "p old");
+        let (q, _) = page(&mut worker, "q old");
+        let p_file = worker.entry(&p).unwrap().filename().unwrap();
+        let q_file = worker.entry(&q).unwrap().filename().unwrap();
+        worker.set_archive(Some(b.clone())).unwrap();
+        worker.checkpoint_dirty().unwrap();
+        worker.pending.push_back(edit(&p, &mut p_ui, " edited in B"));
+        worker.drain().unwrap();
+        worker.checkpoint_dirty().unwrap();
+        assert_eq!(on_disk_body(&b, &p_file), "p old edited in B");
+        let (q_md, _) = projection::paths(&a, &q_file).unwrap();
+        let foreign = std::fs::read_to_string(&q_md).unwrap().replace("q old", "q changed outside");
+        std::fs::write(&q_md, &foreign).unwrap();
+        worker.set_archive(Some(a.clone())).unwrap();
+        worker.checkpoint_dirty().unwrap();
+        assert_eq!(on_disk_body(&a, &p_file), "p old edited in B");
+        assert_eq!(last_saved(&events, &p), (true, None));
+        assert_eq!(std::fs::read_to_string(&q_md).unwrap(), foreign);
+        assert_eq!(last_saved(&events, &q), (false, Some(projection::FIRST_WRITE_CONFLICT.into())));
+        assert!(worker.baseline(&q).unwrap().is_none());
+        assert_eq!(worker.baseline(&p).unwrap().unwrap().revision, p_ui.revision());
+    }
+    #[test]
+    fn reopen_with_same_non_ascii_archive_keeps_baselines() {
+        let dir = tempfile::tempdir().unwrap();
+        let private = tempfile::tempdir().unwrap();
+        let archive = dir.path().join("玄霜 归档");
+        std::fs::create_dir(&archive).unwrap();
+        let database = private.path().join("db.sqlite3");
+        let events: Events = Arc::default();
+        let mut worker = open_archived(Some(archive.clone()), &database, &events);
+        let (id, _) = page(&mut worker, "中文 归档");
+        let rows = baseline_rows(&mut worker);
+        let filename = worker.entry(&id).unwrap().filename().unwrap();
+        let (md, meta) = projection::paths(&archive, &filename).unwrap();
+        let mtimes = [&md, &meta].map(|p| std::fs::metadata(p).unwrap().modified().unwrap());
+        drop(worker);
+        let later: Events = Arc::default();
+        let mut reopened = open_archived(Some(archive.clone()), &database, &later);
+        reopened.checkpoint_dirty().unwrap();
+        // A reset would republish every page and emit Saved; same path means nothing to do.
+        assert!(later.lock().unwrap().is_empty());
+        assert_eq!(baseline_rows(&mut reopened), rows);
+        assert_eq!([&md, &meta].map(|p| std::fs::metadata(p).unwrap().modified().unwrap()), mtimes);
+    }
+    #[test]
+    fn legacy_database_adopts_first_archive_and_keeps_baselines() {
+        let dir = tempfile::tempdir().unwrap();
+        let private = tempfile::tempdir().unwrap();
+        let archive = dir.path().join("A");
+        std::fs::create_dir(&archive).unwrap();
+        let database = private.path().join("db.sqlite3");
+        let events: Events = Arc::default();
+        let mut worker = open_archived(Some(archive.clone()), &database, &events);
+        page(&mut worker, "legacy");
+        // A database written before the projection target table existed.
+        worker.store.transaction(|tx| tx.execute_batch("DROP TABLE sumi_projection_target").map_err(db)).unwrap();
+        let rows = baseline_rows(&mut worker);
+        assert_eq!(rows.len(), 1);
+        drop(worker);
+        let later: Events = Arc::default();
+        let mut reopened = open_archived(Some(archive.clone()), &database, &later);
+        assert!(later.lock().unwrap().is_empty(), "adopting the first target must not republish");
+        assert_eq!(baseline_rows(&mut reopened), rows);
+        let target: Option<String> = reopened.store.transaction(|tx| tx.query_row(
+            "SELECT archive FROM sumi_projection_target WHERE id=1", [], |r| r.get(0)).map_err(db)).unwrap();
+        assert_eq!(target.as_deref(), archive.to_str());
+    }
 }

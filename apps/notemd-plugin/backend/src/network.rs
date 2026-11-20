@@ -1,9 +1,10 @@
 //! Host-session callbacks for the network worker. No Tauri or keychain linkage.
-//! The service transport binds root/session/instance; `root` is a consistency fence, never a file permission grant.
+//! The service transport binds root/session/instance; `root` carries the workspace ID as a
+//! consistency fence, never a path or file permission grant.
 use crate::{durability::Durability, sync, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::{future::Future, path::PathBuf, pin::Pin, sync::Arc};
+use std::{future::Future, pin::Pin, sync::Arc};
 use write_core::{catalog::Entry, storage::PendingUpdate};
 pub use sumi_protocol::sync::{AccessToken, Identity, Invitation};
 
@@ -26,42 +27,42 @@ pub struct OwnedPage { pub page_id: String, pub has_surface: bool }
 pub struct PageVector { pub page_id: String, pub state_vector: Vec<u8> }
 
 pub struct Workspace {
-    pub root: PathBuf,
+    pub workspace_id: String,
     pub durable: Durability,
     pub bridge: Arc<dyn HostBridge>,
 }
 impl Workspace {
     pub async fn current(&self) -> Result<()> {
-        let reply = self.bridge.call("current", json!({"root": self.root})).await?;
+        let reply = self.bridge.call("current", json!({"root": self.workspace_id})).await?;
         if reply.get("current").and_then(Value::as_bool) == Some(true) { Ok(()) }
         else { Err("写作空间已切换，旧同步结果已丢弃".into()) }
     }
     pub async fn editor_state(&self) -> Result<EditorState> {
-        let reply = self.bridge.call("editor_state", json!({"root": self.root})).await?;
+        let reply = self.bridge.call("editor_state", json!({"root": self.workspace_id})).await?;
         serde_json::from_value(reply).map_err(|_| "invalid host editor state".into())
     }
     pub async fn directory(&self, entries: Vec<Entry>) -> Result<()> {
         // Host first quiesces native input; its existing durability proxy then
         // re-enters this service's FIFO worker. Never apply the directory early.
-        self.bridge.call("directory", json!({"root": self.root, "entries": entries})).await?;
+        self.bridge.call("directory", json!({"root": self.workspace_id, "entries": entries})).await?;
         Ok(())
     }
     pub async fn remote(&self, update: PendingUpdate, generation: u64) -> Result<()> {
         // Keep inbox acceptance + candidate/native ordering in the host bridge.
-        self.bridge.call("remote", json!({"root": self.root, "update": update, "generation": generation})).await?;
+        self.bridge.call("remote", json!({"root": self.workspace_id, "update": update, "generation": generation})).await?;
         Ok(())
     }
     pub async fn status(&self, status: Value) -> Result<()> {
-        self.bridge.call("status", json!({"root": self.root, "status": status})).await?;
+        self.bridge.call("status", json!({"root": self.workspace_id, "status": status})).await?;
         Ok(())
     }
     pub async fn auth_load(&self) -> Result<Option<Identity>> {
-        let reply = self.bridge.call("auth_load", json!({"root": self.root})).await?;
+        let reply = self.bridge.call("auth_load", json!({"root": self.workspace_id})).await?;
         serde_json::from_value(reply).map_err(|_| "invalid host identity".into())
     }
     pub async fn auth_pair(&self, server: &str, invitation: &Invitation) -> Result<Identity> {
         let server = sync::server_origin(server).map_err(crate::err)?;
-        let reply = self.bridge.call("auth_pair", json!({"root": self.root, "server": server, "invitation": invitation})).await?;
+        let reply = self.bridge.call("auth_pair", json!({"root": self.workspace_id, "server": server, "invitation": invitation})).await?;
         let identity: Identity = serde_json::from_value(reply).map_err(|_| "invalid host identity")?;
         if identity.space_id != invitation.space_id || sync::server_origin(&identity.server_url).map_err(crate::err)? != server {
             return Err("配对身份与请求的写作空间不一致".into());
@@ -69,16 +70,16 @@ impl Workspace {
         Ok(identity)
     }
     pub fn token_provider(&self) -> Arc<dyn sync::TokenProvider> {
-        Arc::new(BridgeTokens { root: self.root.clone(), bridge: self.bridge.clone() })
+        Arc::new(BridgeTokens { workspace_id: self.workspace_id.clone(), bridge: self.bridge.clone() })
     }
 }
-struct BridgeTokens { root: PathBuf, bridge: Arc<dyn HostBridge> }
+struct BridgeTokens { workspace_id: String, bridge: Arc<dyn HostBridge> }
 impl sync::TokenProvider for BridgeTokens {
     fn token(&self, identity: Identity) -> Pin<Box<dyn Future<Output = std::result::Result<AccessToken, sync::SyncError>> + Send>> {
-        let root = self.root.clone(); let bridge = self.bridge.clone();
+        let workspace_id = self.workspace_id.clone(); let bridge = self.bridge.clone();
         Box::pin(async move {
             // Never surface opaque host errors, which may contain private auth context.
-            let reply = bridge.call("auth_token", json!({"root": root, "identity": identity})).await
+            let reply = bridge.call("auth_token", json!({"root": workspace_id, "identity": identity})).await
                 .map_err(|_| sync::SyncError::Transport)?;
             serde_json::from_value(reply).map_err(|_| sync::SyncError::Protocol("invalid host access token"))
         })
@@ -92,11 +93,12 @@ mod tests {
     type Reply = Pin<Box<dyn Future<Output = Result<Value>> + Send>>;
     struct Bridge(Arc<dyn Fn(&'static str, Value) -> Reply + Send + Sync>);
     impl HostBridge for Bridge { fn call(&self, method: &'static str, params: Value) -> Reply { (self.0)(method, params) } }
+    const WORKSPACE: &str = "0f1e2d3c-4b5a-4968-8776-a5b4c3d2e1f0";
     fn identity() -> Identity {
         Identity { server_url:"https://sync.example.com/".into(), space_id:uuid::Uuid::new_v4().to_string(), device_id:uuid::Uuid::new_v4().to_string() }
     }
     async fn durable(root: &std::path::Path) -> Durability {
-        Durability::open(root.to_path_buf(),root.join("network-test.sqlite3"), |_| {}).await.unwrap()
+        Durability::open(Some(root.to_path_buf()),root.join("network-test.sqlite3"), |_| {}).await.unwrap()
     }
 
     #[tokio::test]
@@ -114,7 +116,7 @@ mod tests {
                 _ => panic!("unexpected callback {method}"),
             }) })
         })));
-        let ws = Workspace { root:dir.path().into(), durable:durable(dir.path()).await, bridge };
+        let ws = Workspace { workspace_id:WORKSPACE.into(), durable:durable(dir.path()).await, bridge };
         ws.current().await.unwrap(); assert_eq!(ws.auth_load().await.unwrap(),Some(id.clone()));
         let invitation = Invitation { space_id:id.space_id.clone(), code:"test-invitation".into(), expires_at:4_000_000_000 };
         assert_eq!(ws.auth_pair("https://sync.example.com", &invitation).await.unwrap(),id);
@@ -123,7 +125,7 @@ mod tests {
         let calls=calls.lock().unwrap();
         assert_eq!(calls.iter().map(|(m,_)|*m).collect::<Vec<_>>(),vec!["current","auth_load","auth_pair","auth_token"]);
         for (_,params) in calls.iter() {
-            assert_eq!(params["root"],dir.path().to_string_lossy().as_ref());
+            assert_eq!(params["root"],WORKSPACE);
             let wire=params.to_string(); assert!(!wire.contains("deviceSecret")); assert!(!wire.contains("short-lived-test-token"));
         }
         let leaked=json!({"serverUrl":"https://sync.example.com/","spaceId":"x","deviceId":"x","deviceSecret":"must-not-pass"});
@@ -135,7 +137,7 @@ mod tests {
     async fn inactive_workspace_and_insecure_pairing_fail_without_durable_or_auth_side_effects() {
         let dir=tempfile::tempdir().unwrap();
         let calls=Arc::new(Mutex::new(Vec::new()));let recorded=calls.clone();
-        let ws=Workspace { root:dir.path().into(),durable:durable(dir.path()).await,
+        let ws=Workspace { workspace_id:WORKSPACE.into(),durable:durable(dir.path()).await,
             bridge:Arc::new(Bridge(Arc::new(move|method,_| {recorded.lock().unwrap().push(method);Box::pin(async {Ok(json!({"current":false}))})}))) };
         assert!(ws.current().await.is_err());
         assert!(ws.auth_pair("http://insecure.example",&Invitation {space_id:uuid::Uuid::new_v4().to_string(),code:"test".into(),expires_at:1}).await.unwrap_err().contains("HTTPS"));
@@ -163,7 +165,7 @@ mod tests {
                 Ok(Value::Null)
             })
         })));
-        let ws=Workspace {root:dir.path().into(),durable:store,bridge};
+        let ws=Workspace { workspace_id:WORKSPACE.into(),durable:store,bridge};
         let id=uuid::Uuid::new_v4().to_string();
         let entry=Entry {id:id.clone(),epoch:1,generation:0,deleted:false,local_date:None,sequence:None,after_id:None,registered:true};
         let mut doc=write_core::Document::new(&id,1,73).unwrap();doc.replace(0,0,0,"bridge 字",100).unwrap();
@@ -184,7 +186,7 @@ mod tests {
             assert_eq!(method,"editor_state");
             Ok(json!({"active":"page-a","owned":[{"pageId":"page-b","hasSurface":false},{"pageId":"page-a","hasSurface":true}],"vectors":[{"pageId":"page-a","stateVector":[0]}]}))
         }))));
-        let ws=Workspace {root:dir.path().into(),durable:durable(dir.path()).await,bridge};
+        let ws=Workspace { workspace_id:WORKSPACE.into(),durable:durable(dir.path()).await,bridge};
         let state=ws.editor_state().await.unwrap();
         assert_eq!(state.active.as_deref(),Some("page-a"));assert!(!state.owned[0].has_surface);assert_eq!(state.vectors[0].state_vector,vec![0]);
     }

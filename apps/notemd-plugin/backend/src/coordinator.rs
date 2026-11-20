@@ -971,7 +971,7 @@ mod tests {
         }
         let temp=tempfile::tempdir().unwrap();let database=temp.path().join("shutdown.sqlite3");
         let calls=Arc::new(AtomicUsize::new(0));
-        let ws=Arc::new(Workspace {root:temp.path().into(),durable:durability::Durability::open(temp.path().into(),database.clone(), |_| {}).await.unwrap(),bridge:Arc::new(PendingHost(calls.clone()))});
+        let ws=Arc::new(Workspace {workspace_id:"0f1e2d3c-4b5a-4968-8776-a5b4c3d2e1f0".into(),durable:durability::Durability::open(Some(temp.path().into()),database.clone(), |_| {}).await.unwrap(),bridge:Arc::new(PendingHost(calls.clone()))});
         let weak=Arc::downgrade(&ws);let handle=start(ws.clone());
         let child_ws=ws.clone();
         let bootstrap=Bootstrap::new(pages(1).remove(0),"space".into(),"https://sync.example.com/".into(),&handle,async move {
@@ -987,7 +987,7 @@ mod tests {
         }).await.unwrap();
         assert!(weak.upgrade().is_none(),"network retained its Workspace/Durability after shutdown");
         assert!(bootstrap.abort.is_finished());
-        let reopened=durability::Durability::open(temp.path().into(),database, |_| {}).await.expect("writer lock remained held after network shutdown");
+        let reopened=durability::Durability::open(Some(temp.path().into()),database, |_| {}).await.expect("writer lock remained held after network shutdown");
         reopened.flush().await.unwrap();
     }
 

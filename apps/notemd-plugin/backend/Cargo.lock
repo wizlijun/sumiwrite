@@ -908,7 +908,7 @@ dependencies = [
 
 [[package]]
 name = "notemd-sumi-backend"
-version = "0.1.5"
+version = "0.2.0"
 dependencies = [
  "base64 0.22.1",
  "cc",
@@ -1606,8 +1606,8 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 
 [[package]]
 name = "sumi-protocol"
-version = "0.1.0"
-source = "git+https://github.com/wizlijun/sumiwrite?tag=core-v0.1.0#8f28b98ab63b12188f0c3ed81946c4522b199cc2"
+version = "0.2.0"
+source = "git+https://github.com/wizlijun/sumiwrite?tag=core-v0.2.0#52e987298bd4eff8a235c69f0672dc672abaaf21"
 dependencies = [
  "serde",
  "serde_json",
@@ -1664,7 +1664,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.4.3",
+ "getrandom 0.3.4",
  "once_cell",
  "rustix",
  "windows-sys 0.61.2",
@@ -2191,8 +2191,8 @@ checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
 
 [[package]]
 name = "write-core"
-version = "0.1.0"
-source = "git+https://github.com/wizlijun/sumiwrite?tag=core-v0.1.0#8f28b98ab63b12188f0c3ed81946c4522b199cc2"
+version = "0.2.0"
+source = "git+https://github.com/wizlijun/sumiwrite?tag=core-v0.2.0#52e987298bd4eff8a235c69f0672dc672abaaf21"
 dependencies = [
  "base64 0.22.1",
  "chrono",

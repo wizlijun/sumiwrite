@@ -1,6 +1,6 @@
 [package]
 name = "notemd-sumi-backend"
-version = "0.1.5"
+version = "0.2.0"
 edition = "2021"
 license = "Apache-2.0"
 
@@ -10,8 +10,8 @@ path = "src/main.rs"
 
 [dependencies]
 notemd-plugin-sdk = { git = "https://github.com/wizlijun/note.md", tag = "plugin-sdk-v0.1.0" }
-sumi-protocol = { git = "https://github.com/wizlijun/sumiwrite", tag = "core-v0.1.0" }
-write-core = { git = "https://github.com/wizlijun/sumiwrite", tag = "core-v0.1.0" }
+sumi-protocol = { git = "https://github.com/wizlijun/sumiwrite", tag = "core-v0.2.0" }
+write-core = { git = "https://github.com/wizlijun/sumiwrite", tag = "core-v0.2.0" }
 rusqlite = { version = "0.40", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 sha2 = "0.10"
@@ -31,7 +31,7 @@ tokio-tungstenite = { version = "=0.28.0", default-features = false, features = 
 cc = "1"
 
 [dev-dependencies]
-write-core = { git = "https://github.com/wizlijun/sumiwrite", tag = "core-v0.1.0", features = ["fixtures"] }
+write-core = { git = "https://github.com/wizlijun/sumiwrite", tag = "core-v0.2.0", features = ["fixtures"] }
 tokio = { version = "1", features = ["test-util", "process"] }
 tempfile = "3"
 
