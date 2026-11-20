@@ -77,7 +77,7 @@
 | pnpm 工作区包含插件 | `pnpm-workspace.yaml`(`plugins-src/*`)、`pnpm-lock.yaml:812` | 任务 8 删目录后 `pnpm install` 重算 |
 | 原生签名的源码证明写死插件路径 | `scripts/sumi/native-release.py:11`、`:30` | 任务 8 |
 | `.gitattributes` 许可文件规则 | note.md `.gitattributes:55`、`:56`、`:59` | 任务 2 迁入,任务 8 删除 |
-| 插件发版脚本借用 note.md 根的 `tsc`、`vite` | `scripts/release-plugins.sh:383`、`dev-install-plugin.sh:500` | 任务 4 自带工具链 |
+| 插件发版脚本借用 note.md 根的 `tsc`、`vite` | `scripts/release-plugins.sh:384`、`dev-install-plugin.sh:499` | 任务 4 自带工具链 |
 
 - [ ] 把上表写进 01 §4(新增“立第 2 期计划时发现”子表),§3 末尾的判定说明补上 `verify-release.py` 不拆的结论;§6 里第 2 期的两项改为“已定,见第 2 期计划”。
 - [ ] 02 第 2 期“前置条件”里“详细计划已立”一句加上指向本文的链接;步骤 5 补一句“`release_sumi()` 按 03 §5 的交付格式消费构建物”。

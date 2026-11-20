@@ -306,15 +306,19 @@ owner 是“当前持有某纸页编辑面的 `(窗口, 标签页, 编辑面)`�
 
 ## 2. 依赖方向
 
-两个方向都按**固定 tag** 引用,不跟分支;两者在 crate 层面不成环。 **[我的判断]**(设计 §5.3 第 2 条;其中“共享快捷键 TypeScript 的处理方式”第 2 期已定为 sumiwrite 自带一份,同属 [我的判断],第 5 条签名与上架归属亦是。)
+三条依赖边都按**固定 tag** 引用,不跟分支。**[我的判断]**(设计 §5.3 第 2 条;其中“共享快捷键 TypeScript 的处理方式”第 2 期已定为 sumiwrite 自带一份,同属 [我的判断],第 5 条签名与上架归属亦是。)
 
 | 方向 | 引用什么 | 怎么引用 |
 |---|---|---|
-| note.md 宿主 → sumiwrite | 内核(`write-core`)与服务契约(`sumi-protocol`) | 固定 tag,命名 `core-vX.Y.Z`(sumiwrite 侧打 tag)。宿主的 `Cargo.toml` 里写 `git` + `tag` |
-| sumiwrite 插件壳 → note.md | `notemd-plugin-sdk` | 固定 tag,取宿主已发布的 `v6.*` tag |
+| note.md 宿主 → sumiwrite | 内核(`write-core`)与服务契约(`sumi-protocol`) | 固定 tag `core-vX.Y.Z`(sumiwrite 侧打 tag),宿主 `Cargo.toml` 写 `git` + `tag`。现为 `core-v0.1.0` |
+| sumiwrite 插件后台 → note.md | `notemd-plugin-sdk`(及其依赖的 `plugin-protocol`) | 固定 git tag `plugin-sdk-vX.Y.Z`(note.md 侧打 tag)。现为 `plugin-sdk-v0.1.0`(指向 note.md `e82e2f81`),不是宿主发版的 `v6.*` tag |
+| note.md 宿主 dev-dependency → sumiwrite | 插件后台 crate `notemd-sumi-backend` | 固定 tag `notemd-plugin-vX.Y.Z`。note.md `src-tauri/Cargo.toml` 的 dev-dependency,仅供测试里在进程内跑后台。现为 `notemd-plugin-v0.1.16` `[未定]`(note.md 侧在分支 `sumi/plugin-from-sumiwrite`,待用户合并) |
 
-- **本地联调**:在任一侧的 `Cargo.toml` 用 `[patch]` 指向另一侧的本地目录;提交前去掉。
-- **现状**(基线):宿主与插件后台都按 `path` 依赖 `write-core`、`sumi-protocol`(`src-tauri/Cargo.toml`、`plugins-src/write/backend/Cargo.toml`;`sumi-protocol/Cargo.toml` 的 `write-core = { path = "../write-core" }`);尚无 `core-v*` tag。第 1 期迁移完成时才打第一个。
+- **仓库层面成环,由常驻 `[patch]` 解开。** 第三条边加上第二条边,让 note.md 与 sumiwrite 在仓库层面互相依赖(仅测试依赖成环;crate 层面无环)。解环靠 note.md `src-tauri/Cargo.toml` 里**提交入库、长期保留**的 `[patch."https://github.com/wizlijun/note.md"]`:把 SDK 与 `plugin-protocol` 指回 note.md 树内。因此不得按“提交前去掉 `[patch]`”处理。副作用:改了 note.md 树内的 SDK,宿主测试会用新 SDK 编译钉死版本的插件后台,测到的组合可能与发版物(`plugin-sdk-v0.1.0`)不同;升 `plugin-sdk-v*` 或 `notemd-plugin-v*` 时两边要一起核对。
+- **后台的 core 依赖必须与宿主同源。** 插件后台的 `write-core`、`sumi-protocol` 只能取 sumiwrite 的同一个 git tag(现为 `core-v0.1.0`),与宿主一致;不得改成仓内 `path` 依赖或本地路径覆盖。否则 note.md 测试 harness 里 `sumi_protocol::durability::Request` 会成为两份类型,编译不过。
+- **宿主测试 harness 的 `include!`。** note.md 的 `src-tauri/src/sumi/backend_proxy_tests.rs` 用 `include!("durability.rs")` 把宿主 `durability.rs` 再编译一遍,因为它 `use super::service::Backend`,需要在 harness 里换上 mock 的 `Backend`。副作用:宿主 journal 测试在 harness 下重复跑一遍,只花时间。这个 harness 属宿主适配,归 note.md。
+- **本地联调**:可临时在任一侧用 `[patch]` 指向另一侧的本地目录,但这类临时覆盖不入库(note.md 那条常驻 `[patch]` 除外);且不得让后台的 core 依赖偏离同一个 `core-vX` 源。
+- **现状**:`core-v0.1.0`、`plugin-sdk-v0.1.0`、`notemd-plugin-v0.1.16` 均已存在。第 1 期把 `write-core`、`sumi-protocol` 迁入 sumiwrite 并打 `core-v0.1.0`;第 2 期把插件壳迁入并打 `notemd-plugin-v0.1.16`。
 - `core-vX.Y.Z` 的版本号与 `host-contract` 的版本号**是否联动**:`[未定]`,见 §7。
 - 共享快捷键 TypeScript(`plugins-src/shared/shortcuts`)的归属与同步方式:第 2 期已定,sumiwrite 自带 `apps/notemd-plugin/src/shortcuts.ts`,note.md 的原件不动,两者不同步。
 
@@ -373,9 +377,9 @@ owner 是“当前持有某纸页编辑面的 `(窗口, 标签页, 编辑面)`�
 | 插件市场上架 | note.md | `plugins-registry/`、`scripts/gen-plugin-index.mjs` |
 | 待签名构建物与校验清单 | **sumiwrite 交付** | 见下 |
 
-**sumiwrite 交付物**(本设计的 `[我的判断]`;状态 `[未定]`。sumiwrite 侧已交付,证据:[`build-artifact.sh`](https://github.com/wizlijun/sumiwrite/blob/notemd-plugin-v0.1.16/apps/notemd-plugin/scripts/build-artifact.sh)、[`verify-stage.py`](https://github.com/wizlijun/sumiwrite/blob/notemd-plugin-v0.1.16/apps/notemd-plugin/scripts/verify-stage.py)(tag `notemd-plugin-v0.1.16`)。note.md 侧在分支 `sumi/plugin-from-sumiwrite`(9288b33d),待用户合并;合并后补 note.md 的 blob 链接再改为已交付):
+**sumiwrite 交付物**(本设计的 `[我的判断]`;状态 `[未定]`。sumiwrite 侧已交付,证据:[`build-artifact.sh`](https://github.com/wizlijun/sumiwrite/blob/notemd-plugin-v0.1.16/apps/notemd-plugin/scripts/build-artifact.sh)、[`verify-stage.py`](https://github.com/wizlijun/sumiwrite/blob/notemd-plugin-v0.1.16/apps/notemd-plugin/scripts/verify-stage.py)(tag `notemd-plugin-v0.1.16`)。note.md 侧在分支 `sumi/plugin-from-sumiwrite`,待用户合并,含提交 `9288b33d`、`a7027f68` 与终审修复 `c7c1df89`;合并后补 note.md 的 blob 链接再改为已交付):
 
-入口:`apps/notemd-plugin/scripts/build-artifact.sh --target <三元组> --out <目录> [--debug]`。`--debug` 用调试构建,供 note.md 的开发安装,发版不用。非 `--debug` 时工作树有已跟踪文件的改动即拒绝运行,保证 `source_commit` 属实。`<目录>` 必须不存在或为空;产出恰好是 `stage/` 与 `checklist.json`。脚本不读取、不需要任何签名或公证凭据。
+入口:`apps/notemd-plugin/scripts/build-artifact.sh --target <三元组> --out <目录> [--debug]`。`--debug` 用调试构建,供 note.md 的开发安装,发版不用。非 `--debug` 时,工作树有已跟踪文件的改动,或 `apps/notemd-plugin` 下有未跟踪且未忽略的文件,即拒绝运行(Vite 会把未跟踪的 public 文件复制进产物),保证 `source_commit` 属实。`<目录>` 必须不存在或为空;产出恰好是 `stage/` 与 `checklist.json`。脚本不读取、不需要任何签名或公证凭据。
 
 1. `stage/`(**未签名**安装布局,与现行 `release_sumi()` 装配一致):`manifest.json`(即 `manifest.v2.json`)、`bin/notemd-sumi`、`ui/`(Vite 产物,不含 `sounds/`)、`resources/sounds/`。
 2. `checklist.json`:
@@ -387,14 +391,14 @@ owner 是“当前持有某纸页编辑面的 `(窗口, 标签页, 编辑面)`�
     "files":{"bin/notemd-sumi":"<sha256>","manifest.json":"<sha256>"}}
    ```
 
-   `files` 覆盖 `stage/` 下每个普通文件,键为 POSIX 相对路径,值为 SHA-256;`stage/` 内不允许符号链接。`source_tag` 仅当 HEAD 恰在 `notemd-plugin-v<version>` 上时填写,否则为 `null`。`core_tag` 取自后端 `Cargo.toml` 中 `write-core` 与 `sumi-protocol` 的同一 tag。
+   `files` 覆盖 `stage/` 下每个普通文件,键为 POSIX 相对路径,值为 SHA-256;`stage/` 内不允许符号链接。`source_tag` 仅当 HEAD 上恰有一个 `notemd-plugin-v<version>` tag 时填写,否则为 `null`(HEAD 上其他 tag 不影响)。`core_tag` 取自后端 `Cargo.toml` 中 `write-core` 与 `sumi-protocol` 的同一 tag。
 3. 目标三元组只接受 `aarch64-apple-darwin`、`x86_64-apple-darwin`、`x86_64-unknown-linux-gnu`,且 manifest 的 `binary[三元组]` 必须是 `bin/notemd-sumi`。
-4. 门禁在脚本内完成,note.md 不再重复:Linux 目标跑 `verify-linux-binary.py`;`resources/sounds` 跑 `verify-sounds.py`;字体目录与许可字节、无字体载荷由 `verify-stage.py` 检查。
+4. 门禁在脚本内完成,note.md 不再重复:Linux 目标跑 `verify-linux-binary.py`;`resources/sounds` 跑 `verify-sounds.py`;字体目录与许可字节、无字体载荷由 `verify-stage.py` 检查;`verify_checklist` 另核布局不变式:`manifest.json` 存在、`bin/notemd-sumi` 存在且可执行、没有 `ui/sounds/`。
 5. 校验:`apps/notemd-plugin/scripts/verify-stage.py --verify-checklist <checklist.json> --stage <stage 目录>`,重算 SHA-256,缺文件、多文件、不符均非零退出。
 
 note.md 收到后:比对 `source_commit` → `verify_checklist` → macOS 目标签名并公证二进制,替换 `bin/notemd-sumi`(签名身份、团队 ID、公证凭据只在 note.md 一侧,按引用取用)→ 打包 → minisign → 生成索引 → 上架。签名密钥与公证凭据**不进入** sumiwrite。
 
-**`SUMIWRITE_DIR` 约定**:note.md 里需要本仓库文件的脚本统一读环境变量 `SUMIWRITE_DIR`(默认 `../sumiwrite`),缺目录时报清楚的错。note.md 的 `pnpm build` 与 `scripts/release.sh` 因此都会跑 `scripts/prepare-sumi-font.py`,必须有 sumiwrite 检出;它填充的缓存 `src-tauri/resources/sumi` 不被宿主打包。是否把它从宿主构建里去掉,由 note.md 决定(记入 [04-known-gaps.md](04-known-gaps.md) §4.8)。
+**`SUMIWRITE_DIR` 约定**:note.md 里需要本仓库文件的脚本统一读环境变量 `SUMIWRITE_DIR`(默认 `../sumiwrite`),缺目录时报清楚的错。宿主构建链(`pnpm build`、`scripts/release.sh`)**不**读它:`prepare-sumi-font.py` 已从两处去掉,新 clone 的 note.md 不需要 sumiwrite 检出就能构建宿主,因为它填充的开发缓存 `src-tauri/resources/sumi` 不被宿主打包(`tauri.conf.json` 只打包 `resources/themes/**/*`)。读 `SUMIWRITE_DIR` 的只有开发安装、发版插件、验收与基准脚本;`acceptance/build.sh` 自己先跑 `prepare-sumi-font.py`,`serve.mjs`、`run-native.mjs` 需手动先跑(见 note.md `scripts/sumi/README.md`)。note.md 侧在分支 `sumi/plugin-from-sumiwrite`(`c7c1df89`),待用户合并 `[未定]`。记入 [04-known-gaps.md](04-known-gaps.md) §4.8。
 
 ---
 

@@ -7,6 +7,7 @@ from --write-checklist; no signing, notarization or credentials involved.
 import argparse
 import hashlib
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -64,6 +65,11 @@ def verify_checklist(stage: Path, checklist: dict) -> None:
     declared = checklist.get('files')
     assert isinstance(declared, dict) and declared, 'Checklist has no files'
     actual = stage_files(stage)
+    stage = Path(stage)
+    assert (stage / 'manifest.json').is_file(), 'Stage has no manifest.json'
+    binary = stage / 'bin' / 'notemd-sumi'
+    assert binary.is_file() and os.access(binary, os.X_OK), 'bin/notemd-sumi is missing or not executable'
+    assert not (stage / 'ui' / 'sounds').exists(), 'ui/sounds must not ship (sounds live in resources/sounds)'
     missing = sorted(set(declared) - set(actual))
     extra = sorted(set(actual) - set(declared))
     assert not missing, 'Files missing from stage: ' + ', '.join(missing)

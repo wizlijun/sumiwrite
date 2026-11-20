@@ -50,8 +50,10 @@ fi
 source_commit="$(git -C "$repo" rev-parse HEAD)"
 version="$(node -e 'console.log(require(process.argv[1]).version)' "$manifest")"
 source_tag=""
-if t="$(git -C "$repo" describe --exact-match --tags HEAD 2>/dev/null)" && [[ "$t" == "notemd-plugin-v$version" ]]; then
-  source_tag="$t"
+# Exactly one matching tag on HEAD, else null (other tags on HEAD are irrelevant).
+tags_at_head="$(git -C "$repo" tag --points-at HEAD --list "notemd-plugin-v$version")"
+if [[ -n "$tags_at_head" && "$tags_at_head" != *$'\n'* ]]; then
+  source_tag="$tags_at_head"
 fi
 
 # Backend (no workspace: target dir is backend/target/<triple>/<profile>).
