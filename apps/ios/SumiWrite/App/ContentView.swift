@@ -13,11 +13,13 @@ struct FailureView: View {
     let controller: EditorController
     @ObservedObject var prefs: PrefsModel
     @State private var status: String?
+    @State private var deskTop: CGFloat?
 
     var body: some View {
         let fg = Color(prefs.prefs.theme.foreground)
         ZStack {
             Color(prefs.prefs.theme.background).ignoresSafeArea()
+            DeskTray(top: deskTop, color: fg)
             VStack(spacing: 0) {
                 EditorHost(controller: controller)
                 if let status { StatusLine(text: status, color: fg) }
@@ -29,7 +31,34 @@ struct FailureView: View {
         .onAppear {
             status = controller.statusText
             controller.onStatusChange = { status = $0 }
+            controller.onDeskChange = { top in DeskTray.animate { deskTop = top } }
         }
+    }
+}
+
+/// iPhone Duo 半折时折痕以下的底座(ios.md §3.7):主题底色上叠 4% 前景色,从折痕铺到屏幕底;不接点按。
+/// `top` 是折痕顶的窗口 y 坐标,nil 时不画。
+private struct DeskTray: View {
+    let top: CGFloat?
+    let color: Color
+
+    /// 与编辑面正文区的移动同步:0.25 秒 easeOut;「减少动态效果」时直接到位。
+    static func animate(_ change: () -> Void) {
+        withAnimation(UIAccessibility.isReduceMotionEnabled ? nil : .easeOut(duration: 0.25), change)
+    }
+
+    var body: some View {
+        GeometryReader { geo in
+            if let top {
+                let y = max(0, top - geo.frame(in: .global).minY)
+                color.opacity(0.04)
+                    .frame(width: geo.size.width, height: max(0, geo.size.height - y))
+                    .offset(y: y)
+            }
+        }
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 }
 
@@ -60,6 +89,7 @@ struct ContentView: View {
     @State private var showAppearance = false
     @State private var toast: String?
     @State private var status: String?
+    @State private var deskTop: CGFloat?
 
     private var fg: Color { Color(prefs.prefs.theme.foreground) }
     private var scheme: ColorScheme { prefs.prefs.theme.isDark ? .dark : .light }
@@ -67,6 +97,7 @@ struct ContentView: View {
     var body: some View {
         ZStack(alignment: .bottom) {
             Color(prefs.prefs.theme.background).ignoresSafeArea()
+            DeskTray(top: deskTop, color: fg)
             // 「···」放在编辑区下方的独立一条里,不叠在 UITextView 上:
             // 叠在上面时,点按会先被文本视图的手势接走,按钮收不到。
             VStack(spacing: 0) {
@@ -93,6 +124,7 @@ struct ContentView: View {
             controller.onCommand = handle
             status = controller.statusText
             controller.onStatusChange = { status = $0 }
+            controller.onDeskChange = { top in DeskTray.animate { deskTop = top } }
         }
         .onChange(of: scenePhase) { _, phase in
             // 退到后台走后台任务包装;只是失去活跃(控制中心、来电)直接存。

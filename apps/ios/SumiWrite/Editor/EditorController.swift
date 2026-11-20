@@ -133,7 +133,7 @@ final class EditorController: UIViewController, UITextViewDelegate {
             container.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             container.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
             container.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
-            container.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor),
+            keyboardBottom,
         ])
 
         textView.frame = container.bounds
@@ -174,6 +174,10 @@ final class EditorController: UIViewController, UITextViewDelegate {
             .store(in: &bag)
 
         installCursor()
+
+        if #available(iOS 27.1, *) {
+            desk = DeskObserver(view: view) { [weak self] in self?.updateDesk(inLayout: false) }
+        }
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -207,7 +211,60 @@ final class EditorController: UIViewController, UITextViewDelegate {
         }
     }
 
+    // MARK: iPhone Duo 半折打字(ios.md §3.7)
+
+    /// 普通布局:正文区底边贴键盘顶边。半折时停用,换成下面两条。
+    private lazy var keyboardBottom = container.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor)
+    /// 半折:正文区底边贴折痕顶……
+    private lazy var foldBottom: NSLayoutConstraint = {
+        let c = container.bottomAnchor.constraint(equalTo: view.topAnchor)
+        c.priority = UILayoutPriority(999)
+        return c
+    }()
+    /// ……但不低于键盘顶边。
+    private lazy var keyboardCap = container.bottomAnchor.constraint(lessThanOrEqualTo: view.keyboardLayoutGuide.topAnchor)
+    /// `DeskObserver`;存成 `AnyObject` 免得整个类带上 iOS 27.1 的可用性。其他机型与旧系统上为 nil。
+    private var desk: AnyObject?
+    /// 当前的折痕顶(编辑面坐标);不在半折布局时为 nil。
+    private(set) var deskFoldTop: CGFloat?
+    /// 进出半折时通知外壳画底座:折痕顶的窗口 y 坐标,离开半折时为 nil。
+    var onDeskChange: ((CGFloat?) -> Void)?
+
+    /// 转轴变化时(`inLayout` 为 false)动画到新布局;布局过程中(旋转、换窗口大小)只换约束,随下一遍布局到位。
+    private func updateDesk(inLayout: Bool) {
+        guard #available(iOS 27.1, *), let observer = desk as? DeskObserver else { return }
+        let top = DeskPosture.foldTop(hinge: observer.hinge, divisions: observer.divisions(in: view), bounds: view.bounds)
+        switch (deskFoldTop, top) {
+        case (nil, nil): return
+        case let (old?, new?) where abs(old - new) < 0.5: return
+        default: break
+        }
+        let entering = deskFoldTop == nil
+        deskFoldTop = top
+        if let top {
+            foldBottom.constant = top
+            keyboardBottom.isActive = false
+            NSLayoutConstraint.activate([foldBottom, keyboardCap])
+        } else {
+            NSLayoutConstraint.deactivate([foldBottom, keyboardCap])
+            keyboardBottom.isActive = true
+        }
+        if inLayout {
+            view.setNeedsLayout()
+        } else if reduceMotion || view.window == nil {
+            view.layoutIfNeeded()
+        } else {
+            UIView.animate(withDuration: 0.25, delay: 0,
+                           options: [.curveEaseOut, .beginFromCurrentState, .allowUserInteraction]) {
+                self.view.layoutIfNeeded()
+            }
+        }
+        if top != nil && entering { focusEditor() }
+        onDeskChange?(top.map { view.convert(CGPoint(x: 0, y: $0), to: nil).y })
+    }
+
     override func viewDidLayoutSubviews() {
+        updateDesk(inLayout: true)
         super.viewDidLayoutSubviews()
         CATransaction.begin()
         CATransaction.setDisableActions(true)
