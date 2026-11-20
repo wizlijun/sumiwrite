@@ -61,14 +61,22 @@ final class SumiTextView: UITextView, UITextDropDelegate {
 
     // MARK: 排版
 
-    /// TextKit 2 只排可见区附近的段落,其余按估算的高度占位;光标位置、内容高度和按它们算的滚动(系统把光标
-    /// 滚进可见区、聚焦打字的居中)都会随排版补全而变:长文里打字时光标落到可见区外,文字上下跳。每次布局前
-    /// 先把全文排好,这些值就是实值(排过的段落不重排,只排改过的)。
-    override func layoutSubviews() {
-        if let layout = textLayoutManager, let content = layout.textContentManager {
-            layout.ensureLayout(for: content.documentRange)
-        }
-        super.layoutSubviews()
+    /// 关掉时 `layoutThroughCaret` 什么也不做:只给测试量它的效果与耗时。
+    var layoutsThroughCaret = true
+
+    /// 从文首排到光标所在段。TextKit 2 只排可见区附近的段落,其余按估算高度占位;光标框的 y 取决于它前面所有
+    /// 段落的高度,用估算值时,系统在插入文字时同步算出的「把光标滚进可见区」和聚焦打字的居中都会算错:长页里
+    /// 光标落到可见区外,排版补全后又被改正,文字上下跳。文字或选区改变后调一次(不放在 `layoutSubviews` 里,
+    /// 滚动时不重复走);之后的那次插入只作废它所在的段落,滚动目标就是实值。
+    func layoutThroughCaret() {
+        guard layoutsThroughCaret, let tlm = textLayoutManager, let tcm = tlm.textContentManager,
+              let end = selectedTextRange?.end else { return }
+        let doc = tcm.documentRange
+        guard let caret = tcm.location(doc.location, offsetBy: offset(from: beginningOfDocument, to: end)) else { return }
+        // 含光标后的一个字,好把光标所在段也排上(文末时到文末为止)。
+        let through = tcm.location(caret, offsetBy: 1) ?? doc.endLocation
+        guard let range = NSTextRange(location: doc.location, end: through) else { return }
+        tlm.ensureLayout(for: range)
     }
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {

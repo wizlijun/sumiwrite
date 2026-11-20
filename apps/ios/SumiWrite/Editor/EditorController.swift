@@ -404,6 +404,7 @@ final class EditorController: UIViewController, UITextViewDelegate {
     }
 
     func textViewDidChangeSelection(_ textView: UITextView) {
+        self.textView.layoutThroughCaret()
         placeRimeBar(reveal: !applyingProgrammaticChange)
         guard !applyingProgrammaticChange, textView.markedTextRange == nil else { return }
         // 外置键盘下,选区通知会晚于文字变更到达;紧随输入的选区变化不算「挪光标」。
@@ -438,6 +439,14 @@ final class EditorController: UIViewController, UITextViewDelegate {
         case .rejected(let rendered, let caret): reset(to: rendered, caret: caret)
         }
         markEdited()
+        revealCaret()
+    }
+
+    /// 粘贴、撤销、重做由内核改字,`UITextView` 不会替它们把光标滚进可见区(打字时是它在插入时滚的):
+    /// 不在聚焦打字时自己滚一次;聚焦时由 `afterEdit` 居中。`programmatic` 已排到光标,滚动目标是实值。
+    private func revealCaret() {
+        guard !focusMode else { return }
+        textView.scrollRangeToVisible(textView.selectedRange)
     }
 
     // MARK: 撤销与重做
@@ -459,6 +468,7 @@ final class EditorController: UIViewController, UITextViewDelegate {
             reset(to: rendered, caret: sel.location == NSNotFound ? length : min(sel.location, length))
         }
         markEdited()
+        revealCaret()
     }
 
     // MARK: 把内核结果放到编辑面
@@ -496,6 +506,8 @@ final class EditorController: UIViewController, UITextViewDelegate {
         let was = applyingProgrammaticChange
         applyingProgrammaticChange = true
         body()
+        // 这里改过文字或重设了属性(restyle 作废全文排版):排到光标为止,ios.md §3.3「TextKit 2 的估算高度」。
+        textView.layoutThroughCaret()
         applyingProgrammaticChange = was
         lastText = textView.text ?? ""
     }

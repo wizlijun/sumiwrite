@@ -456,12 +456,21 @@ final class RimeIntegrationTests: XCTestCase {
         XCTAssertTrue(hit === h.textView || hit.isDescendant(of: h.textView), "tap lands on \(hit)")
         let onStatus = status.convert(CGPoint(x: status.bounds.midX, y: 4), to: h.window)
         XCTAssertTrue(try XCTUnwrap(h.window.hitTest(onStatus, with: nil)) === status)
-        // 小块只比状态字宽一点;点在画出来的小块正下方落到正文上。
+        // 小块只比状态字宽一点、与候选行同高;点在画出来的小块紧左边、正下方都落到正文上。
         XCTAssertLessThan(status.bounds.width, 44)
         let block = try XCTUnwrap(bar.subviews.first { !$0.isHidden && $0.backgroundColor == bar.style.background })
-        let below = bar.convert(CGPoint(x: block.frame.midX, y: block.frame.maxY + 1), to: h.window)
-        let under = try XCTUnwrap(h.window.hitTest(below, with: nil))
-        XCTAssertTrue(under === h.textView || under.isDescendant(of: h.textView), "tap below lands on \(under)")
+        XCTAssertEqual(block.frame.height, bar.bounds.height, accuracy: 0.5)
+        for (name, p) in [("left", CGPoint(x: block.frame.minX - 1, y: block.frame.midY)),
+                          ("below", CGPoint(x: block.frame.midX, y: block.frame.maxY + 1))] {
+            let hit = try XCTUnwrap(h.window.hitTest(bar.convert(p, to: h.window), with: nil))
+            XCTAssertTrue(hit === h.textView || hit.isDescendant(of: h.textView), "tap \(name) lands on \(hit)")
+        }
+        // 小块右边是正文列以外的页边:点在那里也弹菜单,点击区在页边里补到 44pt 宽。
+        let margin = h.controller.view.bounds.maxX - bar.frame.maxX
+        XCTAssertGreaterThan(margin, 0)
+        let reach = min(margin, 44 - block.frame.width)
+        let right = bar.convert(CGPoint(x: block.frame.maxX + reach - 1, y: block.frame.midY), to: h.window)
+        XCTAssertTrue(try XCTUnwrap(h.window.hitTest(right, with: nil)) === status)
         XCTAssertEqual(h.textView.contentInset.bottom, RimeCandidateBar.height(for: bar.style.font), accuracy: 0.5)
         // 组字时整行不透明。
         h.rime.compose("ni", menu: RimeMenu(rows: [RimeCandidate(index: 0, label: "1", text: "你")], cursor: 0))
@@ -469,15 +478,57 @@ final class RimeIntegrationTests: XCTestCase {
         XCTAssertTrue(bar.isOpaque)
     }
 
-    /// 切到英文后打字(菜单切和单按 Shift 切两条路):文本视图一直是第一响应者;每打一键光标都在可见区里;
-    /// 进入聚焦打字后同一行里打字不滚动,留白与候选行(空闲小块)不变。真机「切英文后光标丢失、上下跳动」:
-    /// 长文里 TextKit 2 只估算没排过的段落,光标位置随排版补全而变,滚动按估算值算,光标落到可见区外。
+    /// 一篇长页:`count` 段会自动换行的长段落(中英混排,每段约 `paragraph.count` 字)。
+    private func longPage(_ count: Int) -> String {
+        let paragraph = String(repeating: "这是一段比较长的文字,用来让它在屏幕上自动换行。Some English words that wrap as well. ",
+                               count: 4)
+        return Array(repeating: paragraph, count: count).joined(separator: "\n") + "\n"
+    }
+
+    /// 光标框在窗口里的位置(含滚动)。
+    private func caretInWindow(_ h: Harness) throws -> CGRect {
+        let tv = h.textView
+        return tv.convert(tv.caretRect(for: try XCTUnwrap(tv.selectedTextRange?.end)), to: h.window)
+    }
+
+    /// 聚焦打字之后 ⌘N 新建一页,再 ⌘V 粘进一篇长页(经 `SumiTextView.paste`,由内核改字,不走 `UITextView`
+    /// 自己插入时的滚动):粘完光标在文末、在可见区里,候选行(空闲小块)显示,点得到状态字。
+    /// sim-rime 按 builtin、english、entype 的顺序跑时 x00 停在页首、候选行隐去,就是这条。
+    func test_pastingALongPageScrollsTheCaretIntoView() throws {
+        let h = try harness()
+        let board = UIPasteboard.withUniqueName()
+        defer { UIPasteboard.remove(withName: board.name) }
+        board.string = longPage(60)
+        h.textView.pasteboard = board
+        for c in "abcde" { h.textView.insertText(String(c)); drainMain() } // 进入聚焦打字
+        h.controller.show(page: try XCTUnwrap(h.library.newPage()))        // ⌘N
+        RunLoop.main.run(until: Date().addingTimeInterval(0.8))
+        h.textView.paste(nil)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.8))
+        h.controller.view.layoutIfNeeded()
+        let tv = h.textView
+        XCTAssertEqual(tv.selectedRange.location, tv.textStorage.length)
+        let caret = tv.caretRect(for: try XCTUnwrap(tv.selectedTextRange?.end))
+        let top = tv.contentOffset.y + (tv.pinnedY == nil ? tv.contentInset.top : 0)
+        let bottom = tv.contentOffset.y + tv.bounds.height - (tv.pinnedY == nil ? tv.contentInset.bottom : 0)
+        XCTAssertTrue(caret.minY >= top - 0.5 && caret.maxY <= bottom + 0.5, "caret \(caret.minY)…\(caret.maxY) outside \(top)…\(bottom)")
+        XCTAssertEqual(try bar(h).alpha, 1)
+    }
+
+    /// 切到英文后打字(菜单切和单按 Shift 切两条路),长页、长段落自动换行:
+    /// - 切换前后光标在窗口里的位置不变;
+    /// - 文本视图一直是第一响应者,每打一键光标都在可见区里,候选行(空闲小块)显示;
+    /// - 进入聚焦打字之前,留白与候选行高度不变;进入之后,同一行里打字不滚动,留白与候选行位置不变。
+    /// 真机「切英文后光标丢失、上下跳动」:TextKit 2 对没排过的段落用估算高度,光标位置随排版补全而变,
+    /// 滚动按估算值算,光标落到可见区外。
     func test_englishTypingKeepsCaretVisibleAndStill() throws {
         for viaMenu in [true, false] {
             let h = try harness()
-            h.textView.insertText(String(repeating: "第一段文字。\n", count: 40))
+            h.textView.insertText(longPage(30))
             RunLoop.main.run(until: Date().addingTimeInterval(0.8)) // 粘贴后的滚动动画走完
+            h.controller.view.layoutIfNeeded()
             let bar = try bar(h)
+            let before = try caretInWindow(h)
             if viaMenu {
                 choose(.english, in: bar)
             } else {
@@ -486,8 +537,13 @@ final class RimeIntegrationTests: XCTestCase {
                 drainMain()
                 bar.layoutIfNeeded()
             }
+            h.controller.view.layoutIfNeeded()
+            let switched = try caretInWindow(h)
+            XCTAssertEqual(switched.minY, before.minY, accuracy: 0.5, "caret moved on switch, via menu: \(viaMenu)")
+            XCTAssertEqual(switched.minX, before.minX, accuracy: 0.5, "caret moved on switch, via menu: \(viaMenu)")
             XCTAssertTrue(h.textView.isFirstResponder)
             XCTAssertEqual(button("切换输入法", in: bar)?.currentAttributedTitle?.string, "英")
+            let resting = (inset: h.textView.contentInset, barHeight: bar.frame.height)
             var pinned: (offset: CGFloat, inset: UIEdgeInsets, bar: CGRect)?
             for c in "The quick, brown fox " {
                 let press = BarePress()
@@ -507,15 +563,16 @@ final class RimeIntegrationTests: XCTestCase {
                               "caret \(caret.minY)…\(caret.maxY) outside \(top)…\(bottom), " + at)
                 XCTAssertEqual(bar.alpha, 1, at)
                 XCTAssertFalse(bar.isOpaque, "idle chip while typing English, " + at)
-                if tv.pinnedY != nil {
-                    if let p = pinned {
-                        XCTAssertEqual(tv.contentOffset.y, p.offset, accuracy: 0.5, at)
-                        XCTAssertEqual(tv.contentInset, p.inset, at)
-                        XCTAssertEqual(bar.frame.minY, p.bar.minY, accuracy: 0.5, at)
-                        XCTAssertEqual(bar.frame.height, p.bar.height, accuracy: 0.5, at)
-                    } else {
-                        pinned = (tv.contentOffset.y, tv.contentInset, bar.frame)
-                    }
+                if tv.pinnedY == nil {
+                    XCTAssertEqual(tv.contentInset, resting.inset, "before focus, " + at)
+                    XCTAssertEqual(bar.frame.height, resting.barHeight, accuracy: 0.5, "before focus, " + at)
+                } else if let p = pinned {
+                    XCTAssertEqual(tv.contentOffset.y, p.offset, accuracy: 0.5, at)
+                    XCTAssertEqual(tv.contentInset, p.inset, at)
+                    XCTAssertEqual(bar.frame.minY, p.bar.minY, accuracy: 0.5, at)
+                    XCTAssertEqual(bar.frame.height, p.bar.height, accuracy: 0.5, at)
+                } else {
+                    pinned = (tv.contentOffset.y, tv.contentInset, bar.frame)
                 }
             }
             XCTAssertNotNil(pinned, "focus typing engaged")
