@@ -1,0 +1,32 @@
+[package]
+name = "sumi-ios-ffi"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "UniFFI bridge from the shared write-core to the iOS app"
+
+[lib]
+name = "sumi_ios_ffi"
+crate-type = ["staticlib", "cdylib", "lib"]
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "src/bin/uniffi-bindgen.rs"
+
+[[bin]]
+name = "golden"
+path = "src/bin/golden.rs"
+
+[dependencies]
+write-core = { path = "../../../core", features = ["fixtures"] }
+uniffi = { version = "=0.32.2", features = ["cli"] }
+thiserror = "2"
+serde_json = "1"
+base64 = "0.22"
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+debug = 0

@@ -1,0 +1,60 @@
+name: SumiWrite
+options:
+  bundleIdPrefix: com.example
+  deploymentTarget:
+    iOS: "17.0"
+configFiles:
+  Debug: Base.xcconfig
+  Release: Base.xcconfig
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+targets:
+  SumiWrite:
+    type: application
+    platform: iOS
+    sources:
+      - path: SumiWrite
+      - path: build/gen
+      - path: ../notemd-plugin/resources/sounds
+        type: folder
+        buildPhase: resources
+    dependencies:
+      - framework: build/SumiCoreFFI.xcframework
+        embed: false
+    info:
+      path: build/Info-app.plist
+      properties:
+        UIAppFonts:
+          - IBMPlexMono-Light.ttf
+          - IBMPlexSansSC-Light.otf
+          - LXGWWenKaiMonoLite-Regular.ttf
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: "Sumi Write"
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+  SumiWriteTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: SumiWriteTests
+      - path: build/fixtures
+        type: folder
+    dependencies:
+      - target: SumiWrite
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/SumiWrite.app/SumiWrite
+        BUNDLE_LOADER: $(TEST_HOST)
+schemes:
+  SumiWrite:
+    build:
+      targets:
+        SumiWrite: all
+        SumiWriteTests: [test]
+    test:
+      targets:
+        - SumiWriteTests

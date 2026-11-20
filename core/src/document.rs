@@ -945,6 +945,12 @@ impl Document {
         Ok(self.doc.transact().encode_state_as_update_v1(&vector))
     }
 
+    pub fn can_undo(&self) -> bool {
+        self.undo.can_undo()
+    }
+    pub fn can_redo(&self) -> bool {
+        self.undo.can_redo()
+    }
     pub fn undo(&mut self, at_ms: i64) -> Result<Vec<u8>> {
         self.history(false, at_ms)
     }

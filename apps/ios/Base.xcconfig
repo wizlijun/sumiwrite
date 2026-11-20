@@ -1,0 +1,4 @@
+PRODUCT_BUNDLE_IDENTIFIER = com.example.sumiwrite
+CODE_SIGN_STYLE = Automatic
+IPHONEOS_DEPLOYMENT_TARGET = 17.0
+#include? "Signing.local.xcconfig"

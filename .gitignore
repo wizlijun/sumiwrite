@@ -7,3 +7,7 @@ sync/.local/
 apps/notemd-plugin/backend/target/
 apps/notemd-plugin/node_modules/
 apps/notemd-plugin/dist/
+apps/ios/ffi/target/
+apps/ios/build/
+apps/ios/*.xcodeproj/
+apps/ios/Signing.local.xcconfig

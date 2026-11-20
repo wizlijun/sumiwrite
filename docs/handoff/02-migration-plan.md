@@ -159,7 +159,7 @@ note.md 侧:
 
 ## 第 4 期:iOS/iPadOS 应用
 
-前置条件见 [../spec/platform/ios.md](../spec/platform/ios.md) §6(第 3 期完成、发行事务)。里程碑 M0–M5 及各自验证见 [ios.md §4.1](../spec/platform/ios.md):M0 内核过 FFI 排在最前,不成立就回到技术栈重选(设计 §10.3)。
+前置条件见 [../spec/platform/ios.md](../spec/platform/ios.md) §6:M0、M1 只用到 `core/`,可以在第 3 期之前开工;M2 起要等第 3 期完成,另有发行事务。里程碑 M0–M5 及各自验证见 [ios.md §4.1](../spec/platform/ios.md):M0 内核过 FFI 排在最前,不成立就回到技术栈重选(设计 §10.3)。
 
 完成的标志:TestFlight 版可与桌面跨设备续写(设计 §8)。iOS 第一阶段自用,不公开发行(设计 §2 **[用户定]**)。
 
