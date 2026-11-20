@@ -167,7 +167,7 @@ Expected: 编译失败(`publish_first`、`create_archive_under` 未定义)
 2. 用 `read_hash` 的同一规则读磁盘两份文件:拒绝符号链接,不存在记为 `None`。
 3. 两份都不存在,用 `replace` 写入,返回 `Written`。
 4. 两份都与待写字节逐字节相同,返回 `Adopted`。
-5. 两份都存在,`parse_pair` 通过,且 `page_id` 与 `epoch` 都相同:先写 sidecar 再写正文(与 `publish` 的写入顺序一致),返回 `Replaced`。
+5. 两份都存在,`parse_pair` 通过,且 `page_id` 与 `epoch` 都相同:先写正文再写 sidecar(与 `publish` 的写入顺序一致),返回 `Replaced`。
 6. 其余情况返回 `Conflict`。
 
 `protocol/src/durability.rs` 加 `SetArchive` 变体。两个 crate 的版本都升到 `0.2.0`。CHANGELOG 两份各加一条:“内核投影改为写入可设置的归档目录(破坏性变更,`core-v0.2.0`)”。

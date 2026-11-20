@@ -1,6 +1,6 @@
 //! A file pair is a recoverable projection, never a two-file atomic transaction.
 use crate::{Error, Result};
-use crate::storage::{FilePair, parse_pair, sha256};
+use crate::storage::{FilePair, Sidecar, parse_pair, sha256};
 use serde::{Deserialize, Serialize};
 use std::{fs::{self, OpenOptions}, io::Write, path::{Path, PathBuf}};
 use uuid::Uuid;
@@ -86,28 +86,34 @@ fn read_text(path:&Path) -> Result<Option<Vec<u8>>> {
         Err(error) => Err(io(error)),
     }
 }
-/// First write for a page with no recorded baseline: write, adopt identical files, replace this
-/// page's own older version, otherwise report a conflict without touching the disk.
+/// First write for a page with no recorded baseline: write, adopt identical files, finish this
+/// page's own interrupted write, replace this page's own older version, otherwise report a
+/// conflict without touching the disk. Files are written markdown first, then sidecar, like `publish`.
 pub fn publish_first(archive:&Path, filename:&str, pair:&FilePair) -> Result<FirstWrite> {
     let (markdown,metadata)=paths(archive,filename)?;
     let ours=parse_pair(&pair.markdown,&pair.metadata)?;
     let next=Baseline { markdown_sha256:Some(sha256(pair.markdown.as_bytes())), metadata_sha256:Some(sha256(pair.metadata.as_bytes())) };
     let (md,meta)=(read_text(&markdown)?,read_text(&metadata)?);
-    let (md,meta)=match (md,meta) {
-        (None,None) => {
-            replace(&metadata,pair.metadata.as_bytes())?; replace(&markdown,pair.markdown.as_bytes())?;
-            return Ok(FirstWrite::Written(next));
-        }
-        (Some(md),Some(meta)) => (md,meta),
-        _ => return Ok(FirstWrite::Conflict),
+    let md_same=md.as_deref().map(|b|b==pair.markdown.as_bytes());
+    let meta_same=meta.as_deref().map(|b|b==pair.metadata.as_bytes());
+    let write=|written:fn(Baseline)->FirstWrite| -> Result<FirstWrite> {
+        if md_same!=Some(true) { replace(&markdown,pair.markdown.as_bytes())?; }
+        if meta_same!=Some(true) { replace(&metadata,pair.metadata.as_bytes())?; }
+        Ok(written(next.clone()))
     };
-    if md==pair.markdown.as_bytes() && meta==pair.metadata.as_bytes() { return Ok(FirstWrite::Adopted(next)); }
+    if md_same==Some(true) && meta_same==Some(true) { return Ok(FirstWrite::Adopted(next)); }
+    // Nothing there, or each present file is already our pending bytes: an interrupted first write.
+    if md_same!=Some(false) && meta_same!=Some(false) { return write(FirstWrite::Written); }
+    // Pending markdown plus this page's older sidecar: an interrupted replace.
+    if md_same==Some(true) {
+        let own=meta.as_deref().and_then(|b|serde_json::from_slice::<Sidecar>(b).ok())
+            .is_some_and(|theirs|theirs.page_id==ours.sidecar.page_id && theirs.epoch==ours.sidecar.epoch);
+        return if own { write(FirstWrite::Replaced) } else { Ok(FirstWrite::Conflict) };
+    }
+    let (Some(md),Some(meta))=(md,meta) else { return Ok(FirstWrite::Conflict) };
     let (Ok(md),Ok(meta))=(String::from_utf8(md),String::from_utf8(meta)) else { return Ok(FirstWrite::Conflict) };
     match parse_pair(&md,&meta) {
-        Ok(theirs) if theirs.sidecar.page_id==ours.sidecar.page_id && theirs.sidecar.epoch==ours.sidecar.epoch => {
-            replace(&metadata,pair.metadata.as_bytes())?; replace(&markdown,pair.markdown.as_bytes())?;
-            Ok(FirstWrite::Replaced(next))
-        }
+        Ok(theirs) if theirs.sidecar.page_id==ours.sidecar.page_id && theirs.sidecar.epoch==ours.sidecar.epoch => write(FirstWrite::Replaced),
         _ => Ok(FirstWrite::Conflict),
     }
 }

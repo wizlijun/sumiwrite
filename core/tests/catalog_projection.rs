@@ -215,11 +215,47 @@ fn publish_first_conflicts_on_half_pair() {
     for keep_markdown in [true,false] {
         let dir=tempfile::tempdir().unwrap();
         let (md,meta)=projection::paths(dir.path(),NAME).unwrap();
-        if keep_markdown { std::fs::write(&md,&old.markdown).unwrap() } else { std::fs::write(&meta,&old.metadata).unwrap() }
-        let before=(md.exists(),meta.exists());
+        let (kept,bytes)=if keep_markdown { (&md,&old.markdown) } else { (&meta,&old.metadata) };
+        std::fs::write(kept,bytes).unwrap();
         assert!(matches!(projection::publish_first(dir.path(),NAME,&mine).unwrap(),projection::FirstWrite::Conflict));
-        assert_eq!((md.exists(),meta.exists()),before);
+        assert_eq!((md.exists(),meta.exists()),(keep_markdown,!keep_markdown));
+        assert_eq!(std::fs::read_to_string(kept).unwrap(),*bytes);
     }
+}
+
+#[test]
+fn publish_first_finishes_interrupted_write_with_markdown_only() {
+    let dir=tempfile::tempdir().unwrap(); let p=real_pair(&Uuid::new_v4().to_string(),1,"mine");
+    let (md,_)=projection::paths(dir.path(),NAME).unwrap(); std::fs::write(md,&p.markdown).unwrap();
+    assert!(matches!(projection::publish_first(dir.path(),NAME,&p).unwrap(),projection::FirstWrite::Written(_)));
+    assert_eq!(disk(dir.path()),(p.markdown,p.metadata));
+}
+
+#[test]
+fn publish_first_finishes_interrupted_write_with_sidecar_only() {
+    let dir=tempfile::tempdir().unwrap(); let p=real_pair(&Uuid::new_v4().to_string(),1,"mine");
+    let (_,meta)=projection::paths(dir.path(),NAME).unwrap(); std::fs::write(meta,&p.metadata).unwrap();
+    assert!(matches!(projection::publish_first(dir.path(),NAME,&p).unwrap(),projection::FirstWrite::Written(_)));
+    assert_eq!(disk(dir.path()),(p.markdown,p.metadata));
+}
+
+#[test]
+fn publish_first_finishes_interrupted_replace() {
+    let dir=tempfile::tempdir().unwrap(); let page=Uuid::new_v4().to_string();
+    let v1=real_pair(&page,1,"v1"); let v2=real_pair(&page,1,"v2 longer");
+    let (md,meta)=projection::paths(dir.path(),NAME).unwrap();
+    std::fs::write(md,&v2.markdown).unwrap(); std::fs::write(meta,&v1.metadata).unwrap();
+    assert!(matches!(projection::publish_first(dir.path(),NAME,&v2).unwrap(),projection::FirstWrite::Replaced(_)));
+    assert_eq!(disk(dir.path()),(v2.markdown,v2.metadata));
+}
+
+#[test]
+fn publish_first_conflicts_when_sidecar_belongs_to_other_page() {
+    let dir=tempfile::tempdir().unwrap();
+    let mine=real_pair(&Uuid::new_v4().to_string(),1,"mine"); let other=real_pair(&Uuid::new_v4().to_string(),1,"other");
+    let (md,meta)=projection::paths(dir.path(),NAME).unwrap();
+    std::fs::write(md,&mine.markdown).unwrap(); std::fs::write(meta,&other.metadata).unwrap();
+    assert_conflict(dir.path(),&mine);
 }
 
 #[test]
