@@ -9,7 +9,7 @@ struct SumiWriteApp: App {
     var body: some Scene {
         WindowGroup {
             if let library = env.library {
-                ContentView(controller: env.controller, library: library, prefs: env.prefs)
+                ContentView(controller: env.controller, voice: env.voice, library: library, prefs: env.prefs)
             } else {
                 FailureView(controller: env.controller, prefs: env.prefs)
             }
@@ -25,6 +25,8 @@ final class AppEnvironment {
     let controller: EditorController
     let library: PageLibrary?
     let prefs: PrefsModel
+    /// 按住说话(ios.md §3.7);录音结束后把音频会话交还打字音。
+    let voice: VoiceHost
 
     init() {
         let defaults = UserDefaults.standard
@@ -50,5 +52,6 @@ final class AppEnvironment {
         controller = EditorController(persistence: persistence, page: page, prefs: prefs,
                                       selection: SelectionStore(defaults: defaults), sound: sound, rime: rime)
         live.controller = controller
+        voice = VoiceHost(controller: controller, prefs: prefs, sound: sound)
     }
 }

@@ -18,6 +18,8 @@ bash ~/git/rime-kit/scripts/fetch.sh
 
 `test-sim.sh` 与 `install-device.sh` 每次构建前都会再跑一次 `fetch.sh`(已取过就跳过);找不到 RimeKit 时打印「缺 RimeKit:见 apps/ios/README.md」并退出。
 
+按住说话(规范 [`ios.md` §3.7](../../docs/spec/platform/ios.md#37-语音输入))来自本机的 Swift 包 VoiceKit(产品 `VoiceKit`、`VoiceKitUI`,从 rapp 移植):放在 `~/git/voice-kit`(与本仓库同级;`project.yml` 用相对路径 `../../../voice-kit` 引用)。它没有远端,也不用另取二进制,放好目录即可。语音的落地由 `VoiceLandingTests` 覆盖(组字先上屏、结果进内核、一次撤销撤掉);识别、权限、音频只靠真机。
+
 ## 构建
 
 - `bash apps/ios/scripts/build-core.sh`:产出 `build/SumiCoreFFI.xcframework`、`build/gen/sumi_ios_ffi.swift` 和 `build/fixtures/`(`yrs-v1.json`、`yjs-v1.json`、`desktop.sqlite3`、`golden.json`)。可重复执行。

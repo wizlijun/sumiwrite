@@ -121,6 +121,38 @@ final class EditorController: UIViewController, UITextViewDelegate {
     /// 「已复制 N 字」的 N:可见文本的字符数,不算转义用的 `\`。
     var pageCharacterCount: Int { textView.text.count }
 
+    // MARK: 语音输入(ios.md §3.7)
+
+    /// 纸页可写:麦克风按钮可用。打开失败、保存失败时为 false。
+    var voiceAvailable: Bool { model?.isWritable == true && textView.isEditable }
+
+    /// 每次按下、开始识别之前:系统输入法组字中、纸页不可写时返回要提示的话;否则内置输入法的组字先按原文上屏
+    /// (同切页前,不发打字音),返回 nil。
+    func voiceWillStart() -> String? {
+        if !canSwitchPage { return "请先完成输入" }
+        if !voiceAvailable { return "这一页现在不能写" }
+        prepareToSwitch()
+        return nil
+    }
+
+    /// 语音的结果:替换选区,经 `PageModel.userEdited` 交给内核(按键入的文字转义,`#`、`*` 不成标记)。
+    /// 结构同 `paste`:不经文本视图的输入代理、不播打字音;算一次编辑(聚焦打字、保存),之后把光标滚进视野。
+    func insertVoice(_ text: String) {
+        guard let model, model.isWritable, textView.markedTextRange == nil, !text.isEmpty else { return }
+        let range = textView.selectedRange
+        guard range.location != NSNotFound else { return }
+        let visible = ((textView.text ?? "") as NSString).replacingCharacters(in: clamped(range), with: text)
+        let caret = clamped(range).location + (text as NSString).length
+        switch model.userEdited(visible: visible, composing: false, caret: caret) {
+        case .unchanged: return
+        case .accepted(let rendered, let caret): show(rendered, caret: caret)
+        case .rejected(let rendered, let caret): reset(to: rendered, caret: caret)
+        }
+        registerInput()
+        markEdited()
+        revealCaret()
+    }
+
     // MARK: 视图
 
     override func viewDidLoad() {

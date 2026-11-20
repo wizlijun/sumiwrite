@@ -1,4 +1,5 @@
 import SwiftUI
+import VoiceKit
 
 /// 编辑面的 SwiftUI 外壳;控制器只建一次,由外部持有。
 struct EditorHost: UIViewControllerRepresentable {
@@ -49,6 +50,7 @@ private struct StatusLine: View {
 
 struct ContentView: View {
     let controller: EditorController
+    let voice: VoiceHost
     @ObservedObject var library: PageLibrary
     @ObservedObject var prefs: PrefsModel
     @Environment(\.scenePhase) private var scenePhase
@@ -59,6 +61,10 @@ struct ContentView: View {
     @State private var showOverview = false
     @State private var showAppearance = false
     @State private var toast: String?
+    /// 提示条是否带「去设置」(语音权限、识别语言)。
+    @State private var toastSettings = VoiceSettings.none
+    /// 每次 `flash` 加一:只让最后一次的计时收起提示条。
+    @State private var toastSerial = 0
     @State private var status: String?
 
     private var fg: Color { Color(prefs.prefs.theme.foreground) }
@@ -72,18 +78,36 @@ struct ContentView: View {
             VStack(spacing: 0) {
                 EditorHost(controller: controller)
                 if let status { StatusLine(text: status, color: fg) }
-                chrome
-                    .frame(height: 48)
-                    .padding(.bottom, 4)
+                // 麦克风在这一条的最右端(ios.md §3.7「入口」);「···」照旧居中。
+                ZStack(alignment: .trailing) {
+                    chrome.frame(maxWidth: .infinity)
+                    MicButton(hold: voice.hold, host: voice, color: fg, enabled: controller.voiceAvailable)
+                        .opacity(chromeOpen || typingRecently ? 0 : 0.35)
+                        .animation(.easeOut(duration: 0.3), value: typingRecently)
+                        .padding(.trailing, 6)
+                }
+                .frame(height: 48)
+                .padding(.bottom, 4)
             }
             if let toast {
-                Text(toast)
-                    .font(.footnote)
-                    .foregroundStyle(fg)
-                    .padding(.horizontal, 14).padding(.vertical, 8)
-                    .background(Capsule().fill(fg.opacity(0.12)))
-                    .padding(.bottom, 64)
-                    .transition(.opacity)
+                HStack(spacing: 12) {
+                    Text(toast)
+                        .font(.footnote)
+                        .foregroundStyle(fg)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if toastSettings != .none {
+                        let settings = toastSettings
+                        Button("去设置") { voice.openSettings(settings) }
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(fg)
+                            .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 14).padding(.vertical, 8)
+                .background(RoundedRectangle(cornerRadius: 17, style: .continuous).fill(fg.opacity(0.12)))
+                .padding(.horizontal, 16)
+                .padding(.bottom, 64)
+                .transition(.opacity)
             }
         }
         .statusBarHidden(true)
@@ -93,8 +117,13 @@ struct ContentView: View {
             controller.onCommand = handle
             status = controller.statusText
             controller.onStatusChange = { status = $0 }
+            voice.onNotice = { text, settings in
+                flash(text, life: VoiceHost.noticeLife(text, settings: settings), settings: settings)
+            }
         }
         .onChange(of: scenePhase) { _, phase in
+            // 来电、控制中心、退到后台:正在说的话按取消处理(ios.md §3.7「打断」)。
+            if phase != .active { voice.interrupt() }
             // 退到后台走后台任务包装;只是失去活跃(控制中心、来电)直接存。
             if phase == .background { controller.sceneDidEnterBackground() }
             else if phase != .active { controller.saveNow() }
@@ -208,10 +237,54 @@ struct ContentView: View {
 
     private func refocus() { controller.focusEditor() }
 
-    private func flash(_ text: String) {
-        withAnimation { toast = text }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) {
-            withAnimation { if toast == text { toast = nil } }
+    private func flash(_ text: String, life: Double = 1.8, settings: VoiceSettings = .none) {
+        toastSerial += 1
+        let serial = toastSerial
+        withAnimation {
+            toast = text
+            toastSettings = settings
         }
+        DispatchQueue.main.asyncAfter(deadline: .now() + life) {
+            guard toastSerial == serial else { return }
+            withAnimation {
+                toast = nil
+                toastSettings = .none
+            }
+        }
+    }
+}
+
+/// 底栏右端的麦克风:按住说话,不是开关(ios.md §3.7「入口」)。手指按下、移动、松开交给 `VoiceHost`;
+/// 按住时 VoiceKit 的覆盖层从这里长出圆盘,并经 `hold.buttonOpacity` 把图标淡掉。
+private struct MicButton: View {
+    @ObservedObject var hold: VoiceHold
+    let host: VoiceHost
+    let color: Color
+    /// 纸页不可写时变灰、不响应。
+    let enabled: Bool
+    @GestureState private var pressing = false
+
+    var body: some View {
+        Image(systemName: "mic")
+            .font(.system(size: 17, weight: .light))
+            .foregroundStyle(color)
+            .frame(width: 44, height: 44)
+            .contentShape(Rectangle())
+            .opacity(hold.buttonOpacity * (enabled ? 1 : 0.4))
+            .gesture(
+                DragGesture(minimumDistance: 0, coordinateSpace: .global)
+                    .updating($pressing) { _, state, _ in state = true }
+                    .onChanged { host.finger(at: $0.location) }
+                    .onEnded { _ in host.fingerUp() },
+                including: enabled ? .all : .none)
+            // 手势被系统取消时没有 `onEnded`,只有手势状态复位:晚一拍看手指是否还算按着,是就当打断。
+            .onChange(of: pressing) { _, now in
+                if !now { DispatchQueue.main.async { host.fingerGone() } }
+            }
+            .accessibilityElement()
+            .accessibilityLabel("语音输入")
+            .accessibilityHint("双击开始说话,再双击结束")
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction { if enabled { host.accessibilityToggle() } }
     }
 }
