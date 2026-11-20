@@ -409,7 +409,10 @@ final class EditorController: UIViewController, UITextViewDelegate {
         // 外置键盘下,选区通知会晚于文字变更到达;紧随输入的选区变化不算「挪光标」。
         let followsEdit = textView.selectedRange == editSelection
             || now().timeIntervalSince(lastEditTime) < 0.5
-        if inEdit || arrowNav || followsEdit {
+        // 内嵌输入法落下更新时(上屏、清掉组字、换成系统输入法)的选区变化是它挪的,不是用户:清掉组字时 UIKit
+        // 不经 `shouldChangeTextIn`,光标退回组字之前,与记下的位置不符。
+        let fromRime = (rimeProbe?.landing ?? 0) > 0
+        if inEdit || arrowNav || followsEdit || fromRime {
             arrowNav = false
             if focusMode { DispatchQueue.main.async { [weak self] in self?.centerCaret(animated: true) } }
             return

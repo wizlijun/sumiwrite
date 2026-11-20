@@ -599,6 +599,45 @@ final class RimeIntegrationTests: XCTestCase {
         XCTAssertEqual(h.sound.total, before + 1)
     }
 
+    /// 聚焦打字中取消组字(Esc 清掉、点「内」换成「系」)不算挪光标:仍在聚焦,正文不跳回页首(04「退出聚焦」;
+    /// sim-rime.sh 的 repeat r03、toggle t02 看到过跳回)。清掉组字时 UIKit 发的选区通知不经 `shouldChangeTextIn`,
+    /// 光标停在组字之前,与按键记下的位置不符,且可能离上次输入已过 0.5 秒。
+    func test_cancelledCompositionKeepsFocus() throws {
+        let h = try harness()
+        var t = Date(timeIntervalSinceReferenceDate: 1000)
+        h.controller.now = { t }
+        for ch in ["一", "二", "三", "四"] { h.textView.insertText(ch) }
+        XCTAssertNotNil(h.textView.pinnedY, "four quick inputs enter focus")
+        drainMain()
+
+        /// 按一键(引擎吞下),按下时引擎推 `update`。
+        func key(_ update: RimeUpdate) {
+            let press = BarePress()
+            h.rime.swallowed.insert(ObjectIdentifier(press))
+            h.rime.onSwallow = { [weak rime = h.rime] _ in rime?.push(update) }
+            h.textView.pressesBegan([press], with: nil)
+            h.textView.pressesEnded([press], with: nil)
+            h.rime.onSwallow = nil
+            drainMain()
+        }
+        let ni = RimeUpdate(preedit: "ni", caret: 2, input: "ni")
+
+        key(ni)
+        t += 1
+        key(RimeUpdate()) // Esc
+        XCTAssertEqual(h.textView.text, "一二三四")
+        XCTAssertNotNil(h.textView.pinnedY, "Esc clearing the composition is not a caret move")
+
+        key(ni)
+        t += 1
+        let bar = try bar(h)
+        bar.layoutIfNeeded()
+        try XCTUnwrap(button("切换内置输入法", in: bar)).sendActions(for: .touchUpInside)
+        drainMain()
+        XCTAssertEqual(h.textView.text, "一二三四")
+        XCTAssertNotNil(h.textView.pinnedY, "switching to the system input method is not a caret move")
+    }
+
     /// 组字中不接受拖入(复审 8)。
     func test_compositionForbidsDrop() throws {
         let h = try harness()
