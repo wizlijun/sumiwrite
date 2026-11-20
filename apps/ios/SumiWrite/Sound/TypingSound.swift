@@ -2,7 +2,7 @@ import AVFoundation
 import Foundation
 import UIKit
 
-/// 打字音。会话为 `.ambient` + `.mixWithOthers`,所以跟随静音开关、不打断别的音频。
+/// 打字音。会话为 `.playback` + `.mixWithOthers`,所以不受静音键影响、不打断别的音频(ios.md §3.4)。
 /// 引擎、节点与样本都只在声音队列上动;`play` 在输入路径上只读偏好、取锁看一眼就绪标志,失败即无声。
 ///
 /// - 打字音关着时不建引擎;打开设置或第一次需要发声时才建,并且只加载选中的音色。
@@ -182,7 +182,7 @@ final class TypingSound: TypingSoundPlaying {
         do {
             if engine == nil || loadedPack != pack { try build(pack) }
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.ambient, options: .mixWithOthers)
+            try session.setCategory(.playback, options: .mixWithOthers)
             try session.setActive(true)
             guard let engine else { throw SetUpError.noSamples }
             if !engine.isRunning { try engine.start() }
