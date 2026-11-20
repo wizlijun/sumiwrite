@@ -1,4 +1,5 @@
 import Foundation
+import RimeKit
 
 enum CaretMotion: String, Codable { case breathing, steady }
 enum SoundPack: String, Codable, CaseIterable { case typewriter, thock }
@@ -17,6 +18,8 @@ struct EditorPrefs: Codable, Equatable {
     var focusTyping: Bool = true
     var typingSound: Bool = true
     var soundPack: SoundPack = .typewriter
+    /// 内嵌输入法切换中 / 英的快捷键(ios.md §3.6)。
+    var switchShortcut: RimeSwitchShortcut = .controlSpace
 
     init() {}
 
@@ -31,6 +34,7 @@ struct EditorPrefs: Codable, Equatable {
         focusTyping = try c.decodeIfPresent(Bool.self, forKey: .focusTyping) ?? d.focusTyping
         typingSound = try c.decodeIfPresent(Bool.self, forKey: .typingSound) ?? d.typingSound
         soundPack = try c.decodeIfPresent(SoundPack.self, forKey: .soundPack) ?? d.soundPack
+        switchShortcut = try c.decodeIfPresent(RimeSwitchShortcut.self, forKey: .switchShortcut) ?? d.switchShortcut
     }
 
     /// 字号加 `delta` 并夹到合法范围。

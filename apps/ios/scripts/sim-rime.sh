@@ -5,7 +5,7 @@
 # (或 agent)逐张看,对照下面写的预期判定。
 #
 # 用法:bash apps/ios/scripts/sim-rime.sh [--no-build] [场景...]
-#   场景:builtin middle repeat focus shift english entype switch toggle tap(默认全部,按此顺序)
+#   场景:builtin middle repeat focus shift hotkey english entype switch toggle tap(默认全部,按此顺序)
 #   环境变量:SIM_RIME_DEVICE 专用模拟器的名字(默认 sumi-rime-e2e,没有就建一台 iPad Pro 11-inch (M5));
 #            RIME 指 RimeKit 仓库(默认与本仓库同级的 rime-kit)。
 # 每个场景先按 ⌘N 新建空白页,在空白页里做。
@@ -37,6 +37,10 @@
 #          s03 单按左 Shift:「英」变回「中」。
 #          s04 n i h a o Space:「abc你好」。
 #          s05 单按右 Shift:仍是「中」(雾凇 default.yaml 的 Shift_R: noop)。
+# hotkey   k01 Control + 空格(设置里的默认快捷键):状态字「中」变「英」,正文没有多出空格。
+#          k02 a b c:「abc」直接上屏,没有组字、没有候选,仍空闲。
+#          k03 Control + 空格:「英」变回「中」。
+#          k04 n i h a o:内置的组字与候选(同 b01),前面是「abc」。
 # english  e01 点状态字:弹出系统菜单「中文」「英文」「系统输入法」,「中文」打勾。
 #          e02 点「英文」:菜单收起,状态字变「英」。
 #          e03 a b c:「abc」直接上屏,没有组字、没有候选,仍空闲。
@@ -74,7 +78,7 @@ NAME="${SIM_RIME_DEVICE:-sumi-rime-e2e}"
 
 build=1
 if [ "${1:-}" = --no-build ]; then build=0; shift; fi
-SC="${*:-builtin middle repeat focus shift english entype switch toggle tap}"
+SC="${*:-builtin middle repeat focus shift hotkey english entype switch toggle tap}"
 
 mkdir -p "$BIN"
 for t in simkey hwkb; do
@@ -250,6 +254,12 @@ for s in $SC; do
     step s03-shift SHIFT
     step s04-nihao n i h a o SPACE
     step s05-right-shift RSHIFT
+    ;;
+  hotkey)
+    step k01-ctrl-space ^+SPACE
+    step k02-abc a b c
+    step k03-ctrl-space ^+SPACE
+    step k04-nihao n i h a o
     ;;
   english)
     tap e01-menu 切换输入法

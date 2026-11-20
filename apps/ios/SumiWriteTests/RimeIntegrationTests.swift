@@ -80,6 +80,30 @@ private final class SpySound: TypingSoundPlaying {
 /// 没有按键码的按键:只用来经 `pressesBegan` 走一遍按键入口。
 private final class BarePress: UIPress {}
 
+/// 有按键码与修饰键的实体键(UIKit 不给测试别的办法造一个)。
+private final class FakeKey: UIKey {
+    let code: UIKeyboardHIDUsage, flags: UIKeyModifierFlags
+    init(_ code: UIKeyboardHIDUsage, _ flags: UIKeyModifierFlags) {
+        self.code = code
+        self.flags = flags
+        super.init()
+    }
+    required init?(coder: NSCoder) { nil }
+    override var keyCode: UIKeyboardHIDUsage { code }
+    override var modifierFlags: UIKeyModifierFlags { flags }
+    override var characters: String { " " }
+    override var charactersIgnoringModifiers: String { " " }
+}
+
+private final class KeyPress: UIPress {
+    let fakeKey: FakeKey
+    init(_ code: UIKeyboardHIDUsage, _ flags: UIKeyModifierFlags) {
+        fakeKey = FakeKey(code, flags)
+        super.init()
+    }
+    override var key: UIKey? { fakeKey }
+}
+
 @MainActor
 final class RimeIntegrationTests: XCTestCase {
     private var dirs: [URL] = []
@@ -644,6 +668,30 @@ final class RimeIntegrationTests: XCTestCase {
         h.controller.prepareToSwitch()
         XCTAssertEqual(h.page.body(), "ni")
         XCTAssertEqual(typing(), 0)
+    }
+
+    /// 切换中 / 英的快捷键取设置里的值(默认 Control + 空格),改了随即传给适配器(ios.md §3.6)。
+    func test_switchShortcutFollowsPrefs() throws {
+        let h = try harness()
+        XCTAssertEqual(h.controller.rimeAdapter?.switchShortcut, .controlSpace)
+        h.prefs.prefs.switchShortcut = .off
+        XCTAssertEqual(h.controller.rimeAdapter?.switchShortcut, .off)
+    }
+
+    /// 组字中按 Control + 空格:组字按原文上屏进内核,切到英文;空格不进正文,不发声,不算打字。
+    func test_switchShortcutIsNotTyping() throws {
+        let h = try harness()
+        h.rime.compose("ni")
+        let typing = typed(h)
+        let sounds = h.sound.total
+        let press = KeyPress(.keyboardSpacebar, .control)
+        h.textView.pressesBegan([press], with: nil)
+        h.textView.pressesEnded([press], with: nil)
+        drainMain()
+        XCTAssertEqual(h.page.body(), "ni")
+        XCTAssertTrue(h.rime.ascii)
+        XCTAssertEqual(typing(), 0)
+        XCTAssertEqual(h.sound.total, sounds)
     }
 
     /// 失去焦点时的上屏也不算打字:不进聚焦打字的计数、不发声,文字照样经 textViewDidChange 进内核(终审 Minor 1)。

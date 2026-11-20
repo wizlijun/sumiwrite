@@ -1,3 +1,4 @@
+import RimeKit
 import SwiftUI
 
 struct AppearanceView: View {
@@ -46,9 +47,28 @@ struct AppearanceView: View {
                     Toggle("聚焦打字", isOn: $prefs.prefs.focusTyping)
                     Toggle("打字音", isOn: $prefs.prefs.typingSound)
                 }
+                SwitchShortcutSection(shortcut: $prefs.prefs.switchShortcut)
             }
             .navigationTitle("设置")
             .navigationBarTitleDisplayMode(.inline)
+        }
+    }
+}
+
+/// 「输入法」一组:实体键盘的内嵌输入法切换中 / 英的快捷键(ios.md §3.6)。
+private struct SwitchShortcutSection: View {
+    @Binding var shortcut: RimeSwitchShortcut
+
+    var body: some View {
+        Section {
+            Picker("切换中 / 英", selection: $shortcut) {
+                Text("Control + 空格").tag(RimeSwitchShortcut.controlSpace)
+                Text("Option + 空格").tag(RimeSwitchShortcut.optionSpace)
+                Text("Shift + 空格").tag(RimeSwitchShortcut.shiftSpace)
+                Text("关").tag(RimeSwitchShortcut.off)
+            }
+        } header: { Text("输入法") } footer: {
+            Text("接实体键盘时,内置输入法用它在中文与英文之间切换;单按左 Shift 也能切换。")
         }
     }
 }

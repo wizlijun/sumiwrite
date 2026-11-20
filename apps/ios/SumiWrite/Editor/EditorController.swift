@@ -258,6 +258,7 @@ final class EditorController: UIViewController, UITextViewDelegate {
         cursorView.breathing = prefs.caretMotion == .breathing
         sound?.preferencesChanged(prefs)
         rimeAdapter?.bar.style = .sumi(prefs)
+        rimeAdapter?.switchShortcut = prefs.switchShortcut
 
         // 组字中不重设属性;下一次被接受的输入会重设。
         if textView.markedTextRange == nil {
@@ -849,9 +850,13 @@ extension EditorController: KeyPressHandling {
     func unhandled(_ presses: Set<UIPress>, began: Bool) -> Set<UIPress> {
         // 只读时引擎不启用(`onFocusChange`),按键原样交给系统。
         guard let adapter = rimeAdapter, textView.isEditable else { return presses }
-        var rest = presses
-        quietly { rest = adapter.unhandled(presses, began: began) }
-        let taken = presses.subtracting(rest)
+        // 切换中 / 英的快捷键不算打字:不发声,不记作按着的键,组字中先上屏的那次走 aside(ios.md §3.6)。
+        let shortcut = presses.filter(adapter.isSwitchShortcut)
+        let typed = presses.subtracting(shortcut)
+        var rest = Set<UIPress>()
+        if !shortcut.isEmpty { aside { rest = adapter.unhandled(shortcut, began: began) } }
+        quietly { rest.formUnion(adapter.unhandled(typed, began: began)) }
+        let taken = typed.subtracting(rest)
         if began {
             rimeHeld.formUnion(taken.map(ObjectIdentifier.init))
         } else {

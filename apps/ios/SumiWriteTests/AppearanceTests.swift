@@ -119,6 +119,15 @@ final class AppearanceTests: XCTestCase {
         XCTAssertEqual(p.soundPack, .thock)
     }
 
+    /// 加快捷键之前存的偏好(没有 `switchShortcut`)照样读出,快捷键取默认的 Control + 空格(ios.md §3.6)。
+    func test_prefsWithoutSwitchShortcutDecodeToControlSpace() throws {
+        let json = #"{"theme":"sepia","font":"wenkai","fontSize":30,"lineSpacing":2,"caretMotion":"steady","focusTyping":false,"typingSound":true,"soundPack":"thock"}"#
+        let p = try JSONDecoder().decode(EditorPrefs.self, from: Data(json.utf8))
+        XCTAssertEqual(p.theme, .sepia)
+        XCTAssertEqual(p.switchShortcut, .controlSpace)
+        XCTAssertEqual(EditorPrefs().switchShortcut, .controlSpace)
+    }
+
     @MainActor
     func test_bumpSizeClampsAndResets() {
         let suite = "sumi.test.bump"
