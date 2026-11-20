@@ -373,13 +373,26 @@ owner 是“当前持有某纸页编辑面的 `(窗口, 标签页, 编辑面)`�
 | 插件市场上架 | note.md | `plugins-registry/`、`scripts/gen-plugin-index.mjs` |
 | 待签名构建物与校验清单 | **sumiwrite 交付** | 见下 |
 
-**sumiwrite 交付物**(本设计的 `[我的判断]`;格式 `[未定]`,第 2 期计划定):
+**sumiwrite 交付物**(本设计的 `[我的判断]`;状态 `[未定]`,任务 8 交付后补证据):
 
-1. 待签名构建物:按目标三元组各一份的插件包内容(manifest + `bin/notemd-sumi` + `ui/` + 资源),与现行 `release_sumi()` 装配的安装布局一致;
-2. 校验清单:每个构建物的 SHA-256、插件版本、`engines.notemd`、所依赖的 `host-contract` 版本、`core-vX.Y.Z` 源 tag;
-3. 契约自检结果:该构建物对应的 `host-contract` 版本与本文件一致。
+入口:`apps/notemd-plugin/scripts/build-artifact.sh --target <三元组> --out <目录> [--debug]`。`--debug` 用调试构建,供 note.md 的开发安装,发版不用。非 `--debug` 时工作树有已跟踪文件的改动即拒绝运行,保证 `source_commit` 属实。`<目录>` 必须不存在或为空;产出恰好是 `stage/` 与 `checklist.json`。脚本不读取、不需要任何签名或公证凭据。
 
-note.md 收到后:校验清单 → 签名 → 生成索引 → 上架。签名密钥与公证凭据**不进入** sumiwrite。
+1. `stage/`(**未签名**安装布局,与现行 `release_sumi()` 装配一致):`manifest.json`(即 `manifest.v2.json`)、`bin/notemd-sumi`、`ui/`(Vite 产物,不含 `sounds/`)、`resources/sounds/`。
+2. `checklist.json`:
+
+   ```json
+   {"schema":1,"plugin":"notemd.sumi","version":"0.1.16","target":"aarch64-apple-darwin",
+    "engines_notemd":">=6.1111.1","host_contract":1,"core_tag":"core-v0.1.0",
+    "source_tag":"notemd-plugin-v0.1.16","source_commit":"<40 位>",
+    "files":{"bin/notemd-sumi":"<sha256>","manifest.json":"<sha256>"}}
+   ```
+
+   `files` 覆盖 `stage/` 下每个普通文件,键为 POSIX 相对路径,值为 SHA-256;`stage/` 内不允许符号链接。`source_tag` 仅当 HEAD 恰在 `notemd-plugin-v<version>` 上时填写,否则为 `null`。`core_tag` 取自后端 `Cargo.toml` 中 `write-core` 与 `sumi-protocol` 的同一 tag。
+3. 目标三元组只接受 `aarch64-apple-darwin`、`x86_64-apple-darwin`、`x86_64-unknown-linux-gnu`,且 manifest 的 `binary[三元组]` 必须是 `bin/notemd-sumi`。
+4. 门禁在脚本内完成,note.md 不再重复:Linux 目标跑 `verify-linux-binary.py`;`resources/sounds` 跑 `verify-sounds.py`;字体目录与许可字节、无字体载荷由 `verify-stage.py` 检查。
+5. 校验:`apps/notemd-plugin/scripts/verify-stage.py --verify-checklist <checklist.json> --stage <stage 目录>`,重算 SHA-256,缺文件、多文件、不符均非零退出。
+
+note.md 收到后:比对 `source_commit` → `verify_checklist` → macOS 目标签名并公证二进制,替换 `bin/notemd-sumi`(签名身份、团队 ID、公证凭据只在 note.md 一侧,按引用取用)→ 打包 → minisign → 生成索引 → 上架。签名密钥与公证凭据**不进入** sumiwrite。
 
 ---
 
