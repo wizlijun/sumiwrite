@@ -89,7 +89,11 @@ private struct SwitchShortcutSection: View {
                 Text("关").tag(RimeSwitchShortcut.off)
             }
         } header: { Text("输入法") } footer: {
-            Text("接实体键盘时,内置输入法用它在中文与英文之间切换;单按左 Shift 也能切换。")
+            if shortcut == .shiftSpace {
+                Text("接实体键盘时,内置输入法用它在中文与英文之间切换;单按左 Shift 也能切换。按着 Shift 打完大写字母紧接着按空格,也会切换。")
+            } else {
+                Text("接实体键盘时,内置输入法用它在中文与英文之间切换;单按左 Shift 也能切换。")
+            }
         }
     }
 }

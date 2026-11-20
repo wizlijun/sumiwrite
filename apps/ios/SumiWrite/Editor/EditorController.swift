@@ -873,6 +873,7 @@ extension EditorController: KeyPressHandling {
         // 只读时引擎不启用(`onFocusChange`),按键原样交给系统。
         guard let adapter = rimeAdapter, textView.isEditable else { return presses }
         // 切换中 / 英的快捷键不算打字:不发声,不记作按着的键,组字中先上屏的那次走 aside(ios.md §3.6)。
+        // 先松开修饰键、空格还按着时,系统再发的空格仍被快捷键占着,适配器也认作快捷键,同样不响。
         let shortcut = presses.filter(adapter.isSwitchShortcut)
         let typed = presses.subtracting(shortcut)
         var rest = Set<UIPress>()
