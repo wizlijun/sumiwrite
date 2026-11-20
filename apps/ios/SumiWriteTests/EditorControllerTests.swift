@@ -2,6 +2,7 @@ import XCTest
 import UIKit
 @testable import SumiWrite
 
+@MainActor
 final class EditorControllerTests: XCTestCase {
     private var dirs: [URL] = []
     private var suites: [String] = []
@@ -26,17 +27,22 @@ final class EditorControllerTests: XCTestCase {
         return UserDefaults(suiteName: name)!
     }
 
-    private func openReady(_ dir: URL) throws -> (PagePersistence, CorePage) {
-        guard case .ready(let p, let page) = PagePersistence.open(directory: dir) else {
+    private func openLibrary(_ dir: URL, defaults: UserDefaults) throws -> (PageLibrary, PagePersistence, CorePage) {
+        guard case .ready(let lib, let p, let page) = PageLibrary.open(directory: dir, defaults: defaults) else {
             XCTFail("open failed"); throw CocoaError(.fileReadUnknown)
         }
+        return (lib, p, page)
+    }
+
+    private func openReady(_ dir: URL) throws -> (PagePersistence, CorePage) {
+        let (_, p, page) = try openLibrary(dir, defaults: freshDefaults())
         return (p, page)
     }
 
     private func makeController(_ dir: URL, defaults: UserDefaults? = nil) throws -> (EditorController, PagePersistence, CorePage) {
-        let (p, page) = try openReady(dir)
         let d = defaults ?? freshDefaults()
-        let c = EditorController(open: .ready(p, page), prefs: PrefsStore(defaults: d),
+        let (lib, p, page) = try openLibrary(dir, defaults: d)
+        let c = EditorController(open: .ready(lib, p, page), prefs: PrefsStore(defaults: d),
                                  selection: SelectionStore(defaults: d), sound: nil)
         c.loadViewIfNeeded()
         return (c, p, page)

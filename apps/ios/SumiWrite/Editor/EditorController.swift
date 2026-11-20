@@ -12,6 +12,8 @@ final class EditorController: UIViewController, UITextViewDelegate {
     private let page: CorePage?
     /// 强引用:`PageModel` 只弱持有它的 sink,这里不留住它,保存就会悄悄丢掉。
     private let persistence: PagePersistence?
+    /// 编辑面持有纸页库;翻页接线在后续任务。
+    private let library: PageLibrary?
     private let model: PageModel?
     private let prefsStore: PrefsStore
     private let selectionStore: SelectionStore
@@ -46,18 +48,20 @@ final class EditorController: UIViewController, UITextViewDelegate {
     private static let focusIdle: TimeInterval = 10
     private static let focusRestore: CFTimeInterval = 1.2
 
-    init(open: OpenResult, prefs: PrefsStore, selection: SelectionStore, sound: TypingSoundPlaying?) {
+    init(open: LibraryOpenResult, prefs: PrefsStore, selection: SelectionStore, sound: TypingSoundPlaying?) {
         prefsStore = prefs
         selectionStore = selection
         self.sound = sound
         self.prefs = prefs.load()
         switch open {
-        case .ready(let p, let pg):
+        case .ready(let lib, let p, let pg):
+            library = lib
             persistence = p
             page = pg
             model = PageModel(page: pg, sink: p)
             statusText = nil
         case .failed(let message):
+            library = nil
             persistence = nil
             page = nil
             model = nil

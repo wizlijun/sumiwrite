@@ -1,11 +1,6 @@
 import Foundation
 import os
 
-enum OpenResult {
-    case ready(PagePersistence, CorePage)
-    case failed(String)
-}
-
 /// 把内核给出的增量字节按顺序交给内核存储;只在一条串行队列上写。
 final class PagePersistence: CommitSink {
     private static let log = Logger(subsystem: "app.sumiwrite", category: "persistence")
@@ -15,38 +10,21 @@ final class PagePersistence: CommitSink {
     private var reported = false        // 只在 queue 上读写
     var onFailure: ((String) -> Void)?  // 主线程上调用
 
-    private init(store: CoreStore) { self.store = store }
-
     static var applicationDirectory: URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         return base.appendingPathComponent("SumiWrite", isDirectory: true)
     }
 
-    static func open(directory: URL) -> OpenResult {
-        let unreadable = OpenResult.failed("打不开纸页")
-        let file = directory.appendingPathComponent("page.sqlite3")
-        do {
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            let store = try CoreStore.open(path: file.path)
-            let p = PagePersistence(store: store)
-            if let first = try store.pageIds().first {
-                return .ready(p, try store.loadFresh(pageId: first))
+    init(store: CoreStore) { self.store = store }
+
+    /// 在队列上同步执行,排在已入队的增量之后;抛错与增量失败同样置为失败并通知 `onFailure`。
+    func perform<T>(_ body: (CoreStore) throws -> T) throws -> T {
+        try queue.sync {
+            do { return try body(store) }
+            catch {
+                fail("perform: \(error)")
+                throw error
             }
-            let page = try CorePage.create(pageId: newPageId())
-            // 同步写完首次落盘再返回,避免后续增量先于完整状态入队。
-            var initialError: Error?
-            p.queue.sync {
-                do { try store.commitInitial(page: page, opId: UUID().uuidString) }
-                catch { initialError = error }
-            }
-            if let initialError {
-                log.error("initial commit failed: \(String(describing: initialError))")
-                return unreadable
-            }
-            return .ready(p, page)
-        } catch {
-            log.error("open failed: \(String(describing: error))")
-            return unreadable
         }
     }
 

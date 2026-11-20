@@ -1,6 +1,7 @@
 import XCTest
 @testable import SumiWrite
 
+@MainActor
 final class SelectionStoreTests: XCTestCase {
     private var defaults: UserDefaults!
     private var suite = ""
@@ -43,12 +44,24 @@ final class SelectionStoreTests: XCTestCase {
         let s = SelectionStore(defaults: defaults)
         s.save(page: a, range: NSRange(location: 3, length: 0))
         XCTAssertEqual(s.restore(page: b), NSRange(location: 2, length: 0))
-        defaults.set(Data("garbage".utf8), forKey: "sumi.selection")
+        defaults.set(Data("garbage".utf8), forKey: "sumi.selection.\(b.pageId())")
         XCTAssertEqual(s.restore(page: b), NSRange(location: 2, length: 0))
     }
 
     func test_missingAnchorFallsBackToEnd() throws {
         let p = try page("abc")
         XCTAssertEqual(SelectionStore(defaults: defaults).restore(page: p), NSRange(location: 3, length: 0))
+    }
+
+    func test_selectionIsPerPage() throws {
+        let a = try page("abcdef")
+        let b = try page("uvwxyz")
+        let s = SelectionStore(defaults: defaults)
+        s.save(page: a, range: NSRange(location: 2, length: 0))
+        s.save(page: b, range: NSRange(location: 1, length: 3))
+        XCTAssertEqual(s.restore(page: a), NSRange(location: 2, length: 0))
+        XCTAssertEqual(s.restore(page: b), NSRange(location: 1, length: 3))
+        let unknown = try page("pq")
+        XCTAssertEqual(s.restore(page: unknown), NSRange(location: 2, length: 0))
     }
 }

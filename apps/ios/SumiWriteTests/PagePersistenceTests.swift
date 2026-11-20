@@ -1,8 +1,10 @@
 import XCTest
 @testable import SumiWrite
 
+@MainActor
 final class PagePersistenceTests: XCTestCase {
     private var dirs: [URL] = []
+    private var suites: [String] = []
 
     private func tempDir() -> URL {
         let d = FileManager.default.temporaryDirectory.appendingPathComponent("sumi-\(UUID().uuidString)")
@@ -13,11 +15,15 @@ final class PagePersistenceTests: XCTestCase {
     override func tearDown() {
         for d in dirs { try? FileManager.default.removeItem(at: d) }
         dirs = []
+        for s in suites { UserDefaults().removePersistentDomain(forName: s) }
+        suites = []
         super.tearDown()
     }
 
     private func openReady(_ dir: URL) throws -> (PagePersistence, CorePage) {
-        guard case .ready(let p, let page) = PagePersistence.open(directory: dir) else {
+        let name = "sumi.persist.test.\(UUID().uuidString)"
+        suites.append(name)
+        guard case .ready(_, let p, let page) = PageLibrary.open(directory: dir, defaults: UserDefaults(suiteName: name)!) else {
             XCTFail("open failed"); throw CocoaError(.fileReadUnknown)
         }
         return (p, page)
@@ -29,6 +35,19 @@ final class PagePersistenceTests: XCTestCase {
         p.waitUntilIdle()
         let other = try CoreStore.open(path: dir.appendingPathComponent("page.sqlite3").path)
         XCTAssertEqual(try other.pageIds(), [page.pageId()])
+    }
+
+    func test_performRunsAfterQueuedDeltasAndReportsThrow() throws {
+        let dir = tempDir()
+        let (p, page) = try openReady(dir)
+        let failed = expectation(description: "onFailure")
+        p.onFailure = { _ in failed.fulfill() }
+        let m = PageModel(page: page, sink: p)
+        _ = m.userEdited(visible: "先", composing: false, caret: 1)
+        let ids = try p.perform { try $0.pageIds() }   // 排在增量之后,不应失败
+        XCTAssertEqual(ids, [page.pageId()])
+        XCTAssertThrowsError(try p.perform { _ in throw CoreError.StaleRevision })
+        wait(for: [failed], timeout: 5)
     }
 
     func test_reopenRestoresTypedText() throws {
@@ -127,7 +146,7 @@ final class PagePersistenceTests: XCTestCase {
         let file = dir.appendingPathComponent("page.sqlite3")
         let garbage = Data((0..<64).map { UInt8(($0 * 37 + 11) & 0xff) })
         try garbage.write(to: file)
-        let result = PagePersistence.open(directory: dir)
+        let result = PageLibrary.open(directory: dir, defaults: UserDefaults(suiteName: "sumi.persist.test.\(UUID().uuidString)")!)
         guard case .failed(let msg) = result else { return XCTFail("expected failure") }
         XCTAssertEqual(msg, "打不开纸页")
         XCTAssertEqual(try Data(contentsOf: file), garbage)

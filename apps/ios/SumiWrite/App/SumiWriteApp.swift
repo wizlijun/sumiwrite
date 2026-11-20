@@ -21,6 +21,7 @@ struct SumiWriteApp: App {
 private final class WeakController { weak var controller: EditorController? }
 
 /// M1 只有一页纸:进程里只建一个编辑面。
+@MainActor
 final class EditorShell {
     let controller: EditorController
 
@@ -31,7 +32,7 @@ final class EditorShell {
         let live = WeakController()
         let sound = TypingSound(bundle: .main, prefs: { live.controller?.prefs ?? EditorPrefs() })
         controller = EditorController(
-            open: PagePersistence.open(directory: PagePersistence.applicationDirectory),
+            open: PageLibrary.open(directory: PagePersistence.applicationDirectory, defaults: defaults),
             prefs: prefs,
             selection: SelectionStore(defaults: defaults),
             sound: sound)

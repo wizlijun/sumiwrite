@@ -2,6 +2,7 @@ import AVFoundation
 import XCTest
 @testable import SumiWrite
 
+@MainActor
 final class TypingSoundTests: XCTestCase {
     private var dirs: [URL] = []
     private var suites: [String] = []
@@ -200,11 +201,11 @@ final class TypingSoundTests: XCTestCase {
     private func makeController(sound: SpySound, writable: Bool = true) throws -> EditorController {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("sumi-snd-\(UUID().uuidString)")
         dirs.append(dir)
-        guard case .ready(let p, let page) = PagePersistence.open(directory: dir) else { throw CocoaError(.fileReadUnknown) }
         let name = "sumi.sound.test.\(UUID().uuidString)"
         suites.append(name)
         let d = UserDefaults(suiteName: name)!
-        let c = EditorController(open: .ready(p, page), prefs: PrefsStore(defaults: d),
+        guard case .ready(let lib, let p, let page) = PageLibrary.open(directory: dir, defaults: d) else { throw CocoaError(.fileReadUnknown) }
+        let c = EditorController(open: .ready(lib, p, page), prefs: PrefsStore(defaults: d),
                                  selection: SelectionStore(defaults: d), sound: sound)
         c.loadViewIfNeeded()
         if !writable { c.textView.isEditable = false }
