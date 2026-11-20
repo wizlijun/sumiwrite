@@ -12,7 +12,11 @@ final class EditorController: UIViewController, UITextViewDelegate {
     /// 时钟;测试注入。
     var now: () -> Date = { Date() }
     /// `nil`、`保存失败` 或 `打不开纸页`。
-    private(set) var statusText: String?
+    private(set) var statusText: String? {
+        didSet { if statusText != oldValue { onStatusChange?(statusText) } }
+    }
+    /// `statusText` 变化时通知外壳显示。
+    var onStatusChange: ((String?) -> Void)?
     /// 最近一次应用的偏好(来自 `PrefsModel`)。
     private(set) var prefs: EditorPrefs
 

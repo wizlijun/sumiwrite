@@ -3,26 +3,24 @@ import UIKit
 
 @main
 struct SumiWriteApp: App {
-    @Environment(\.scenePhase) private var scenePhase
-    @State private var shell = EditorShell()
+    @State private var env = AppEnvironment()
 
     var body: some Scene {
         WindowGroup {
-            // 键盘避让由编辑面的 keyboardLayoutGuide 负责,SwiftUI 不再另外让位。
-            EditorScreen(controller: shell.controller)
-                .ignoresSafeArea()
-        }
-        .onChange(of: scenePhase) { _, phase in
-            if phase == .background { shell.controller.sceneDidEnterBackground() }
+            if let library = env.library {
+                ContentView(controller: env.controller, library: library, prefs: env.prefs)
+            } else {
+                FailureView(controller: env.controller, prefs: env.prefs)
+            }
         }
     }
 }
 
 private final class WeakController { weak var controller: EditorController? }
 
-/// 进程里只建一个编辑面。纸页库归外壳持有;翻页、概览、外观界面在后续任务接上。
+/// 进程里只建一个编辑面;纸页库归它持有。库打不开时 `library` 为 nil,编辑面只读并显示状态。
 @MainActor
-final class EditorShell {
+final class AppEnvironment {
     let controller: EditorController
     let library: PageLibrary?
     let prefs: PrefsModel
@@ -49,11 +47,4 @@ final class EditorShell {
                                       selection: SelectionStore(defaults: defaults), sound: sound)
         live.controller = controller
     }
-}
-
-private struct EditorScreen: UIViewControllerRepresentable {
-    let controller: EditorController
-
-    func makeUIViewController(context: Context) -> EditorController { controller }
-    func updateUIViewController(_ controller: EditorController, context: Context) {}
 }
