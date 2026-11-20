@@ -471,7 +471,6 @@ function showSounds(form: HTMLFormElement) {
 }
 async function showAppearance() {
   await openPanel(t('外观', 'Appearance', '外観'))
-  await loadArchive()
   const form = document.createElement('form')
   const labels = { theme: t('配色', 'Colors', '配色'), caretMotion: t('光标效果', 'Caret', 'カーソル'), fontSize: t('字号', 'Font size', '文字サイズ'), lineHeight: t('行距', 'Line height', '行の高さ'), maxColumns: t('正文宽度（半角列）', 'Width (half-width columns)', '本文の幅（半角文字数）'), bottomInset: t('额外底部留白', 'Extra bottom space', '下部の追加余白') }
   for (const [key, label] of Object.entries(labels)) {
@@ -518,6 +517,7 @@ async function showAppearance() {
   form.onsubmit = event => { event.preventDefault(); void run(async () => { applyState(await request<SumiState>('preferences', { preferences: preferencesFromForm(form, state!.preferences.fontFamily, state!.preferences.startFullscreen ?? true), preserveFont: true })); await closePanel() }) }
   el('panel-body').append(form)
   renderArchiveSection()
+  try { await loadArchive() } catch (error) { el('archive-status').textContent = hostMessage(error) }
   fontPanel?.render(); void fontPanel?.poll(); soundPanel?.render(); void soundPanel?.read()
 }
 async function showSync() {

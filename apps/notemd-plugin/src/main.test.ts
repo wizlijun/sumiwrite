@@ -1076,6 +1076,37 @@ describe('Sumi independent typing sound settings', () => {
       await open({ archive: '/a/b', available: true, untaken: ['/old/1', '/old/2'] })
       expect(document.querySelectorAll('#archive-untaken li')).toHaveLength(2)
     })
+    const failArchiveGet = (request: Awaited<ReturnType<typeof setup>>) => {
+      const original = request.getMockImplementation()!
+      request.mockImplementation(async (method, params) => { if (method === 'host.sumi.archive_get') throw new Error('-32000: 写作工作区配置损坏'); return original(method, params) })
+    }
+    it('keeps the appearance panel usable when archive_get rejects', async () => {
+      const request = await setup()
+      failArchiveGet(request)
+      document.getElementById('appearance')!.click(); await settle(); await settle()
+      expect(document.querySelector('#panel-body select[name="theme"]')).not.toBeNull()
+      expect(document.getElementById('sound-enabled')).not.toBeNull()
+      expect(document.getElementById('archive-choose')).not.toBeNull()
+      expect(document.getElementById('archive-recover')).not.toBeNull()
+      expect(document.getElementById('archive-status')!.textContent).toContain('-32000')
+      expect(document.getElementById('archive-status')!.textContent).not.toBe('')
+    })
+    it('does not break the mount when archive_get rejects at startup', async () => {
+      vi.spyOn(navigator, 'platform', 'get').mockReturnValue('MacIntel')
+      vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} })
+      document.body.innerHTML = '<div id="app"></div>'
+      const failing = vi.fn(async (method: string): Promise<unknown> => {
+        if (method === 'host.sumi.archive_get') throw new Error('-32000: 写作工作区配置损坏')
+        if (method === 'host.sumi.state') return state()
+        if (method === 'host.sumi.mount') return { id: 'surface-a', generation: 1 }
+        return null
+      })
+      window.notemd = { locale: 'zh', request: failing, onMessage: vi.fn() }
+      vi.resetModules(); await import('./main'); await settle()
+      expect(failing.mock.calls.map(call => call[0])).toContain('host.sumi.focus')
+      expect(document.getElementById('notice')!.hidden).toBe(false)
+      expect(document.getElementById('notice')!.textContent).toContain('-32000')
+    })
     it('null archive shows startup prompt', async () => {
       const request = await setup(state(), undefined, 'zh', 'MacIntel', { archive: null, available: false, untaken: [] }, { archive: '/c/d', available: true, untaken: [] })
       expect(document.getElementById('archive-prompt')).not.toBeNull()
