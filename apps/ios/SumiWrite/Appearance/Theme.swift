@@ -4,6 +4,20 @@ enum ThemeID: String, CaseIterable, Codable {
     case ink, dim, paper, sepia, crt
     case crtBlue = "crt-blue"
 
+    /// 仅纸白、米色为浅色主题。
+    var isDark: Bool { self != .paper && self != .sepia }
+
+    var name: String {
+        switch self {
+        case .ink: return "黑底白字"
+        case .dim: return "黑底灰字"
+        case .paper: return "白底黑字"
+        case .sepia: return "米色深灰"
+        case .crt: return "复古绿磷 CRT"
+        case .crtBlue: return "复古蓝磷 CRT"
+        }
+    }
+
     var foregroundHex: String {
         switch self {
         case .ink: return "#ffffff"

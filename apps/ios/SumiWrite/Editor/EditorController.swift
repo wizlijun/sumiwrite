@@ -197,7 +197,7 @@ final class EditorController: UIViewController, UITextViewDelegate {
 
     // MARK: 外观
 
-    private var baseFont: UIFont { .systemFont(ofSize: CGFloat(prefs.fontSize)) }
+    private var baseFont: UIFont { prefs.font.uiFont(size: CGFloat(prefs.fontSize)) }
     private var baseAttributes: [NSAttributedString.Key: Any] { Styler.base(prefs: prefs, baseFont: baseFont) }
 
     /// 校验、应用并持久化;超出范围的值不接受。
@@ -214,7 +214,7 @@ final class EditorController: UIViewController, UITextViewDelegate {
         statusBar.backgroundColor = theme.background
         statusLabel.textColor = theme.foreground
         menuButton.tintColor = theme.foreground
-        textView.keyboardAppearance = theme.isLight ? .light : .dark
+        textView.keyboardAppearance = theme.isDark ? .dark : .light
         textView.caretView.color = theme.foreground
         textView.caretView.motion = prefs.caretMotion
         textView.selectionColor = theme.selection
@@ -231,7 +231,7 @@ final class EditorController: UIViewController, UITextViewDelegate {
 
     /// 系统状态栏与设置弹层跟随主题的明暗。
     private func applyInterfaceStyle() {
-        view.window?.overrideUserInterfaceStyle = prefs.theme.isLight ? .light : .dark
+        view.window?.overrideUserInterfaceStyle = prefs.theme.isDark ? .dark : .light
     }
 
     /// 整段重设属性:先上基础样式,再按内核的样式段(已是互不重叠的平铺段)依次叠加。
@@ -568,8 +568,4 @@ final class EditorController: UIViewController, UITextViewDelegate {
     private func resetInsetsIfPending() {
         if pendingInsetReset && !focusPresented { resetInsets() }
     }
-}
-
-private extension ThemeID {
-    var isLight: Bool { self == .paper || self == .sepia }
 }

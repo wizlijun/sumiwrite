@@ -102,4 +102,53 @@ final class AppearanceTests: XCTestCase {
         let ps = baseAttrs[.paragraphStyle] as? NSParagraphStyle
         XCTAssertEqual(ps?.lineHeightMultiple, 1.6)
     }
+
+    func test_bundledFontsRegister() {
+        for n in ["IBMPlexMono-Light", "IBMPlexSansSC-Light", "LXGWWenKaiMonoLite-Regular"] {
+            XCTAssertNotNil(UIFont(name: n, size: 22), n)
+        }
+    }
+
+    func test_plexCascadesToSansSC() {
+        let list = SumiFont.plex.uiFont(size: 22).fontDescriptor.object(forKey: .cascadeList) as? [UIFontDescriptor]
+        XCTAssertTrue(list?.contains { $0.postscriptName == "IBMPlexSansSC-Light" || ($0.object(forKey: .name) as? String) == "IBMPlexSansSC-Light" } ?? false)
+    }
+
+    func test_m1PrefsWithoutFontDecode() throws {
+        let json = #"{"theme":"sepia","fontSize":30,"lineSpacing":2,"caretMotion":"steady","focusTyping":false,"typingSound":true,"soundPack":"thock"}"#
+        let p = try JSONDecoder().decode(EditorPrefs.self, from: Data(json.utf8))
+        XCTAssertEqual(p.theme, .sepia)
+        XCTAssertEqual(p.fontSize, 30)
+        XCTAssertEqual(p.lineSpacing, 2)
+        XCTAssertEqual(p.font, .plex)
+        XCTAssertEqual(p.caretMotion, .steady)
+        XCTAssertFalse(p.focusTyping)
+        XCTAssertTrue(p.typingSound)
+        XCTAssertEqual(p.soundPack, .thock)
+    }
+
+    @MainActor
+    func test_bumpSizeClampsAndResets() {
+        let suite = "sumi.test.bump"
+        UserDefaults().removePersistentDomain(forName: suite)
+        let m = PrefsModel(store: PrefsStore(defaults: UserDefaults(suiteName: suite)!))
+        m.prefs.fontSize = 95; m.bumpSize(2)
+        XCTAssertEqual(m.prefs.fontSize, 96)
+        m.prefs.fontSize = 9; m.bumpSize(-2)
+        XCTAssertEqual(m.prefs.fontSize, 8)
+        m.prefs.lineSpacing = 2.5
+        m.resetSize()
+        XCTAssertEqual(m.prefs.fontSize, 22)
+        XCTAssertEqual(m.prefs.lineSpacing, 1.6)
+    }
+
+    @MainActor
+    func test_prefsModelPersists() {
+        let suite = "sumi.test.persist"
+        UserDefaults().removePersistentDomain(forName: suite)
+        let d = UserDefaults(suiteName: suite)!
+        let m = PrefsModel(store: PrefsStore(defaults: d))
+        m.prefs.theme = .crt
+        XCTAssertEqual(PrefsModel(store: PrefsStore(defaults: d)).prefs.theme, .crt)
+    }
 }

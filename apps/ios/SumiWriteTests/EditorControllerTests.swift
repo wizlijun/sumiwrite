@@ -133,7 +133,7 @@ final class EditorControllerTests: XCTestCase {
         c.textView.layoutIfNeeded()
         let rect = c.textView.caretRect(for: c.textView.endOfDocument)
         XCTAssertEqual(rect.width, CaretMetrics.width(fontSize: 22))
-        let f = UIFont.systemFont(ofSize: 22)
+        let f = SumiFont.plex.uiFont(size: 22)
         XCTAssertEqual(rect.height, f.ascender - f.descender, accuracy: 0.001)
     }
 
