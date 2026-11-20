@@ -59,6 +59,7 @@ final class EditorControllerTests: XCTestCase {
         let (c, _, _) = try makeController(tempDir())
         XCTAssertNotNil(c.textView.textLayoutManager)
         XCTAssertTrue(c.textView.undoManager is CoreUndoManager)
+        if #available(iOS 18, *) { XCTAssertEqual(c.textView.writingToolsBehavior, .limited) }
     }
 
     func test_typingReachesCore() throws {

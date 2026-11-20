@@ -76,6 +76,8 @@ final class SumiTextView: UITextView {
     /// 文本容器传 nil 时,iOS 16 起默认就是 TextKit 2。
     init() {
         super.init(frame: .zero, textContainer: nil)
+        // 写作工具的就地会话会和程序化的重排样式打架,「还原」又依赖已被挡掉的系统撤销栈;只留面板模式。
+        if #available(iOS 18, *) { writingToolsBehavior = .limited }
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
