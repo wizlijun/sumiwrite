@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use sumi_ios_ffi::*;
 
 fn temp_db() -> (tempfile::TempDir, String) {
@@ -116,4 +117,135 @@ fn checkpoint_with_undelivered_revision_is_stale() {
     store.commit_initial(page.clone(), "op-0".into()).unwrap();
     page.apply_edit(0, 0, 0, "a".into(), 1).unwrap();
     assert!(matches!(store.checkpoint(page), Err(CoreError::StaleRevision)));
+}
+
+// ---- 页面目录 ----
+
+fn type_text(store: &CoreStore, page: &Arc<CorePage>, text: &str, at_ms: i64) {
+    let len = page.rendered().text.encode_utf16().count() as u32;
+    let c = page.apply_edit(page.revision(), len, 0, text.into(), at_ms).unwrap();
+    store
+        .commit_delta(page.page_id(), page.epoch(), c.revision, format!("op-{}-{at_ms}", page.page_id()), c.update)
+        .unwrap();
+}
+
+fn ids(store: &CoreStore) -> Vec<String> {
+    store.pages().unwrap().into_iter().map(|p| p.id).collect()
+}
+
+fn mk(store: &CoreStore, after: Option<&str>) -> String {
+    let p = store.create_page(after.map(String::from), format!("op-{}", new_page_id())).unwrap();
+    p.page_id()
+}
+
+#[test]
+fn catalog_order_and_insert_in_middle() {
+    let (_d, path) = temp_db();
+    let store = CoreStore::open(path).unwrap();
+    let a = mk(&store, None);
+    let b = mk(&store, Some(&a));
+    let c = mk(&store, Some(&a));
+    let got = ids(&store);
+    assert_eq!(got[0], a);
+    let mut rest = vec![b, c];
+    rest.sort();
+    assert_eq!(&got[1..], &rest[..]);
+    assert!(store.pages().unwrap().iter().all(|p| !p.deleted));
+}
+
+#[test]
+fn delete_and_restore_keep_position() {
+    let (_d, path) = temp_db();
+    let store = CoreStore::open(path).unwrap();
+    let a = mk(&store, None);
+    let b = mk(&store, Some(&a));
+    let c = mk(&store, Some(&b));
+    store.set_deleted(b.clone(), true).unwrap();
+    assert_eq!(ids(&store), vec![a.clone(), b.clone(), c.clone()]);
+    assert!(store.pages().unwrap()[1].deleted);
+    store.set_deleted(b.clone(), false).unwrap();
+    assert_eq!(ids(&store), vec![a, b.clone(), c]);
+    assert!(store.pages().unwrap().iter().all(|p| !p.deleted));
+    store.set_deleted(b, false).unwrap();
+}
+
+#[test]
+fn summary_is_first_nonblank_visible_line_capped_at_40() {
+    let (_d, path) = temp_db();
+    let store = CoreStore::open(path).unwrap();
+    let empty = store.create_page(None, "op-e".into()).unwrap();
+    let p = store.create_page(Some(empty.page_id()), "op-p".into()).unwrap();
+    type_text(&store, &p, "\n   \n  # 标题 \n正文", 1);
+    let long = store.create_page(Some(p.page_id()), "op-l".into()).unwrap();
+    type_text(&store, &long, &"字".repeat(50), 1);
+    let infos = store.pages().unwrap();
+    assert_eq!(infos[0].summary, "");
+    assert_eq!(infos[0].modified_ms, None);
+    assert_eq!(infos[1].summary, "# 标题");
+    assert_eq!(infos[2].summary.chars().count(), 40);
+}
+
+#[test]
+fn modified_is_max_line_time() {
+    let (_d, path) = temp_db();
+    let store = CoreStore::open(path).unwrap();
+    let p = store.create_page(None, "op-m".into()).unwrap();
+    type_text(&store, &p, "a", 100);
+    type_text(&store, &p, "\nb", 300);
+    let c = p.apply_edit(p.revision(), 0, 0, "x".into(), 200).unwrap();
+    store.commit_delta(p.page_id(), p.epoch(), c.revision, "op-m3".into(), c.update).unwrap();
+    assert_eq!(store.pages().unwrap()[0].modified_ms, Some(300));
+}
+
+#[test]
+fn open_adopts_pages_missing_from_catalog() {
+    let (_d, path) = temp_db();
+    let mut want = vec![];
+    {
+        let store = CoreStore::open(path.clone()).unwrap();
+        for i in 0..2 {
+            let p = CorePage::create(new_page_id()).unwrap();
+            want.push(p.page_id());
+            store.commit_initial(p, format!("op-i{i}")).unwrap();
+        }
+    }
+    want.sort();
+    let store = CoreStore::open(path.clone()).unwrap();
+    assert_eq!(ids(&store), want);
+    let n = mk(&store, None);
+    let got = ids(&store);
+    assert_eq!(&got[..2], &want[..]);
+    assert_eq!(got[2], n);
+    drop(store);
+    let store = CoreStore::open(path).unwrap();
+    assert_eq!(ids(&store), got);
+}
+
+#[test]
+fn catalog_state_survives_reopen() {
+    let (_d, path) = temp_db();
+    let before;
+    {
+        let store = CoreStore::open(path.clone()).unwrap();
+        let a = mk(&store, None);
+        let b = store.create_page(Some(a.clone()), "op-b".into()).unwrap();
+        type_text(&store, &b, "hi", 5);
+        store.set_deleted(a, true).unwrap();
+        before = store.pages().unwrap();
+    }
+    let store = CoreStore::open(path).unwrap();
+    let after = store.pages().unwrap();
+    assert_eq!(before, after);
+    assert_eq!(after[1].summary, "hi");
+}
+
+#[test]
+fn create_page_with_missing_anchor_fails() {
+    let (_d, path) = temp_db();
+    let store = CoreStore::open(path).unwrap();
+    mk(&store, None);
+    let before = store.pages().unwrap();
+    let r = store.create_page(Some(new_page_id()), "op-x".into());
+    assert!(matches!(r, Err(CoreError::Storage { .. })));
+    assert_eq!(store.pages().unwrap(), before);
 }

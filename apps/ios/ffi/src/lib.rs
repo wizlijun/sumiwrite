@@ -3,6 +3,7 @@
 
 use std::sync::{Arc, Mutex, MutexGuard};
 use write_core::render::{SourceMap, TextRange};
+use write_core::catalog;
 use write_core::storage::{self, Store};
 use write_core::{Document, Error};
 
@@ -322,6 +323,21 @@ fn history_commit(s: &mut PageState, update: Vec<u8>) -> Option<EditCommit> {
     }
 }
 
+/// 纸页目录里的一项,供概览和翻页用。
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct PageInfo {
+    pub id: String,
+    pub deleted: bool,
+    /// 首个非空白可见行,去首尾空白,最多 40 个字符。
+    pub summary: String,
+    /// 各行 `last_ms` 的最大值;空页为 `None`。
+    pub modified_ms: Option<i64>,
+}
+
+fn sql_err(e: impl std::fmt::Display) -> Error {
+    Error::Invalid(e.to_string())
+}
+
 #[derive(uniffi::Object)]
 pub struct CoreStore {
     inner: Mutex<Store>,
@@ -331,7 +347,26 @@ pub struct CoreStore {
 impl CoreStore {
     #[uniffi::constructor]
     pub fn open(path: String) -> R<Arc<Self>> {
-        let s = Store::open(&path).map_err(store_err)?;
+        let mut s = Store::open(&path).map_err(store_err)?;
+        // 初始化目录,并把目录里没有的旧页(M1 路径落盘的)按 page_id 顺序接到末尾。
+        s.transaction(|t| {
+            catalog::initialize(t)?;
+            let mut st = t.prepare("SELECT page_id FROM documents ORDER BY page_id").map_err(sql_err)?;
+            let all = st
+                .query_map([], |r| r.get::<_, String>(0))
+                .map_err(sql_err)?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(sql_err)?;
+            let mut last = catalog::list(t)?.last().map(|e| e.id.clone());
+            for id in all {
+                if catalog::get(t, &id)?.is_none() {
+                    catalog::create(t, &id, last.as_deref())?;
+                    last = Some(id);
+                }
+            }
+            Ok(())
+        })
+        .map_err(store_err)?;
         Ok(Arc::new(Self { inner: Mutex::new(s) }))
     }
 
@@ -348,6 +383,70 @@ impl CoreStore {
             Ok(rows)
         })
         .map_err(store_err)
+    }
+
+    /// 目录顺序的全部纸页(含已删除)。
+    pub fn pages(&self) -> R<Vec<PageInfo>> {
+        let mut s = self.inner.lock().unwrap();
+        let (entries, present) = s
+            .transaction(|t| {
+                let entries = catalog::list(t)?;
+                let mut st = t.prepare("SELECT page_id FROM documents").map_err(sql_err)?;
+                let present = st
+                    .query_map([], |r| r.get::<_, String>(0))
+                    .map_err(sql_err)?
+                    .collect::<Result<std::collections::HashSet<_>, _>>()
+                    .map_err(sql_err)?;
+                Ok((entries, present))
+            })
+            .map_err(store_err)?;
+        entries
+            .into_iter()
+            .map(|e| {
+                if !present.contains(&e.id) {
+                    return Ok(PageInfo { id: e.id, deleted: e.deleted, summary: String::new(), modified_ms: None });
+                }
+                let doc = s.load(&e.id, random_client_id()).map_err(store_err)?;
+                let map = SourceMap::new(&doc.body(), doc.revision());
+                let summary = map
+                    .document
+                    .text
+                    .split('\n')
+                    .map(str::trim)
+                    .find(|l| !l.is_empty())
+                    .map(|l| l.chars().take(40).collect::<String>())
+                    .unwrap_or_default();
+                let modified_ms = doc.snapshot().map_err(store_err)?.lines.iter().filter_map(|l| l.last_ms).max();
+                Ok(PageInfo { id: e.id, deleted: e.deleted, summary, modified_ms })
+            })
+            .collect()
+    }
+
+    /// 新建一页并登记目录,同一事务落盘;`after` 为空则追加到目录末尾(目录为空时即根)。
+    pub fn create_page(&self, after: Option<String>, op_id: String) -> R<Arc<CorePage>> {
+        let id = new_page_id();
+        let doc = Document::new(&id, 1, random_client_id()).map_err(store_err)?;
+        let pair = storage::serialize_pair(&doc.snapshot().map_err(store_err)?, None, None).map_err(store_err)?;
+        self.inner
+            .lock()
+            .unwrap()
+            .commit_local_with(&doc, &op_id, &doc.encode_full(), &pair, |tx| {
+                let anchor = match &after {
+                    Some(a) => Some(a.clone()),
+                    None => catalog::list(tx)?.last().map(|e| e.id.clone()),
+                };
+                catalog::create(tx, &id, anchor.as_deref()).map(|_| ())
+            })
+            .map_err(store_err)?;
+        Ok(CorePage::wrap(doc))
+    }
+
+    pub fn set_deleted(&self, page_id: String, deleted: bool) -> R<()> {
+        self.inner
+            .lock()
+            .unwrap()
+            .transaction(|t| catalog::set_deleted(t, &page_id, deleted).map(|_| ()))
+            .map_err(store_err)
     }
 
     /// 先随机 client ID 载入,再取 `fresh_client_id()` 重载一次(内核 README「Host integration」第 2 条)。
