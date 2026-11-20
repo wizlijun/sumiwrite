@@ -155,6 +155,8 @@
 - **写死的源路径**:`scripts/sumi/native-release.py:11`、`test_native_release.py:42`,以及 `write-sync-worker/scripts/interop.mjs:5` 读 `write-core` 夹具,第 1 期改名后都要改。
 - **读取宿主源文件的测试脚本**:`scripts/sumi/test-linux-credentials.sh` 编译 `src-tauri/src/sumi/credentials.rs`,`test_fullscreen_appearance.py` 读取 `src-tauri/src/sumi/mod.rs`;两者留在 note.md,但第 3 期切分这些文件后读取路径要核对,凭据逻辑若下沉,测试跟着拆([01-inventory.md](01-inventory.md) §3、[02-migration-plan.md](02-migration-plan.md) 第 3 期第 5 步)。
 - **文件位置的更正**(给第 1–3 期计划):`journal.rs` 在宿主 `src-tauri/src/sumi/journal.rs`(由 `durability.rs` 经 `#[path]` 引入),不在插件后台;`desktop_policy.rs` 在 `src-tauri/src/desktop_policy.rs`,不在 `src-tauri/src/sumi/`。
+- **`i18n.ts` 两仓库各一份(第 2 期)**:插件侧随插件壳迁入 sumiwrite,宿主 `SumiRecovery.svelte`、`NativeFileView.svelte` 继续用 note.md 里的那份,两边分开演进,不做同步机制([01-inventory.md](01-inventory.md) §4、[02-migration-plan.md](02-migration-plan.md) 第 2 期)。
+- **第 2 期不发新插件包**:契约版本不变,迁移只换源码位置,不产出新的上架包([02-migration-plan.md](02-migration-plan.md) 第 2 期第 7 步)。
 - **规模**:原生编辑桥设计写约 12k 行,实测 `native/*.m` + `src/*.rs` 为 10,673 行(不含 .h 与 examples);宿主会话 8,685 行(`src-tauri/src/sumi/` 下 17 个文件,按 tag `v6.1117.1` 计)、插件后台三文件 5,926 行,与设计一致。
 - **投影代码在内核里**:投影与三方导入在 `write-core/src/projection.rs`、`import.rs`;按设计 §5.4 投影只有桌面做,iOS 会链接到用不上的代码。是否移出内核、何时移 `[未定]`([ADR 0009](../adr/0009-page-store-vs-vault-projection.md))。
 - **本机 Rust 1.99.0 工具链残缺**(2026-11-20):下载卡住留下的安装报 `missing manifest`,第 1 期开工前重装;重装失败不得以 stable 代替。

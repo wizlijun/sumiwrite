@@ -123,6 +123,8 @@
 | `verify-sounds.py` | 1 / 84 | 只校验音效 WAV 包与 `plugins-src/write/resources/sounds`;`release-plugins.sh:394`、`:397` 调用 | sumiwrite | 2 | 只依赖插件资源。迁走后 `release_sumi()` 需改引用,见第 4 节 |
 
 > 判定为 sumiwrite 的暂时只有三项(此结论不是最终的:`verify-release.py` 横跨宿主与插件资源两边,第 2 期拆分后可能有一部分也归 sumiwrite):`verify-sounds.py`、`verify-linux-binary.py`、`test_verify_linux_binary.py`。其余都需要宿主、原生桥或真实窗口,或属于发版门禁。`verify-sounds.py` 与 `verify-linux-binary.py` 同时被 note.md 的发版脚本调用,迁走后调用方式由第 2 期计划定。
+>
+> 第 2 期计划已定:`verify-release.py` 不拆,整体留在 note.md([详细计划](../plans/2026-11-20-phase2-plugin-shell.md))。上面“暂时三项”的结论因此成为最终结论。
 
 ## 4. 反向依赖:插件壳对 note.md 的依赖
 
@@ -137,6 +139,21 @@
 | `scripts/release-plugins.sh` 的 `release_sumi()` | `scripts/release-plugins.sh:351` 定义,`:795` 分发(`sumi) release_sumi ;;`);函数内调用:`:377` `scripts/sumi/native-release.py`、`:380` `scripts/sumi/verify-linux-binary.py`、`:394` 与 `:397` `scripts/sumi/verify-sounds.py`,构建 `plugins-src/write/backend` 与 `plugins-src/write` 前端(`:353`、`:374`、`:383`) | 签名、公证、minisign 与打包留在 note.md。迁出后这个函数要改为消费 sumiwrite 产出的待签名构建物(设计 §5.3 第 5 条) |
 
 插件壳对 `src-tauri/` 没有源码级依赖;它们通过插件协议在运行时通信(`host.sumi.*` 命令,见 [03-notemd-contract.md](03-notemd-contract.md))。
+
+### 4.1 立第 2 期计划时发现的
+
+以下是盘点时漏列、写第 2 期详细计划时 `grep` 出来的反向依赖(note.md `952b6f26`),处理办法见[详细计划](../plans/2026-11-20-phase2-plugin-shell.md)任务 1 的表:
+
+| 依赖 | 位置 |
+|---|---|
+| 宿主 dev 依赖插件后台 crate,测试里在进程内跑 `Durability` | `src-tauri/Cargo.toml:140`;`src-tauri/src/sumi/durability.rs:29`、`:56`、`:124`、`:165` |
+| 宿主测试 `include_str!` 读字体目录 | `src-tauri/src/sumi/mod.rs:4091` |
+| 字体目录被 note.md 脚本与探针按路径读 | `scripts/prepare-sumi-font.py:13`;`tauri-plugin-native-editor/native/focus-probe.m:543`、`focus-return-probe.m:115`;`scripts/sumi/verify-extracted-assets.mjs:42-43`;`scripts/sumi/acceptance/build.sh:13`、`:22-26`、`:65`、`prepare.py:43` |
+| 开发安装脚本从树内构建插件 | `scripts/dev-install-plugin.sh:493-512` |
+| pnpm 工作区包含插件 | `pnpm-workspace.yaml:26`(`plugins-src/*`)、`pnpm-lock.yaml:812` |
+| 原生签名的源码证明写死插件路径 | `scripts/sumi/native-release.py:11`、`:30` |
+| `.gitattributes` 许可文件规则 | note.md `.gitattributes:55`、`:56`、`:59` |
+| 插件发版脚本借用 note.md 根的 `tsc`、`vite` | `scripts/release-plugins.sh:384`、`dev-install-plugin.sh:499` |
 
 ## 5. 同步服务对源仓库的依赖
 
@@ -174,7 +191,7 @@
 
 - 设计没有列出的反向依赖:`plugin-protocol/`(经 `notemd-plugin-sdk`)。
 - `scripts/sumi/native-release.py:11` 的 `SOURCE_DIRS` 与 `test_native_release.py:42` 的断言写死了迁移后会变的目录路径。
-- `scripts/sumi/verify-release.py` 把宿主与插件资源校验混在一个文件里,第 2 期是否拆分未定。
-- `plugins-src/shared/shortcuts.ts` 被 `next`、`idea-spark` 两个插件共用(见第 1 节),留在 note.md;sumiwrite 复制一份还是改引用,由第 2 期计划定。
+- `scripts/sumi/verify-release.py` 把宿主与插件资源校验混在一个文件里:已定,见第 2 期计划(不拆,留在 note.md)。
+- `plugins-src/shared/shortcuts.ts` 被 `next`、`idea-spark` 两个插件共用(见第 1 节),留在 note.md;sumiwrite 复制一份还是改引用,已定,见第 2 期计划。
 - `src-tauri/src/sumi/external.rs`、`durability.rs` 的下沉落点,以及 `journal.rs` 依赖的 `mod.rs` 类型怎么抽出,留给第 3 期计划。
 - 同步服务依赖项里 `.env` 的迁出方式、账号 ID 的新存放位置,留给第 1 期计划。
