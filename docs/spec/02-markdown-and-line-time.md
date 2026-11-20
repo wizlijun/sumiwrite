@@ -95,7 +95,7 @@ write_metadata: sidecar-v1
   - `type`、`write_metadata`、`write_schema` 与上面的值不符
   - `write_epoch` 与 sidecar 不一致
 
-**这对文件放在哪里、叫什么名字**:属于桌面 vault 投影,见 [platform/notemd-desktop.md](platform/notemd-desktop.md)。导出归档中,这对文件固定叫 `page.writing.md` 与 `page.writing.meta.json`。
+**这对文件放在哪里、叫什么名字**:属于桌面归档投影,见 [platform/notemd-desktop.md](platform/notemd-desktop.md)。导出归档中,这对文件固定叫 `page.writing.md` 与 `page.writing.meta.json`。
 
 ### 2.2 sidecar
 

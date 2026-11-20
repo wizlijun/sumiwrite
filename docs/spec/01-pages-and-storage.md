@@ -2,10 +2,10 @@
 
 本文件定义纸页是什么、怎样排序和导航、新建与删除的规则、以及本机如何保存。状态标签与证据的读法见 [00-product.md](00-product.md#读法)。
 
-**两层存储**:纸页存储和 vault 投影是两层,不能混为一谈。
+**两层存储**:纸页存储和归档投影是两层,不能混为一谈。
 
 - **纸页存储**:每个客户端都有,本机事实源是内核 SQLite。本文件只讲这一层。
-- **vault 投影**:只属于桌面插件,见本文 §4.2 和 [platform/notemd-desktop.md](platform/notemd-desktop.md)。
+- **归档投影**:只属于桌面插件,见本文 §4.2 和 [platform/notemd-desktop.md](platform/notemd-desktop.md)。
 
 ## 1. 纸页模型
 
@@ -16,7 +16,7 @@
 - **身份**:每页的身份是一个随机 UUID。
   - 这个 UUID 由发起新建的客户端生成,同时用作这次新建的幂等请求号,见 §3.1。
   - 身份不含日期,不随正文变化。
-- **没有文件名概念**:总览、翻页和界面文案里只出现摘要,从不出现文件名或日期。磁盘上的文件名只是 vault 投影的派生物,见 [platform/notemd-desktop.md](platform/notemd-desktop.md)。
+- **没有文件名概念**:总览、翻页和界面文案里只出现摘要,从不出现文件名或日期。磁盘上的文件名只是归档投影的派生物,见 [platform/notemd-desktop.md](platform/notemd-desktop.md)。
 - **摘要**:取正文前 80 个字符,去掉首尾空白,随正文变化。正文为空时显示“空白的一页”。
 - **身份之外的页状态**:每页还有三项状态,都和正文分开存放:
   - `epoch`:身份纪元
@@ -161,18 +161,20 @@
 - 完整 CRDT 历史放在 SQLite,便携文件不能替代它。见 [../adr/0003-portable-files-and-sqlite-history.md](../adr/0003-portable-files-and-sqlite-history.md)。
 - iOS 上,同一内核库放在应用沙盒内。[计划:iOS]
 
-### 4.2 纸页存储与 vault 投影的分层
+### 4.2 纸页存储与归档投影的分层
 
 状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/README.md · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-08-sumi-release.md?plain=1#L30 · https://github.com/wizlijun/note.md/blob/v6.1117.1/docs/superpowers/reports/2026-11-10-sumi-omarchy-validation.md?plain=1#L18
 
 **纸页存储**:§4.1 所述,每个客户端都有。
 
-**vault 投影**:
+**归档投影**:
 
-- 把已提交的状态写成 vault 里的一对便携文件。
+- 把已提交的状态写成归档目录里的一对便携文件。投影写到本机设置的归档目录,不再固定在 vault 内。
 - 外部对这对文件的修改,按投影基线做三方合并导入。
 - 投影是可重建的派生物,不是事实源。
 - 它只属于桌面插件:路径、命名、去抖与外部编辑合并,全部写在 [platform/notemd-desktop.md](platform/notemd-desktop.md)。分层理由见 [../adr/0009-page-store-vs-vault-projection.md](../adr/0009-page-store-vs-vault-projection.md)。
+
+归档目录取代 vault 内固定目录 `[未定]`:待配套发版,见 [platform/notemd-desktop.md](platform/notemd-desktop.md) §2.0 与 [ADR 0013](../adr/0013-workspace-and-archive-off-vault.md)。
 
 **便携文件格式**:与平台无关,见 [02-markdown-and-line-time.md](02-markdown-and-line-time.md) §2。
 
@@ -183,7 +185,7 @@
 - 专门检测同 UUID 副本的别名与内容分叉。
 - 文件移动或改名后,按页 UUID 寻找候选文件并校验。
 
-**iOS**:只有纸页存储,没有 vault 投影,改由系统分享导出 Markdown。[计划:iOS]
+**iOS**:只有纸页存储,没有归档投影,改由系统分享导出 Markdown。[计划:iOS]
 
 ### 4.3 迁移层级与导出
 

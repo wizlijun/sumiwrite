@@ -2,7 +2,7 @@
 
 玄霜写作(Sumi Write)在桌面上不是独立应用,而是 note.md 的一个插件(插件 ID `notemd.sumi`),编辑区用宿主提供的原生文本控件。这样定的理由见 [ADR 0005](../../adr/0005-native-text-controls.md)、[ADR 0006](../../adr/0006-plugin-backend-vs-host-session.md)、[ADR 0008](../../adr/0008-standalone-repo-desktop-stays-plugin.md)。
 
-本附录只写**桌面插件独有**的规则。各端共用的规则在主题规范里:纸页与存储见 [01](../01-pages-and-storage.md),Markdown 与行时间见 [02](../02-markdown-and-line-time.md),同步见 [03](../03-sync.md),编辑体验见 [04](../04-editing-experience.md),字体见 [05](../05-fonts.md)。宿主与插件之间的接口以 [`host-contract v1`](../../handoff/03-notemd-contract.md) 为准;本附录与契约冲突时,以契约为准。
+本附录只写**桌面插件独有**的规则。各端共用的规则在主题规范里:纸页与存储见 [01](../01-pages-and-storage.md),Markdown 与行时间见 [02](../02-markdown-and-line-time.md),同步见 [03](../03-sync.md),编辑体验见 [04](../04-editing-experience.md),字体见 [05](../05-fonts.md)。宿主与插件之间的接口以 [`host-contract v2`](../../handoff/03-notemd-contract.md) 为准;本附录与契约冲突时,以契约为准。
 
 - **基线**:宿主 tag `v6.1117.1`(`main` 的 `969f8e73`),插件 `0.1.16`。证据链接都指向这个 tag。
 - **读法**:每个小节首行的 `状态:` 标注该节整体状态。节内某条规则状态不同,就在该条末尾另标。由实现方选定的数值(尺寸、时间、阈值)后缀 `(工程细则)`,表示它不是产品决定。
@@ -43,16 +43,61 @@
 
 ---
 
-## 2. vault 投影与外部修改的三方合并
+## 2. 归档投影与外部修改的三方合并
 
-纸页的本机事实源是内核的 SQLite 存储;vault 里的文件只是**投影**。两层为什么分开,见 [ADR 0009](../../adr/0009-page-store-vs-vault-projection.md) 与 [01-pages-and-storage](../01-pages-and-storage.md)。文件布局、frontmatter 键与 OKF 写入规矩以[契约 §3](../../handoff/03-notemd-contract.md) 为准,本节只写行为。
+纸页的本机事实源是内核的 SQLite 存储;归档目录里的文件只是**投影**。两层为什么分开,见 [ADR 0009](../../adr/0009-page-store-vs-vault-projection.md) 与 [01-pages-and-storage](../01-pages-and-storage.md)。文件布局、frontmatter 键与 OKF 写入规矩以[契约 §3](../../handoff/03-notemd-contract.md) 为准,本节只写行为。
+
+### 2.0 写作工作区与归档目录
+
+状态:[未定] 待配套发版(`host-contract v2`),交付后补证据。决定与取舍见 [ADR 0013](../../adr/0013-workspace-and-archive-off-vault.md),接口见[契约](../../handoff/03-notemd-contract.md)。
+
+**写作工作区**:
+
+- 桌面每台机器一个工作区,由一个不透明的**工作区 ID** 标识。一个工作区对应一套纸页库、一份输入日志、一组同步凭据,与打开哪个 vault 无关。
+- 纸页库路径为 `<app_data>/sumi/<工作区 ID>/documents.sqlite3`,输入日志同目录;钥匙串 `profile` 用工作区 ID。
+- 工作区 ID 与归档目录存在宿主的本机配置文件 `<app_data>/sumi/workspace.json`:`{"schema":1,"workspace":"<ID>","archive":"<绝对路径>"|null}`。放在纸页库外面,因为打开库之前就要知道库在哪;`archive` 为 `null` 表示尚未设置。设置只在本机生效,不同步。
+- 打开玄霜写作不要求已打开 vault;切换或关闭 vault 不停止编辑会话。
+
+**首次升级的接管**:升级后第一次打开玄霜写作,宿主若没有 `workspace.json`:
+
+1. 列出 `<app_data>/sumi/` 下的哈希目录(排除 `fonts/`)。
+2. 选一个接管:恰好一个就接管它;多于一个时,当前开着 vault 且 `sha256(canonicalize(当前 vault 根))` 命中其一,接管那个,否则接管纸页库修改时间最新的那个;其余目录原样留在磁盘上不删,在设置里列出“未接管的旧纸页库”,只作提示,不合并;一个都没有(新装)就新生成一个 UUID 作工作区 ID。
+3. 接管就是把该目录名作为工作区 ID,原地使用,不搬文件;钥匙串 `profile` 是同一哈希,配对原样可用。
+4. 归档目录初值:当前开着 vault 且它的哈希就是被接管的目录名,取 `<该 vault>/inbox/writings/`,与升级前一致;新装且开着 vault,取 `<当前 vault>/inbox/writings/`;其他情况 `archive` 记为 `null`,打开玄霜写作时提示“选择归档目录”,不自动落到某个默认目录。未设置期间照常写字与同步,投影处于 `projection-pending`。
+5. 原子写入 `workspace.json`,之后不再重复接管。
+
+**归档目录的路径规则**:
+
+- 投影文件直接放在归档目录里,不再拼 `inbox/writings`。
+- 归档目录本身必须已存在且是目录;它本身是符号链接时接受,先 canonicalize(iCloud、Dropbox 的软链目录照常可用)。
+- 运行时不自动创建归档目录本身。不存在或不可访问就视为“归档目录不可用”:投影进入 `projection-pending` 并按现行节奏重试,正文照常保存。这样卷没挂载时不会在内置盘上建出影子目录。
+- 归档目录只在用户用选择器设定、或接管时取 `<vault>/inbox/writings/` 而它不存在时,由宿主创建一次;创建时沿用“新建的各层不得是符号链接或非目录”的检查。
+
+**改归档目录**:
+
+1. 宿主用自己的目录选择框选新目录(插件 WebView 弹不出系统选择框)。
+2. 对整个工作区执行现行的停止屏障:排空持久队列、尝试最终投影。最终投影不要求成功,旧目录写不进去也允许切换。
+3. 清空投影队列与各页的投影基线;未完成的旧作业作废,正文已在纸页库里。
+4. 写 `workspace.json`,用新 `archive` 重开后台会话。
+5. 后台按页在新目录发布,规则见下表。
+
+旧目录里的文件原样保留,不删不搬;不要求“没有冲突页才能切换”,旧目录里的冲突原样留在旧目录。
+
+**无基线首写**(新目录、或接管后基线为空时,每页一次),按目标位置同名文件的情况处理:
+
+| 目标位置 | 处理 |
+|---|---|
+| 没有同名文件 | 直接写入,记为新基线 |
+| 有同名文件,且与本次待写内容逐字节相同 | 不写,记为基线 |
+| 有同名文件对,且能确认是本页自己写下的旧版本:sidecar 的 `page_id`、`write_epoch` 与本页一致,且正文哈希、行数、行 ID 序列与 sidecar 自洽(没被外部改过,规则同 §2.3) | 覆盖。旧版本的内容都在 CRDT 历史里,不会丢;这覆盖了“A 换到 B 再换回 A”的情形 |
+| 其他(属于别的页、身份不符、正文被外部改过、只有半对文件) | 不覆盖,这一页的投影标为冲突,走现行“恢复”入口处理;其余页照常发布 |
 
 ### 2.1 投影文件
 
-状态:[已交付:macOS+Linux] 证据:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/src/projection.rs
+状态:[未定] 待配套发版(`host-contract v2`),交付后补证据。v6.1117.1 已交付的是 `<vault>/inbox/writings/` 版本,出处:https://github.com/wizlijun/note.md/blob/v6.1117.1/write-core/src/projection.rs
 
-- 正文文件是 `<vault>/inbox/writings/YYYY-MM-DD-NN.writing.md`,同目录另有 sidecar `YYYY-MM-DD-NN.writing.meta.json`,记录行级时间与行 ID。日期是首次有效输入时的本机日期,`NN` 是两位序号。一页的身份是 `page_id`,不是文件名。
-- 目录不存在就创建。路径上任何一层是符号链接或者不是目录,都拒绝写入。
+- 正文文件是 `<归档目录>/YYYY-MM-DD-NN.writing.md`,同目录另有 sidecar `YYYY-MM-DD-NN.writing.meta.json`,记录行级时间与行 ID。日期是首次有效输入时的本机日期,`NN` 是两位序号。一页的身份是 `page_id`,不是文件名。
+- 归档目录必须已存在;它本身可以是符号链接;运行时不创建。目录不存在或不可访问,投影暂缓,见 §2.0。
 - 每个文件单独原子写入:先写临时文件 `.sumi-<uuid>.tmp`,`fsync` 后再重命名。**两个文件合起来不是原子的**,它们只是一份可恢复的投影。
 - 发布前会比对磁盘基线的哈希。磁盘内容如果既不是“上次发布的”也不是“本次待发布的”,就停下来,先保全外部内容,改走导入。
 

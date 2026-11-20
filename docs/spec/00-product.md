@@ -114,7 +114,7 @@ Linux 的交付范围:该平台共用同一套 Markdown/CRDT/持久日志,第 3 
 形态上分两类:
 
 - **桌面**:保持 note.md 插件形态。理由见 [../adr/0008-standalone-repo-desktop-stays-plugin.md](../adr/0008-standalone-repo-desktop-stays-plugin.md)。
-- **iOS**:独立应用。只有纸页存储,没有 vault 投影,见 [../adr/0009-page-store-vs-vault-projection.md](../adr/0009-page-store-vs-vault-projection.md)。[计划:iOS]
+- **iOS**:独立应用。只有纸页存储,没有归档投影,见 [../adr/0009-page-store-vs-vault-projection.md](../adr/0009-page-store-vs-vault-projection.md)。[计划:iOS]
 
 ## 3. 与 note.md 的边界
 
@@ -125,7 +125,7 @@ Linux 的交付范围:该平台共用同一套 Markdown/CRDT/持久日志,第 3 
 **插件后台进程负责**:
 
 - 本机持久化
-- vault 投影
+- 归档投影
 - 同步协调
 - 字体下载
 
@@ -138,12 +138,12 @@ Linux 的交付范围:该平台共用同一套 Markdown/CRDT/持久日志,第 3 
 
 取舍理由见 [../adr/0006-plugin-backend-vs-host-session.md](../adr/0006-plugin-backend-vs-host-session.md)。
 
-双方互相约定的接口叫 `host-contract v1`,全部写在 [../handoff/03-notemd-contract.md](../handoff/03-notemd-contract.md)。它包括:
+双方互相约定的接口叫 `host-contract v2`,全部写在 [../handoff/03-notemd-contract.md](../handoff/03-notemd-contract.md)。它包括:
 
 - 宿主命令
 - 原生编辑面能力
 - 后台握手
-- vault 投影约定
+- 归档投影约定
 - 发版配合
 
 插件 manifest 的 `engines.notemd` 声明最低宿主版本。
@@ -155,7 +155,7 @@ Linux 的交付范围:该平台共用同一套 Markdown/CRDT/持久日志,第 3 
 迁移完成后的归属已经定下(设计 §5.1–5.2):
 
 - **sumiwrite 定义**:产品规则、内核、同步协议、同步服务与平台无关的会话逻辑。
-- **note.md 实现**:`host-contract v1`。
+- **note.md 实现**:`host-contract v2`。
 
 但这一归属**尚未执行**:在基线上,源码仍全部在 note.md 仓库。逐项归属判定见 [../handoff/01-inventory.md](../handoff/01-inventory.md),迁移分期见 [../handoff/02-migration-plan.md](../handoff/02-migration-plan.md)。
 

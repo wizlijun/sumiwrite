@@ -327,7 +327,7 @@
 - 服务端确认的序号与本机暂定的冲突时,本机把尚未被服务端确认的那一页改到下一个可用序号,并重新写出投影。
 - 已被服务端确认的页之间发生冲突,视为错误,不自动处理。
 
-文件名只在桌面 vault 投影里使用,见 [platform/notemd-desktop.md](platform/notemd-desktop.md)。
+文件名只在桌面归档投影里使用,见 [platform/notemd-desktop.md](platform/notemd-desktop.md)。
 
 ## 7. 隔离与恢复
 

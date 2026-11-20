@@ -1,15 +1,16 @@
-# 03 · 与 note.md 的契约(host-contract v1)
+# 03 · 与 note.md 的契约(host-contract v2)
 
 本文件记录玄霜写作(Sumi Write,插件 ID `notemd.sumi`)与宿主 note.md 之间互相约定的全部内容。对应设计文档 §5.3(五部分)。
 
 - **基线**:源仓库 `main` 的 `969f8e73`,宿主发布 tag `v6.1117.1`。**`host-contract v1` 就是这一基线上已发布行为的快照**,不是新设计。
+- **v2**:纸页库与归档目录脱离 vault(见 [ADR 0013](../adr/0013-workspace-and-archive-off-vault.md))带来的主版本升级,**待配套发版,尚未发布 `[未定]`**。下文表格里“现值”仍是 v1 基线;v2 的改动逐条标出,没有标注的部分 v1 与 v2 相同。
 - **读法**:凡写“现值”的,都是从代码逐项读出的;读不出来的标 `[未定]`,并记入 [`04-known-gaps.md`](04-known-gaps.md)。代码与旧规范冲突时以代码为准,冲突记在第 7 节。
 - **来源路径**一律相对源仓库 `note.md` 根目录。
 - 归属判定见 [`01-inventory.md`](01-inventory.md);迁移分期见 [`02-migration-plan.md`](02-migration-plan.md)。
 
 ---
 
-## 1. 宿主接口契约 `host-contract v1`
+## 1. 宿主接口契约 `host-contract v2`
 
 由 sumiwrite 定义,note.md 实现。插件 manifest 的 `engines.notemd` 继续表达最低宿主版本。
 
@@ -26,13 +27,15 @@
 
 宿主进入 Sumi 的授权门:`src-tauri/src/sumi/mod.rs` 的 `authorize()` 要求调用方插件 ID 恰为 `notemd.sumi`,且 manifest 同时含 `editor.native`、`editor.write`、`vault.read`、`vault.write` 四项能力,缺一项返回 `CAPABILITY_DENIED: <能力名>`。
 
+**v2 的变化 `[未定]`**:打开玄霜写作不再要求先打开 vault。manifest 的 `vault.read`、`vault.write` 保留,因为归档目录在 vault 内时仍要写 vault。
+
 ### 1.1 表 A:`host.sumi.*` 命令
 
 来源:`src-tauri/src/sumi/mod.rs` 的 `dispatch()`;能力映射 `src-tauri/src/plugin_runtime/host_api.rs`(`method_capability`);路由 `src-tauri/src/plugin_runtime/ui_rpc.rs`(`host.sumi.` 前缀走 `crate::sumi::dispatch`)。插件侧调用封装为 `plugins-src/write/src/main.ts` 的 `host.sumi.${method}`。
 
 **通用规则**
 
-- 这 20 个命令全部由 UI 桥(插件窗口的 WebView)调用,**全部**要求能力 `editor.native`(`host_api.rs`),未知方法返回 `METHOD_NOT_FOUND`。
+- 这 20 个命令(v2 新增 3 个,见下)全部由 UI 桥(插件窗口的 WebView)调用,**全部**要求能力 `editor.native`(`host_api.rs`),未知方法返回 `METHOD_NOT_FOUND`。
 - 参数为 JSON 对象,键名按下表原样(`pageId`、`fontFamily` 等是 camelCase)。缺少必填键时错误文案为 `缺少参数 <键名>`。
 - 失败统一以 `ERR_INTERNAL` + 中文错误文案返回;用户可读的错误文案属于契约的一部分,但其措辞不保证稳定,插件不得据文案分支。**例外**:`CAPABILITY_DENIED: …` 前缀与 `METHOD_NOT_FOUND`。
 - 除 `host.sumi.state`(不支持原生编辑的平台上直接返回 `available:false`)外,所有命令要求 Sumi 窗口(`window_label(notemd.sumi, "main")`)已打开,否则返回 `Sumi 窗口未打开`。
@@ -53,7 +56,10 @@
 | `host.sumi.font_select` | `fontFamily`(必须是已登记的字体组合别名) | `FontState` | 选用字体;未下载则在后台下载,完成后才写入偏好并应用,过程中的状态靠 `sumi-state` 推送。失败以 `sumi-error` 推送 |
 | `host.sumi.fullscreen` | 可选 `queryOnly:boolean` | `{fullscreen:boolean}` | `queryOnly=true` 只查询;否则切换全屏并返回切换后的值 |
 | `host.sumi.command` | `action`(必填)。`close`:隐藏 Sumi 窗口(先走 `before_close`)。其余动作作用于当前激活页:`save`(重试待提交编辑、落地原生草稿、`flush`);`zoom_in`、`zoom_out`(字号 ±2,夹在 8–96)、`zoom_reset`(回到默认 22) | `null` | 窗口与文档级命令。其他 `action` 值返回 `不支持的写作命令`;无激活页返回 `没有当前纸页`;输入法组字中拒绝 |
-| `host.sumi.restore_projection` | `pageId` | `{page_id, raw, revision, recovery_path}` | 把 vault 里被外部改坏或缺失的投影文件,按本机事实源重新写出;原文件先保全到 `recovery_path`。该页有未关闭的编辑面时拒绝(草稿不丢弃) |
+| `host.sumi.restore_projection` | `pageId` | `{page_id, raw, revision, recovery_path}` | 把归档目录里被外部改坏或缺失的投影文件,按本机事实源重新写出;原文件先保全到 `recovery_path`。该页有未关闭的编辑面时拒绝(草稿不丢弃) |
+| `host.sumi.archive_get` **v2 新增 `[未定]`** | 无 | `{"archive":string\|null,"available":bool,"untaken":[string]}`:当前归档目录(`null` 表示尚未设置)、是否可用、未接管的旧纸页库列表 | 读取归档目录设置 |
+| `host.sumi.archive_choose` **v2 新增 `[未定]`** | 无 | 与 `archive_get` 同形 | 宿主弹出系统目录选择框,并执行“停会话、改配置、重开”的改目录流程(旧目录文件不删不搬,见 [notemd-desktop §2.0](../spec/platform/notemd-desktop.md))。用户取消则返回当前设置 |
+| `host.sumi.recovery_choose` **v2 新增 `[未定]`** | 无 | `{"path":string\|null}`(用户取消为 `null`) | 宿主弹出系统文件选择框,起点为归档目录,供“从归档目录选文件恢复” |
 | `host.sumi.export` | `pageId`;`format`:`markdown`(只含正文,保存名 `Sumi Write.md`)或 `archive`(含逐行时间,保存名 `Sumi Write.zip`) | `{saved:boolean}`(用户在系统保存对话框取消则为 `false`) | 导出纸页。若该页由别处持有,拒绝;由当前窗口持有则先 `flush` |
 | `host.sumi.pair` | `serviceUrl`(非空字符串);`invitation`(配对码的 JSON 字符串,字段 `spaceId`、`code`、`expiresAt`) | `SumiState` | 本设备接受配对码,加入同步空间。同步连接未初始化时返回 `同步连接正在初始化` |
 | `host.sumi.invite` | 无 | `{invitation:string}`(配对码的 JSON 字符串) | 为本空间生成给另一台设备用的配对码 |
@@ -165,7 +171,7 @@ owner 是“当前持有某纸页编辑面的 `(窗口, 标签页, 编辑面)`�
 |---|---|
 | `sumi_state(plugin_id)` | 同 `host.sumi.state` |
 | `sumi_open_path(plugin_id, path, tab_id, expected_page_id?)` | 按文件路径打开,返回 `Opened` 或 `existing_owner` |
-| `sumi_page_path(plugin_id, page_id)` | 由页面 ID 解析投影文件路径:`{page_id, epoch, path, vault_root}` |
+| `sumi_page_path(plugin_id, page_id)` | 由页面 ID 解析投影文件路径:`{page_id, epoch, path, vault_root}`;**v2 `[未定]`** 返回 `{"page_id","epoch","path","archive"}`,`vault_root` 改为 `archive` |
 | `sumi_mount(plugin_id, page_id, tab_id, bounds)` | 挂载 |
 | `sumi_focus_existing(plugin_id, page_id)`、`sumi_focus_owner(plugin_id, page_id, tab_id)` | owner 前台化 |
 | `sumi_restore_projection(plugin_id, page_id, tab_id?)` | 同 `host.sumi.restore_projection` |
@@ -212,7 +218,7 @@ owner 是“当前持有某纸页编辑面的 `(窗口, 标签页, 编辑面)`�
 | 宿主 → 后台 | `service.request`,载荷 `{method, params}` | 经 `PluginProcess::request` |
 | 后台 → 宿主 | `host.sumi.service`,载荷 `{session, instance, method, params}` | 仅 `notemd.sumi` 的原生进程可调(`process.rs`、`host_api.rs`);宿主在 `service::callback` 里校验 `session` 与 `instance`,过期/旧进程的事件被拒绝 |
 
-**D2 握手(现值)**
+**D2 握手(现值)**。服务协议 `VERSION` 在 v2 升到 2 `[未定]`,下表“1”均指 v1 基线,v2 时同步改为 2。`open` 一行同时写出 v1 与 v2 的形状。
 
 | 项 | 现值 | 出处 |
 |---|---|---|
@@ -222,7 +228,7 @@ owner 是“当前持有某纸页编辑面的 `(窗口, 标签页, 编辑面)`�
 | 宿主校验 | `hello.version == 1` 且 `instance` 为合法 UUID,否则 `Sumi 后台协议不兼容,请同时更新宿主和插件` | `service.rs` |
 | 能力常量 | `OBSERVE_PAGE = "durability.observe_page.v1"` | `sumi-protocol/src/service.rs` |
 | 能力门禁 `Hello::check_request` | 仅当请求为 `method=="durability"` 且 `payload.method=="observe_page"` 时,要求 `capabilities` 含 `durability.observe_page.v1`,否则报 `Sumi 插件版本过旧,缺少安全的本机文件读取能力。请更新 Sumi 插件后重新打开;本机稿件仍保留`。其余请求(`sound`、`fonts`、`durability` 的其他方法)对旧后台一律放行 | `sumi-protocol/src/service.rs` 与其单测 |
-| `open` | 宿主 → 后台:`{version, instance, session, vault, database, fontCache}`(路径均须为绝对路径);`session` 由宿主为每个 `Backend` 生成 | `service.rs`、`runtime.rs` `Open` |
+| `open` | v1:宿主 → 后台 `{version, instance, session, vault, database, fontCache}`(路径均须为绝对路径);`session` 由宿主为每个 `Backend` 生成。**v2 `[未定]`**:`{version, instance, session, workspace, archive, database, fontCache}`,`vault` 换成 `workspace`(工作区 ID,不透明字符串)与 `archive`(绝对路径,可为 `null`);`open` 不再要求归档目录存在;同一工作区只许绑一个会话 | `service.rs`、`runtime.rs` `Open` |
 
 模块头注释写明:**“既有的 fonts/sound 保持版本 1;新增可选能力靠 `capabilities` 字符串声明。”** 这条是本契约“新增可选能力”规则的现成先例。
 
@@ -263,15 +269,17 @@ owner 是“当前持有某纸页编辑面的 `(窗口, 标签页, 编辑面)`�
 
 **D7 后台 → 宿主的回调方法**(`background_request`,`src-tauri/src/sumi/mod.rs`)
 
-`durable`(事件通知)、`current`、`editor_state`(返回激活页、持有情况、各页 state vector)、`directory`(目录变更)、`remote`(合入远端更新)、`status`(同步状态)、`auth_load`、`auth_pair`、`auth_token`(系统钥匙串身份与令牌)。所有非 `durable` 回调须带与宿主工作区根一致的 `root`,否则 `Sumi后台工作区绑定不一致`;`remote`、`directory` 受“变更闸门”约束,同步停止后到达的旧事件被拒绝。
+`durable`(事件通知)、`current`、`editor_state`(返回激活页、持有情况、各页 state vector)、`directory`(目录变更)、`remote`(合入远端更新)、`status`(同步状态)、`auth_load`、`auth_pair`、`auth_token`(系统钥匙串身份与令牌)。所有非 `durable` 回调须带与宿主工作区根一致的 `root`(**v2 `[未定]`**:`root` 的值为工作区 ID),否则 `Sumi后台工作区绑定不一致`;`remote`、`directory` 受“变更闸门”约束,同步停止后到达的旧事件被拒绝。
+
+**D8 后台请求 `SetArchive` `[未定]`(v2 新增)**:`Request::SetArchive { archive }`,宿主在改归档目录的流程里,于清空投影队列与各页基线之后发给后台,`archive` 为新的绝对路径或 `null`。不新增服务消息之外的握手字段。
 
 ### 1.5 版本规则
 
 1. **新增可选能力**(新的 `host.sumi.*` 命令、新的可选参数/返回字段、新的推送消息类型、新的 `capabilities` 字符串,且旧插件/旧宿主不用它也照常工作):升**次版本**,`host-contract v1.x`。**[提议规则,非现有行为]** 宿主对缺失的能力应当降级而不是拒绝(现有先例只有一个,参照 `observe_page` 的先例:旧后台只在需要该能力的那一个请求上被拒,且文案指向“更新插件”)。
-2. **改变或删除既有行为**(改名/删除命令、改参数或返回的含义、收紧取值范围、改变服务协议 `VERSION`、改变 `edit_receipt` 摘要的线上身份、改变 owner/组字的拒绝规则):升**主版本**,`host-contract v2`。
+2. **改变或删除既有行为**(改名/删除命令、改参数或返回的含义、收紧取值范围、改变服务协议 `VERSION`、改变 `edit_receipt` 摘要的线上身份、改变 owner/组字的拒绝规则):升**主版本**,`host-contract v2`。**v1 → v2 就是这样一次主版本升级**:后台 `open` 字段、回调 `root` 的含义、`sumi_page_path` 的返回都变了,服务协议 `VERSION` 同时由 1 升到 2 `[未定]`(待配套发版)。
 3. **主版本变化必须两个仓库配套发版**(见 §4)。
 4. 每次变更同时更新:本文件、`CHANGELOG`(两个仓库各自)、插件 manifest 的 `engines.notemd`(若需要更高的宿主下限)。
-5. 契约版本与插件版本、宿主版本互相独立。当前对应关系:`host-contract v1` = 宿主 `v6.1117.1` 基线 + 插件 `0.1.16`。
+5. 契约版本与插件版本、宿主版本互相独立。对应关系:`host-contract v1` = 宿主 `v6.1117.1` 基线 + 插件 `0.1.16`;`host-contract v2` = 配套发版的宿主与插件 `[未定]`(版本号待发版时登记)。
 6. **机械检查**:`bash docs/check.sh check_contract` 按固定 tag `v6.1117.1`(脚本里的 `TAG` 变量)用 `git show` 读源仓库的 `src-tauri/src/sumi/mod.rs`、`src-tauri/src/plugin_runtime/host_api.rs` 与 `src-tauri/src/plugin_runtime/process.rs`,不读工作区;抓取其中每个 `host.sumi.*` 名称(含只在 `host_api.rs`/`process.rs` 出现的 `host.sumi.service`),要求本文件都出现过;宿主新增命令而本文未登记,检查即失败。基线换 tag 时同步改 `TAG`。
 
 ### 1.6 停止、持久回执与插件进程环境(补漏,已按 v6.1117.1 代码核实)
@@ -318,20 +326,20 @@ owner 是“当前持有某纸页编辑面的 `(窗口, 标签页, 编辑面)`�
 - **后台的 core 依赖必须与宿主同源。** 插件后台的 `write-core`、`sumi-protocol` 只能取 sumiwrite 的同一个 git tag(现为 `core-v0.1.0`),与宿主一致;不得改成仓内 `path` 依赖或本地路径覆盖。否则 note.md 测试 harness 里 `sumi_protocol::durability::Request` 会成为两份类型,编译不过。
 - **宿主测试 harness 的 `include!`。** note.md 的 `src-tauri/src/sumi/backend_proxy_tests.rs` 用 `include!("durability.rs")` 把宿主 `durability.rs` 再编译一遍,因为它 `use super::service::Backend`,需要在 harness 里换上 mock 的 `Backend`。副作用:宿主 journal 测试在 harness 下重复跑一遍,只花时间。这个 harness 属宿主适配,归 note.md。
 - **本地联调**:可临时在任一侧用 `[patch]` 指向另一侧的本地目录,但这类临时覆盖不入库(note.md 那条常驻 `[patch]` 除外);且不得让后台的 core 依赖偏离同一个 `core-vX` 源。
-- **现状**:`core-v0.1.0`、`plugin-sdk-v0.1.0`、`notemd-plugin-v0.1.16` 均已存在。第 1 期把 `write-core`、`sumi-protocol` 迁入 sumiwrite 并打 `core-v0.1.0`;第 2 期把插件壳迁入并打 `notemd-plugin-v0.1.16`。
+- **现状**:`core-v0.1.0`、`plugin-sdk-v0.1.0`、`notemd-plugin-v0.1.16` 均已存在;`core-v0.2.0`、`notemd-plugin-v0.2.0` 随归档目录一轮(`host-contract v2`)发布,**待打 tag `[未定]`**。第 1 期把 `write-core`、`sumi-protocol` 迁入 sumiwrite 并打 `core-v0.1.0`;第 2 期把插件壳迁入并打 `notemd-plugin-v0.1.16`。
 - `core-vX.Y.Z` 的版本号与 `host-contract` 的版本号**是否联动**:`[未定]`,见 §7。
 - 共享快捷键 TypeScript(`plugins-src/shared/shortcuts`)的归属与同步方式:第 2 期已定,sumiwrite 自带 `apps/notemd-plugin/src/shortcuts.ts`,note.md 的原件不动,两者不同步。
 
 ---
 
-## 3. vault 投影约定
+## 3. 归档投影约定
 
-这是**桌面插件独有**的行为;iOS 没有 vault,只有纸页存储(见 `docs/spec/01-pages-and-storage.md`)。
+这是**桌面插件独有**的行为;iOS 没有归档投影,只有纸页存储(见 `docs/spec/01-pages-and-storage.md`)。
 
 | 项 | 约定 | 出处 |
 |---|---|---|
-| 目录 | `<vault>/inbox/writings/`,不存在则创建;沿途任一层是符号链接或非目录即拒绝(`writing directory must not be a symlink`) | `write-core/src/projection.rs` `paths()` |
-| 正文文件 | `inbox/writings/YYYY-MM-DD-NN.writing.md`。`YYYY-MM-DD` 是本机本地日期,`NN` 是两位序号(`{:02}`);`(日期, 序号)` 在宿主目录表里唯一(唯一索引 sumi_filename) | `write-core/src/catalog.rs` `Entry::filename()` |
+| 目录 | 归档目录,必须已存在,本身可为符号链接,运行时不创建。**v2 `[未定]`**;v1 为 `<vault>/inbox/writings/`,不存在则创建,沿途任一层是符号链接或非目录即拒绝(`writing directory must not be a symlink`) | `write-core/src/projection.rs` `paths()` |
+| 正文文件 | `YYYY-MM-DD-NN.writing.md`(位于归档目录内;v1 在 `inbox/writings/` 下)。`YYYY-MM-DD` 是本机本地日期,`NN` 是两位序号(`{:02}`);`(日期, 序号)` 在宿主目录表里唯一(唯一索引 sumi_filename) | `write-core/src/catalog.rs` `Entry::filename()` |
 | sidecar | 同目录 `YYYY-MM-DD-NN.writing.meta.json`(正文文件名去掉 `.md` 后加 `.meta.json`)。内容为行级时间与行 ID 元数据,`schema` 为 `1` | `projection.rs`;`write-core/src/storage.rs` |
 | 文件名约束 | 必须以 `.writing.md` 结尾,不含 `/`、`\`、NUL,不以 `.` 开头;空白页尚未生成文件名 | `projection.rs` `paths()`;`sumi_page_path` |
 | frontmatter | 必含 `type: Writing Page`、`write_schema: 1`、`page_id`、`write_epoch`、`write_metadata: sidecar-v1`;其余键(如 `author`、`sumi_creation`)原样保留。校验读回时 `type`、`write_metadata`、`schema`、`page_id`、`write_epoch`、正文哈希、行数与行 ID 序列全部一致才接受 | `storage.rs` `serialize_pair` / 解析 |
@@ -357,7 +365,7 @@ owner 是“当前持有某纸页编辑面的 `(窗口, 标签页, 编辑面)`�
 |---|---|
 | 只改插件壳或内核,**契约版本不变**(`host-contract` 不变,`engines.notemd` 不需上调) | **只发插件包**:sumiwrite 产出待签名构建物 → note.md 签名并上架。宿主不必发版 |
 | 契约**次版本**升级(新增可选能力) | 宿主先发布带新能力的版本;插件随后提高 `engines.notemd` 到该宿主版本并使用新能力。插件可在旧宿主上继续以旧能力运行时,不必提高下限 |
-| 契约**主版本**升级,或服务协议 `VERSION` 变化 | **配套发版**:两边同一轮发布;宿主在握手失败时给出“请同时更新宿主和插件”(现有文案),就是为这一情形准备的 |
+| 契约**主版本**升级,或服务协议 `VERSION` 变化 | **配套发版**:两边同一轮发布;宿主在握手失败时给出“请同时更新宿主和插件”(现有文案),就是为这一情形准备的。**本轮(归档目录,`host-contract v2`)属于这一行**:宿主与插件配套发版 `[未定]` |
 | 宿主改了契约内的命令或推送消息 | 属于上两行之一;宿主一侧的 `check_contract` 对应检查是防止“宿主静默改了一个未登记命令”的最后一道网 |
 
 现行流程(基线):插件包由 `scripts/release-plugins.sh sumi` 的 `release_sumi()` 构建、打 `.notemdpkg`(每个架构一个 ZIP),用 minisign 分离签名为同名 `.minisig`,索引由 `scripts/gen-plugin-index.mjs` 生成;脚本**只打包与签名,不上传**。宿主发版见源仓库 `scripts/release.sh` 与 `CLAUDE.md` 的“发版:每次都写增量 CHANGELOG”。
@@ -413,7 +421,7 @@ note.md 收到后:比对 `source_commit` → `verify_checklist` → macOS 目标
 3. **“owner 交接”**:owner 状态在宿主 `src-tauri/src/sumi/mod.rs` 的 `Owner`,不在原生编辑插件里;契约面见表 B6。
 4. **契约外的跨仓耦合**:`plugins-src/write/src/main.ts` import `../../shared/shortcuts` 与 `../../../src/lib/sumi/i18n`;`contract.ts` 与宿主 `Preferences` 的默认值、范围两处各存一份。第 2 期已定:sumiwrite 自带 `shortcuts.ts` 与 `i18n.ts`,`main.ts` 不再 import 宿主文件;`contract.ts` 与宿主 `Preferences` 的两份默认值与范围第 2 期未处理,留待下次契约版本变化时由两边一起定 `[未定]`。
 5. **`core-vX.Y.Z` 与 `host-contract` 版本是否联动** `[未定]`。当前宿主以 `path` 依赖内核,无 tag。
-6. **服务协议 `VERSION=1` 与 `host-contract v1` 的关系**:二者数值同为 1 但含义不同(前者是私有通道线上版本,后者是整个耦合面的快照版本);主版本升级时是否必须同时改 `VERSION` `[未定]`。
+6. **服务协议 `VERSION=1` 与 `host-contract v1` 的关系**:二者数值同为 1 但含义不同(前者是私有通道线上版本,后者是整个耦合面的快照版本);主版本升级时是否必须同时改 `VERSION` `[未定]`。v2 这一轮两者同时升了(`host-contract` 1 → 2,`VERSION` 1 → 2),是否必须联动仍为 `[未定]`。
 7. **`Writing Page` frontmatter 缺 `generated` 署名**:见 §3 末尾提示。是否符合 OKF §7 的人工撰写署名要求 `[未定]`。
 8. **`host.sumi.sound_*` 三条命令**不在 `mod.rs` 的 `dispatch()` 内实现,而在 `sound::dispatch`;仍由 `mod.rs` 路由,故被 `check_contract` 覆盖。
 9. **构建物与校验清单的具体格式**:第 2 期已定,见 §5;sumiwrite 侧已交付,note.md 侧已本地合并、待推送(`[未定]`)。

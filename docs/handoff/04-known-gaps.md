@@ -166,6 +166,8 @@
 - **同步服务在 note.md 里没有可运行的本机基线**:`write-sync-worker` 借用 `../worker/node_modules/.bin`,本机该目录缺失,本目录也未装 `yjs`,`npm test`/`npm run check` 都跑不起来;第 1 期以“自带工具链下全部通过”作验收。
 - **本机没有同步服务的部署状态**:`tasks/sumi-sync/` 不存在,第 1 期没有要迁移的本地状态。
 - **`sumi-protocol` 没有 README(已解决)**:第 1 期补了 [`protocol/README.md`](../../protocol/README.md),验证命令按 `write-core` 的写法。见 [02-migration-plan.md](02-migration-plan.md)。
+- **多个旧纸页库不合并(归档目录,ADR 0013)**:首次升级只接管一套旧纸页库,其余留在 `<app_data>/sumi/` 下原样不动,只在设置里列出“未接管的旧纸页库”。没有合并入口 `[未定]`。见 [ADR 0013](../adr/0013-workspace-and-archive-off-vault.md)、[notemd-desktop §2.0](../spec/platform/notemd-desktop.md)。
+- **`host-contract v2` 待配套发版(归档目录,ADR 0013)**:后台 `open` 字段、回调 `root`、`sumi_page_path` 返回、三条新宿主命令与服务协议 `VERSION` 2 都只写在契约里,宿主与插件尚未发布,`core-v0.2.0`、`notemd-plugin-v0.2.0` 待打 tag。相关规范小节标 `[未定]`,交付后补证据。见 [03-notemd-contract.md](03-notemd-contract.md) §1、§4。
 
 ### 4.9 规范内部待统一
 

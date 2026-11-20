@@ -23,7 +23,7 @@
           两个方向都按固定 tag 引用,crate 层面不成环(设计 §5.3)
 ```
 
-逐项归属见 [01-inventory.md](01-inventory.md);两仓之间的耦合面见 [03-notemd-contract.md](03-notemd-contract.md)(`host-contract v1`)。
+逐项归属见 [01-inventory.md](01-inventory.md);两仓之间的耦合面见 [03-notemd-contract.md](03-notemd-contract.md)(`host-contract v2`)。
 
 ## 当前状态(第 2 期 sumiwrite 侧已完成,note.md 侧已本地合并、待推送)
 

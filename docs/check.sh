@@ -51,7 +51,8 @@ check_files() {
     docs/adr/0009-page-store-vs-vault-projection.md \
     docs/adr/0010-ios-uikit-textkit2-uniffi.md \
     docs/adr/0011-ios-personal-use-identity-layer.md \
-    docs/adr/0012-shared-session-module.md
+    docs/adr/0012-shared-session-module.md \
+    docs/adr/0013-workspace-and-archive-off-vault.md
   do
     if [ ! -e "$f" ]; then
       fail check_files "missing $f"
@@ -122,7 +123,7 @@ $(git -C "$NOTEMD" show "$TAG:$p")"
     [ -z "$cmd" ] && continue
     grep -qF -- "$cmd" "$doc" || fail check_contract "command not documented: $cmd"
   done < <(printf '%s\n' "$src" | grep -ohE 'host\.sumi\.[A-Za-z0-9_.-]+' | sed 's/[.-]*$//' | sort -u)
-  for s in 'host-contract v1' 'engines.notemd' 'Writing Page' '.writing.meta.json'; do
+  for s in 'host-contract v2' 'engines.notemd' 'Writing Page' '.writing.meta.json'; do
     grep -qF -- "$s" "$doc" || fail check_contract "missing: $s"
   done
 }
@@ -132,7 +133,7 @@ $(git -C "$NOTEMD" show "$TAG:$p")"
 check_adr() {
   local n f base num want out
   n=$(find docs/adr -maxdepth 1 -type f -name '[0-9][0-9][0-9][0-9]-*.md' 2>/dev/null | wc -l | tr -d ' ')
-  [ "$n" = "12" ] || fail check_adr "expected 12 NNNN-*.md files in docs/adr, found $n"
+  [ "$n" = "13" ] || fail check_adr "expected 13 NNNN-*.md files in docs/adr, found $n"
   while IFS= read -r f; do
     base=$(basename "$f")
     num=${base%%-*}
@@ -214,7 +215,7 @@ check_retired() {
   while IFS= read -r f; do
     for w in 'inbox/write/' 'inbox/writes' '.write.md' 'Courier Prime' 'Special Elite' \
              '又又意宋' 'Sumi Typewriter' '玄霜打字机' 'Faitc5' 'Sumi Elite' \
-             '统一 Qt' '横线光标'; do
+             '统一 Qt' '横线光标' 'vault 投影'; do
       if grep -qF -- "$w" "$f"; then
         fail check_retired "$f: retired term: $w"
       fi

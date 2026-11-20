@@ -109,7 +109,8 @@ note.md 侧:
 4. 按前置条件里的结论处理 `shortcuts.ts`。
 5. note.md 的 `scripts/release-plugins.sh` 中 `release_sumi()` 改为从 sumiwrite 的固定 tag 取构建物,签名、公证、上架仍在 note.md(设计 §5.3 **[我的判断]**)。`release_sumi()` 按 [03-notemd-contract.md](03-notemd-contract.md) §5 的交付格式消费构建物。
 6. note.md 删除已迁目录,与第 5 步放在同一个提交。
-7. 迁移不改行为,本期不发新插件包;之后第一次真实改动走新流程发版,契约版本变化时两边配套发版([03-notemd-contract.md](03-notemd-contract.md) §4)。
+7. 归档目录与写作工作区([ADR 0013](../adr/0013-workspace-and-archive-off-vault.md),计划 `docs/superpowers/plans/2026-11-20-archive-directory.md`):插件壳迁入之后的一个独立任务,契约升到 `host-contract v2`,宿主与插件配套发版 `[未定]`。
+8. 迁移本身不改行为,本期迁移不发新插件包;之后第一次真实改动走新流程发版,契约版本变化时两边配套发版([03-notemd-contract.md](03-notemd-contract.md) §4)。
 
 ### 验证
 
@@ -131,7 +132,7 @@ note.md 侧:
 - 第 2 期完成。
 - 第 3 期详细计划已立并获认可,定下切分方式(设计 §10.2 **[我的判断]**)。依据 [01-inventory.md](01-inventory.md) §2 的逐文件判定,并解决其中留给本期的问题:
   - `journal.rs` 依赖 `mod.rs` 里的类型(`CommitReceipt`、`LocalEdit`、`Request`);`durability.rs` 依赖 `service::Backend`,都要先抽接口;
-  - `external.rs`(vault 投影相关)是否进 `session/`;
+  - `external.rs`(归档投影相关)是否进 `session/`;
   - owner 交接时要不要真正转移上下文(见 [../spec/platform/notemd-desktop.md](../spec/platform/notemd-desktop.md) §3.2)。
 - 下沉后的部署形态:同一个 `session/` 要同时适配桌面跨进程和 iOS 单进程([ADR 0012](../adr/0012-shared-session-module.md))。
 

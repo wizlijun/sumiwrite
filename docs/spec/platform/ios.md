@@ -5,7 +5,7 @@
 - **来源**:设计文档 [`docs/superpowers/specs/2026-11-18-sumiwrite-extraction-design.md`](https://github.com/wizlijun/note.md/blob/0c11629f976226c688d186b13d4812da31073dc2/docs/superpowers/specs/2026-11-18-sumiwrite-extraction-design.md) §2、§4.3、§4.4、§5.4、§8、§10、§12(note.md 提交 `0c11629f`)。旧主规范 `2026-11-07-immersive-write-design.md` 中涉及移动端的条目也已对照。
 - **归属标记**:**[用户定]** 是用户亲自拍板的;**[我的判断]** 是设计者的判断,用户可以推翻。两者均沿用设计文档原文。
 - **共用规则**:iOS 与桌面共用纸页、Markdown 与行时间、同步、编辑体验、字体的规则,分别见 [01](../01-pages-and-storage.md)、[02](../02-markdown-and-line-time.md)、[03](../03-sync.md)、[04](../04-editing-experience.md)、[05](../05-fonts.md)。本附录只写 iOS 独有的部分。
-- **技术选型**:[ADR 0010](../../adr/0010-ios-uikit-textkit2-uniffi.md)(UIKit + TextKit 2 + UniFFI)、[ADR 0011](../../adr/0011-ios-personal-use-identity-layer.md)(先自用,身份层分开)、[ADR 0012](../../adr/0012-shared-session-module.md)(共用会话模块 `session/`)、[ADR 0009](../../adr/0009-page-store-vs-vault-projection.md)(纸页存储与 vault 投影分开)。
+- **技术选型**:[ADR 0010](../../adr/0010-ios-uikit-textkit2-uniffi.md)(UIKit + TextKit 2 + UniFFI)、[ADR 0011](../../adr/0011-ios-personal-use-identity-layer.md)(先自用,身份层分开)、[ADR 0012](../../adr/0012-shared-session-module.md)(共用会话模块 `session/`)、[ADR 0009](../../adr/0009-page-store-vs-vault-projection.md)(纸页存储与归档投影分开)。
 
 **定位**:
 
@@ -96,7 +96,7 @@ Rust:session(单一编辑 owner、组字期间暂缓远端更新、本机输入�
 
 状态:[计划:iOS]
 
-- **纸页存储**:内核的 SQLite 保存完整的 CRDT 历史,是本机事实源,放在应用沙盒里(设计 §5.4)。iOS **没有 vault 投影**,不生成 `inbox/writings/` 目录,也不生成 `.writing.md` 文件(见 [ADR 0009](../../adr/0009-page-store-vs-vault-projection.md))。
+- **纸页存储**:内核的 SQLite 保存完整的 CRDT 历史,是本机事实源,放在应用沙盒里(设计 §5.4)。iOS **没有归档投影**,不生成 `inbox/writings/` 目录,也不生成 `.writing.md` 文件(见 [ADR 0009](../../adr/0009-page-store-vs-vault-projection.md))。
 - **钥匙串**:空间、设备凭据存在 iOS 钥匙串里,由 Swift 薄适配层读写。凭据不进纸页数据库、偏好或日志。
 - **发行事务**:Bundle ID、签名身份、TestFlight 配置都不进仓库,仓库里只放凭据引用(设计 §12)。
 

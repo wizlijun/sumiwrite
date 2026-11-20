@@ -9,7 +9,7 @@
 - **规模**:`文件数 / 行数`,实测。文件数含目录下全部文件(不含 `node_modules`、`target`、`dist`);行数只统计文本源码与文档(`.rs .ts .tsx .svelte .js .mjs .py .sh .m .h .c .toml .md .json .css .swift`),不含 `*.lock`、二进制与压缩包。数字会随源仓库变动,以迁移当期实测为准。
 - **归属**:`sumiwrite` 或 `note.md`。
 - **迁入期次**:`1`、`2`、`3`,或 `不迁`。期次定义见设计 §8:1 = 内核、服务契约、同步服务;2 = 插件壳、资源、插件侧脚本;3 = 实时编辑会话下沉为共用 `session/`;4 = iOS 新建(不涉及现有代码)。
-- 契约名称 `host-contract v1` 见 [03-notemd-contract.md](03-notemd-contract.md)。已知缺口见 [04-known-gaps.md](04-known-gaps.md)。
+- 契约名称 `host-contract v2` 见 [03-notemd-contract.md](03-notemd-contract.md)。已知缺口见 [04-known-gaps.md](04-known-gaps.md)。
 
 ## 1. 总表(对应设计 §5.2)
 
@@ -50,9 +50,9 @@
 | `credentials_linux.rs` | 250 | libsecret 绑定 | 宿主适配(不迁) | 系统钥匙串对接,设计明确留宿主 |
 | `auth.rs` | 407 | 钥匙串/鉴权代理,只把短期令牌交给插件后台;使用 `tauri::http`(`:334`) | 宿主适配(不迁) **[我的判断]** | 理由:紧贴 WebView 与钥匙串边界,含 Tauri 响应类型 |
 | `coordinator.rs` | 59 | 宿主侧 UI/会话门面,使用 `tauri::async_runtime::spawn`(`:53`) | 宿主适配(不迁) | 网络调度已在插件后台,这里只是薄门面 |
-| `service.rs` | 307 | 宿主到插件后台的私有传输,依赖 `crate::plugin_runtime`、`tauri::Manager`(`:5-6`) | 宿主适配(不迁) | 属于 `host-contract v1` 的实现侧 |
+| `service.rs` | 307 | 宿主到插件后台的私有传输,依赖 `crate::plugin_runtime`、`tauri::Manager`(`:5-6`) | 宿主适配(不迁) | 属于 `host-contract v2` 的实现侧 |
 | `sound.rs` | 668 | 打字音效队列,依赖 `native::TypingSoundEvent`(原生输入监视) | 宿主适配(不迁) | 依赖原生桥。iOS 第一阶段也做打字音(2026-11-20 用户定,推翻设计 §10.1),但在 Swift 编辑面里按正文变更发声,不复用此模块,见 [ios §3.4](../spec/platform/ios.md#34-打字音) |
-| `external.rs` | 125 | 已知页面文件视为投影,依赖 `write_core` | 可下沉(第 3 期)待定 **[我的判断]** | 无 Tauri 引用;但 vault 投影是桌面专有(设计 §5.4),iOS 无 vault,所以落点不是共用 `session/`,由第 3 期计划决定 |
+| `external.rs` | 125 | 已知页面文件视为投影,依赖 `write_core` | 可下沉(第 3 期)待定 **[我的判断]** | 无 Tauri 引用;但归档投影是桌面专有(设计 §5.4),iOS 无 vault,所以落点不是共用 `session/`,由第 3 期计划决定 |
 | `fonts.rs` | 52 | 宿主侧字体桥,依赖 `service::Connector` | 宿主适配(不迁) | 字体下载在插件后台,这里只转接 |
 | `paste.rs` | 103 | 剪贴板转换:`html5ever` 把 HTML 转纯文本或 Markdown,无 Tauri | 可下沉(第 3 期) **[我的判断]** | 与平台无关;iOS 粘贴同样需要同一套转换 |
 | `export.rs` | 263 | 导出,使用 `tauri_plugin_dialog`(`:7`) | 宿主适配(不迁) | 保存对话框是宿主能力。iOS 另走系统分享(设计 §10.1) |
@@ -73,7 +73,7 @@
 | 2300-2850 | 源文件保存、已知文件对账、`open_path`、投影恢复、`sumi_recover_new` 等恢复命令 |
 | 2850-3410 | `sumi_*` 命令入口(挂载、冲刷、分离、聚焦、边界、可见性),以及 `before_close`、`before_exit`、`resume_*`、`cleanup_plugin` 生命周期 |
 | 3408-3660 | 全屏字号、外观应用、配对请求、菜单事件、窗口边界换算 |
-| 3666-3915 | `dispatch`:`host.sumi.*` 命令分发(`host-contract v1` 的主要实现面) |
+| 3666-3915 | `dispatch`:`host.sumi.*` 命令分发(`host-contract v2` 的主要实现面) |
 | 3916-4857 | 单元测试(`mod tests`) |
 | 4858 | 声明 `lifecycle_tests` |
 

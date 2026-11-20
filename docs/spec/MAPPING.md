@@ -145,3 +145,4 @@
 | Linux 上 Cmd/Win/Super+Enter 切换全屏 | 主规范 L614 | F11,见 [notemd-desktop §6.2](platform/notemd-desktop.md) |
 | 5–8 工程周的人力估算 | 主规范 L525 | 只是历史规划,不再作为工期 |
 | 固定尺寸窗口“几种固定规格” | 主规范 L25、L89 | 尚未定下,见 [04「专注窗口与全屏」](04-editing-experience.md) [未定] |
+| “vault 投影” | [ADR 0009](../adr/0009-page-store-vs-vault-projection.md) | 归档投影,见 [ADR 0013](../adr/0013-workspace-and-archive-off-vault.md) |
