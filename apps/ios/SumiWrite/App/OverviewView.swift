@@ -2,7 +2,8 @@ import SwiftUI
 
 struct OverviewView: View {
     @ObservedObject var library: PageLibrary
-    var onOpen: (String) -> Void
+    /// 返回是否已执行;被拒绝(如组字中)时面板留着,让提示显示在它上面。
+    var onOpen: (String) -> Bool
     var onTrash: (String) -> Void
     var onRestore: (String) -> Void
     @Environment(\.dismiss) private var dismiss
@@ -12,7 +13,7 @@ struct OverviewView: View {
             List {
                 Section("继续书写") {
                     ForEach(library.live, id: \.id) { p in
-                        Button { onOpen(p.id); dismiss() } label: { row(p, current: p.id == library.currentID) }
+                        Button { if onOpen(p.id) { dismiss() } } label: { row(p, current: p.id == library.currentID) }
                             .swipeActions {
                                 Button(role: .destructive) { onTrash(p.id) } label: {
                                     Label("移到废纸篓", systemImage: "trash")

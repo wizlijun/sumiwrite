@@ -135,6 +135,20 @@ final class AppearanceTests: XCTestCase {
     }
 
     @MainActor
+    func test_lineSpacingRoundedToTenthBeforePersisting() {
+        let suite = "sumi.test.round"
+        UserDefaults().removePersistentDomain(forName: suite)
+        let d = UserDefaults(suiteName: suite)!
+        let m = PrefsModel(store: PrefsStore(defaults: d))
+        m.prefs.lineSpacing = 1.8000000000000003
+        XCTAssertNotEqual(1.8000000000000003, 1.8)
+        XCTAssertEqual(m.prefs.lineSpacing, 1.8)
+        XCTAssertEqual(PrefsModel(store: PrefsStore(defaults: d)).prefs.lineSpacing, 1.8)
+        m.prefs.lineSpacing = 3.04   // 取整后仍在范围内
+        XCTAssertEqual(m.prefs.lineSpacing, 3.0)
+    }
+
+    @MainActor
     func test_prefsModelPersists() {
         let suite = "sumi.test.persist"
         UserDefaults().removePersistentDomain(forName: suite)

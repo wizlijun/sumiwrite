@@ -2,10 +2,11 @@ import Foundation
 
 /// 光标锚点:由内核编码,按页存入 UserDefaults;解析失败时回到文末。
 struct SelectionStore {
+    static let defaultPrefix = "sumi.selection"
     let defaults: UserDefaults
     let prefix: String
 
-    init(defaults: UserDefaults, prefix: String = "sumi.selection") {
+    init(defaults: UserDefaults, prefix: String = SelectionStore.defaultPrefix) {
         self.defaults = defaults
         self.prefix = prefix
     }

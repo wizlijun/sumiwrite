@@ -8,7 +8,11 @@ final class PrefsModel: ObservableObject {
     @Published var prefs: EditorPrefs {
         didSet {
             guard prefs != oldValue else { return }
-            if !store.save(prefs) { prefs = oldValue }
+            // 行距滑块会给出 1.6000000000000001 这类值:落盘前取整到 0.1。
+            var rounded = prefs
+            rounded.lineSpacing = (rounded.lineSpacing * 10).rounded() / 10
+            if rounded != prefs { prefs = rounded }
+            if !store.save(rounded) { prefs = oldValue }
         }
     }
 

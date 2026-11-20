@@ -50,6 +50,27 @@ final class PagePersistenceTests: XCTestCase {
         wait(for: [failed], timeout: 5)
     }
 
+    func test_failingReadDoesNotPoisonWritePath() throws {
+        let (p, page) = try openReady(tempDir())
+        let notified = expectation(description: "onFailure")
+        notified.isInverted = true
+        p.onFailure = { _ in notified.fulfill() }
+        XCTAssertThrowsError(try p.read { _ in throw CoreError.StaleRevision })
+        let ids = try p.perform { try $0.pageIds() }   // 读失败后写路径照常
+        XCTAssertEqual(ids, [page.pageId()])
+        wait(for: [notified], timeout: 0.5)
+    }
+
+    func test_performRefusesAfterFailure() throws {
+        let (p, _) = try openReady(tempDir())
+        XCTAssertThrowsError(try p.perform { _ in throw CoreError.StaleRevision })
+        var ran = false
+        XCTAssertThrowsError(try p.perform { _ in ran = true })
+        XCTAssertFalse(ran)
+        XCTAssertNoThrow(try p.read { _ in ran = true })   // 只读仍可用
+        XCTAssertTrue(ran)
+    }
+
     func test_reopenRestoresTypedText() throws {
         let dir = tempDir()
         let (p, page) = try openReady(dir)

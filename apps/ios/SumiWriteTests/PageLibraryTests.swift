@@ -140,10 +140,44 @@ final class PageLibraryTests: XCTestCase {
         let commit = try page.applyEdit(revision: page.revision(), start: 0, length: 0, replacement: "旧", atMs: 1)
         try seed.commitDelta(pageId: page.pageId(), epoch: page.epoch(), revision: commit.revision,
                              opId: UUID().uuidString, update: commit.update)
-        let (lib, _, current) = try open(dir, freshDefaults())
+        // M1 的单页光标键:迁移后应落到这一页的按页键上。
+        let legacy = try page.anchorSelection(revision: page.revision(), start: 0, length: 0)
+        let defaults = freshDefaults()
+        defaults.set(legacy, forKey: "sumi.selection")
+        let (lib, _, current) = try open(dir, defaults)
         XCTAssertEqual(lib.position.index, 1)
         XCTAssertEqual(lib.position.count, 1)
         XCTAssertEqual(current.pageId(), page.pageId())
         XCTAssertEqual(current.body(), "旧")
+        XCTAssertEqual(SelectionStore(defaults: defaults).restore(page: current),
+                       NSRange(location: 0, length: 0))
+        XCTAssertNil(defaults.data(forKey: "sumi.selection"))
+    }
+
+    func test_legacySelectionDoesNotOverwritePerPageKey() throws {
+        let dir = tempDir()
+        let defaults = freshDefaults()
+        let (lib, p, a) = try open(dir, defaults)
+        p.waitUntilIdle()
+        _ = try a.applyEdit(revision: a.revision(), start: 0, length: 0, replacement: "旧文", atMs: 1)
+        let store = SelectionStore(defaults: defaults)
+        store.save(page: a, range: NSRange(location: 1, length: 0))
+        defaults.set(Data([1, 2, 3]), forKey: "sumi.selection")
+        _ = lib
+        let (_, _, again) = try open(dir, defaults)
+        XCTAssertEqual(again.pageId(), a.pageId())
+        XCTAssertEqual(store.restore(page: a), NSRange(location: 1, length: 0))
+        XCTAssertNil(defaults.data(forKey: "sumi.selection"))
+    }
+
+    func test_failedWriteBlocksCatalogMutations() throws {
+        let (lib, p, a) = try open(tempDir(), freshDefaults())
+        XCTAssertThrowsError(try p.perform { _ in throw CoreError.StaleRevision })
+        XCTAssertNil(lib.newPage())
+        XCTAssertNil(lib.moveToTrash(a.pageId()))
+        XCTAssertEqual(lib.live.count, 1)
+        XCTAssertTrue(lib.trash.isEmpty)
+        let ids = try p.read { try $0.pageIds() }
+        XCTAssertEqual(ids, [a.pageId()])
     }
 }

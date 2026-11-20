@@ -17,15 +17,25 @@ final class PagePersistence: CommitSink {
 
     init(store: CoreStore) { self.store = store }
 
-    /// 在队列上同步执行,排在已入队的增量之后;抛错与增量失败同样置为失败并通知 `onFailure`。
+    /// 写入已失败后拒绝再做目录变更。
+    struct WriteFailed: Error {}
+
+    /// 在队列上同步执行变更,排在已入队的增量之后;抛错与增量失败同样置为失败并通知 `onFailure`。
+    /// 已失败则不执行,直接抛 `WriteFailed`。
     func perform<T>(_ body: (CoreStore) throws -> T) throws -> T {
         try queue.sync {
+            if failed { throw WriteFailed() }
             do { return try body(store) }
             catch {
                 fail("perform: \(error)")
                 throw error
             }
         }
+    }
+
+    /// 纯读:同样排在已入队的增量之后,但抛错只重抛,不置失败、不通知,失败后也照常可读。
+    func read<T>(_ body: (CoreStore) throws -> T) throws -> T {
+        try queue.sync { try body(store) }
     }
 
     func committed(_ commit: EditCommit, page: CorePage) {

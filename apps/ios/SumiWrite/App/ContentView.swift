@@ -101,8 +101,8 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showOverview, onDismiss: refocus) {
             OverviewView(library: library, onOpen: { id in
-                guard id != library.currentID else { return }
-                switchPage { library.open(id) }
+                guard id != library.currentID else { return true }
+                return switchPage { library.open(id) }
             }, onTrash: { id in
                 if switchPage({ library.moveToTrash(id) }) { flash("已移到废纸篓,可在总览里恢复") }
             }, onRestore: { id in library.restore(id) })

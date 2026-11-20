@@ -45,11 +45,21 @@ final class PageLibrary: ObservableObject {
             let library = PageLibrary(persistence: persistence, defaults: defaults,
                                       pages: pages, currentID: page.pageId())
             defaults.set(library.currentID, forKey: currentKey)
+            library.migrateLegacySelection()
             return .ready(library, persistence, page)
         } catch {
             log.error("open failed: \(String(describing: error))")
             return unreadable
         }
+    }
+
+    /// M1 只有一个全局光标键;迁到当前页的按页键,已有按页键就不覆盖,旧键一律清掉。
+    private func migrateLegacySelection() {
+        let legacy = SelectionStore.defaultPrefix
+        guard let data = defaults.data(forKey: legacy) else { return }
+        let perPage = "\(legacy).\(currentID)"
+        if defaults.object(forKey: perPage) == nil { defaults.set(data, forKey: perPage) }
+        defaults.removeObject(forKey: legacy)
     }
 
     // MARK: 派生
@@ -77,14 +87,14 @@ final class PageLibrary: ObservableObject {
     }
 
     func refresh() {
-        if let fresh = try? persistence.perform({ try $0.pages() }) { pages = fresh }
+        if let fresh = try? persistence.read({ try $0.pages() }) { pages = fresh }
     }
 
     // MARK: 翻页
 
     func open(_ id: String) -> CorePage? {
         guard id != currentID, live.contains(where: { $0.id == id }) else { return nil }
-        return switchTo { store in try store.loadFresh(pageId: id) }
+        return switchTo(mutating: false) { store in try store.loadFresh(pageId: id) }
     }
 
     func next() -> CorePage? {
@@ -131,12 +141,14 @@ final class PageLibrary: ObservableObject {
         _ = switchTo { store in try store.setDeleted(pageId: id, deleted: false); return nil }
     }
 
-    /// 在持久化队列上执行一次变更,随后重读目录;若产出了目标页就切过去。出错则当前页不变,返回 nil。
-    private func switchTo(_ body: (CoreStore) throws -> CorePage?) -> CorePage? {
+    /// 在持久化队列上执行一次操作,随后重读目录;若产出了目标页就切过去。出错则当前页不变,返回 nil。
+    private func switchTo(mutating: Bool = true, _ body: (CoreStore) throws -> CorePage?) -> CorePage? {
         do {
-            let (page, infos): (CorePage?, [PageInfo]) = try persistence.perform { store in
-                return (try body(store), try store.pages())
+            let run: (CoreStore) throws -> (CorePage?, [PageInfo]) = { store in
+                (try body(store), try store.pages())
             }
+            // 纯切页只读,读失败不连累写路径;变更走 perform,写入失败后被拒。
+            let (page, infos) = mutating ? try persistence.perform(run) : try persistence.read(run)
             pages = infos
             if let page {
                 currentID = page.pageId()
