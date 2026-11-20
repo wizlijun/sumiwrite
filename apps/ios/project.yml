@@ -39,6 +39,7 @@ targets:
           - IBMPlexMono-Light.ttf
           - IBMPlexSansSC-Light.otf
           - LXGWWenKaiMonoLite-Regular.ttf
+          - ZhaohuaTypeWriter.ttf
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES

@@ -101,6 +101,11 @@ final class AppearanceTests: XCTestCase {
         }
     }
 
+    func test_zhaohuaIsRegistered() {
+        XCTAssertEqual(SumiFont.allCases, [.plex, .wenkai, .zhaohua])
+        XCTAssertEqual(SumiFont.zhaohua.uiFont(size: 22).fontName, "ZhaohuaTypeWriter-Light")
+    }
+
     func test_plexCascadesToSansSC() {
         let list = SumiFont.plex.uiFont(size: 22).fontDescriptor.object(forKey: .cascadeList) as? [UIFontDescriptor]
         XCTAssertTrue(list?.contains { $0.postscriptName == "IBMPlexSansSC-Light" || ($0.object(forKey: .name) as? String) == "IBMPlexSansSC-Light" } ?? false)

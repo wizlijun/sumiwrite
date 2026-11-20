@@ -27,7 +27,7 @@
 
 - **一页纸写作**:打开应用即恢复上次的纸页、光标和阅读位置。
 - **纸页管理**:纸页概览、新建、上一页、下一页、移到废纸篓、从废纸篓恢复。
-- **外观**:六种主题、字号、行距;第一阶段内置 Sumi Plex(IBM Plex Mono Light + IBM Plex Sans SC Light)与 Sumi WenKai(LXGW WenKai Mono Lite)两组字体,其余四组仍按 [05-fonts](../05-fonts.md) 按需下载 **[用户定]** 2026-11-20「全部照搬」。
+- **外观**:六种主题、字号、行距;第一阶段内置 Sumi Plex(IBM Plex Mono Light + IBM Plex Sans SC Light)、Sumi WenKai(LXGW WenKai Mono Lite)与 Sumi Zhaohua(朝华打字机,`ZhaohuaTypeWriter.ttf`,作者许可 `LicenseRef-TerryWang-Typewriter`,不是 OFL)三组字体,其余三组(油茶、朱雀仿宋、Unifont)仍按 [05-fonts](../05-fonts.md) 按需下载。iOS 安装包因内置朝华打字机增加约 27.5 MB。这是 iOS 平台的例外,不改 05-fonts 里宿主与插件包不内置字体文件的桌面规则 **[用户定]** 2026-11-20「全部照搬」;2026-11-21 增加朝华打字机:「请增加内置：朝华打字机」。
 - **光标**:自绘竖线光标,可选呼吸或常亮。
 - **输入**:系统输入法正常组字、选词。正文避让软键盘;接上硬件键盘后收回留白。接实体键盘时,应用内嵌的 Rime 输入法(共享包 RimeKit,词库为内置雾凇)接管按键,不经系统输入法就能打中文,规则见 [§3.6](#36-实体键盘的内嵌输入法) **[用户定]** 2026-11-20「让 ios ipados 的外置键盘输入可以有我们需要的输入法效果」。设置里可选切换中 / 英的快捷键(默认 Control + 空格,见 §3.6)。
 - **快捷键**:iPad 硬件键盘支持快捷键,按规范中的语义映射。

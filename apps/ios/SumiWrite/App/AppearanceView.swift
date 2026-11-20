@@ -28,7 +28,7 @@ struct AppearanceView: View {
                     .pickerStyle(.inline)
                     .labelsHidden()
                 } header: { Text("字体") } footer: {
-                    Text("试做版只内置两组字体。朝华、油茶、朱雀仿宋、Unifont 在正式版里按需下载。")
+                    Text("试做版内置三组字体。油茶、朱雀仿宋、Unifont 在正式版里按需下载。")
                 }
                 Section("排版") {
                     LabeledContent("字号 \(Int(prefs.prefs.fontSize)) pt") {
