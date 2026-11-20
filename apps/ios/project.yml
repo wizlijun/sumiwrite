@@ -16,6 +16,9 @@ targets:
     sources:
       - path: SumiWrite
       - path: build/gen
+      - path: ../notemd-plugin/resources/sounds
+        type: folder
+        buildPhase: resources
     dependencies:
       - framework: build/SumiCoreFFI.xcframework
         embed: false

@@ -24,11 +24,14 @@ final class EditorShell {
 
     init() {
         let defaults = UserDefaults.standard
+        let prefs = PrefsStore(defaults: defaults)
+        // 每次发声都读最新偏好,设置里开关或换音色不必重启;闭包只拿 `prefs`,不回指编辑面。
+        let sound = TypingSound(bundle: .main, prefs: { prefs.load() })
         controller = EditorController(
             open: PagePersistence.open(directory: PagePersistence.applicationDirectory),
-            prefs: PrefsStore(defaults: defaults),
+            prefs: prefs,
             selection: SelectionStore(defaults: defaults),
-            sound: nil)
+            sound: sound)
     }
 }
 

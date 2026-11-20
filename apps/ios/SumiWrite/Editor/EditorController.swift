@@ -24,6 +24,8 @@ final class EditorController: UIViewController, UITextViewDelegate {
     private let fadeMask = CAGradientLayer()
 
     private var tracker = FocusTypingTracker()
+    /// 文本视图上一次的文字;打字音拿它与新文字比较。每次文字变化后都刷新(含程序设置、撤销、粘贴)。
+    private var lastText = ""
     /// 程序正在改文字或选区;这期间的代理回调不算用户动作。
     private var applyingProgrammaticChange = false
     /// 用户输入改了文字、`textViewDidChange` 还没到。UITextView 先发选区变更再发文字变更,
@@ -279,6 +281,8 @@ final class EditorController: UIViewController, UITextViewDelegate {
         inputPending = false
         let composing = textView.markedTextRange != nil
         let visible = textView.text ?? ""
+        if model.isWritable, textView.isEditable { sound?.play(before: lastText, after: visible) }
+        lastText = visible
         let sel = textView.selectedRange
         let caret = sel.location == NSNotFound ? (visible as NSString).length : NSMaxRange(sel)
         switch model.userEdited(visible: visible, composing: composing, caret: caret) {
@@ -374,6 +378,7 @@ final class EditorController: UIViewController, UITextViewDelegate {
         applyingProgrammaticChange = true
         body()
         applyingProgrammaticChange = was
+        lastText = textView.text ?? ""
         textView.updateCaret()
     }
 
