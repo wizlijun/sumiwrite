@@ -92,11 +92,11 @@ note.md 侧:
 ### 前置条件
 
 - 第 1 期完成,note.md 已按 tag 引用 `core/` 与 `protocol/`。
-- 第 2 期详细计划已立并获认可,其中定下:
-  - `plugins-src/shared/shortcuts.ts` 的共享方式。它还被 `next`、`idea-spark` 两个插件使用,留在 note.md;sumiwrite 复制一份还是改引用,由本期定([01-inventory.md](01-inventory.md) §6);
-  - `src/lib/sumi/i18n.ts` 若宿主也用到,改为从插件包取还是各留一小份(设计 §5.2);
-  - `scripts/sumi/verify-release.py` 是否拆分(它同时校验宿主与插件资源);
-  - sumiwrite 交给 note.md 签名的构建物与校验清单格式([03-notemd-contract.md](03-notemd-contract.md) §5,现为 `[未定]`)。
+- 第 2 期详细计划已立并获认可([本文](../plans/2026-11-20-phase2-plugin-shell.md)),其中定下:
+  - `plugins-src/shared/shortcuts.ts`:sumiwrite 保留自己的一份,note.md 的原件不动;
+  - `src/lib/sumi/i18n.ts`:两仓库各留一份,分开演进;
+  - `scripts/sumi/verify-release.py`:不拆,留在 note.md;
+  - sumiwrite 交给 note.md 签名的构建物与校验清单格式:见 [03-notemd-contract.md](03-notemd-contract.md) §5,由[计划](../plans/2026-11-20-phase2-plugin-shell.md)任务 5 定。
 - 确认 `notemd-plugin-sdk` 经 git tag 引用时,它对 `plugin-protocol/` 的 path 依赖能一并拉取(`notemd-plugin-sdk/Cargo.toml:8`)。
 
 ### 步骤
@@ -105,9 +105,9 @@ note.md 侧:
 2. 迁 [01-inventory.md](01-inventory.md) §3 判定归 sumiwrite 的 `scripts/sumi/` 条目,以及 `src/lib/sumi/i18n.ts`。
 3. 插件壳按 tag 引用 note.md 的 `notemd-plugin-sdk`(设计 §5.3)。
 4. 按前置条件里的结论处理 `shortcuts.ts`。
-5. note.md 的 `scripts/release-plugins.sh` 中 `release_sumi()` 改为从 sumiwrite 的固定 tag 取构建物,签名、公证、上架仍在 note.md(设计 §5.3 **[我的判断]**)。
+5. note.md 的 `scripts/release-plugins.sh` 中 `release_sumi()` 改为从 sumiwrite 的固定 tag 取构建物,签名、公证、上架仍在 note.md(设计 §5.3 **[我的判断]**)。`release_sumi()` 按 [03-notemd-contract.md](03-notemd-contract.md) §5 的交付格式消费构建物。
 6. note.md 删除已迁目录,与第 5 步放在同一个提交。
-7. 契约版本不变时只发插件包;变化时两边配套发版([03-notemd-contract.md](03-notemd-contract.md) §4)。
+7. 迁移不改行为,本期不发新插件包;之后第一次真实改动走新流程发版,契约版本变化时两边配套发版([03-notemd-contract.md](03-notemd-contract.md) §4)。
 
 ### 验证
 
