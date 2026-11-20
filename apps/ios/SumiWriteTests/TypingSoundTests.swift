@@ -6,12 +6,15 @@ import XCTest
 final class TypingSoundTests: XCTestCase {
     private var dirs: [URL] = []
     private var suites: [String] = []
+    private var libraries: [PageLibrary] = []
 
     override func tearDown() {
         for d in dirs { try? FileManager.default.removeItem(at: d) }
         for s in suites { UserDefaults().removePersistentDomain(forName: s) }
         dirs = []
         suites = []
+        libraries = []
+        models = []
         super.tearDown()
     }
 
@@ -193,10 +196,16 @@ final class TypingSoundTests: XCTestCase {
 
     private final class SpySound: TypingSoundPlaying {
         var calls: [(String, String)] = []
+        var kinds: [KeyKind?] = []
         var prefsSeen: [EditorPrefs] = []
-        func play(before: String, after: String) { calls.append((before, after)) }
+        func play(before: String, after: String, kind: KeyKind?) {
+            calls.append((before, after))
+            kinds.append(kind)
+        }
         func preferencesChanged(_ prefs: EditorPrefs) { prefsSeen.append(prefs) }
     }
+
+    private var models: [PrefsModel] = []
 
     private func makeController(sound: SpySound, writable: Bool = true) throws -> EditorController {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("sumi-snd-\(UUID().uuidString)")
@@ -205,7 +214,10 @@ final class TypingSoundTests: XCTestCase {
         suites.append(name)
         let d = UserDefaults(suiteName: name)!
         guard case .ready(let lib, let p, let page) = PageLibrary.open(directory: dir, defaults: d) else { throw CocoaError(.fileReadUnknown) }
-        let c = EditorController(open: .ready(lib, p, page), prefs: PrefsStore(defaults: d),
+        libraries.append(lib)
+        let model = PrefsModel(store: PrefsStore(defaults: d))
+        models.append(model)
+        let c = EditorController(persistence: p, page: page, prefs: model,
                                  selection: SelectionStore(defaults: d), sound: sound)
         c.loadViewIfNeeded()
         if !writable { c.textView.isEditable = false }
@@ -250,9 +262,34 @@ final class TypingSoundTests: XCTestCase {
         let spy = SpySound()
         let c = try makeController(sound: spy)
         XCTAssertEqual(spy.prefsSeen.last?.typingSound, true, "loading the editor reports the prefs")
-        var p = c.prefs
-        p.typingSound = false
-        c.updatePrefs(p)
+        models.last?.prefs.typingSound = false
+        XCTAssertEqual(c.prefs.typingSound, false)
         XCTAssertEqual(spy.prefsSeen.last?.typingSound, false)
+    }
+
+    /// 按键种类取自输入代理(删除、空格、回车),不只靠前后文字比较。
+    func test_controllerPassesKeyKindFromInput() throws {
+        let spy = SpySound()
+        let c = try makeController(sound: spy)
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: 430, height: 900)
+        window.rootViewController = c
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        XCTAssertTrue(c.textView.becomeFirstResponder())
+        // 系统键盘先问代理再改字;代码直接调 insertText 不经代理,这里照键盘的顺序走。
+        let tv = c.textView
+        for text in ["a", " ", "\n"] {
+            XCTAssertTrue(c.textView(tv, shouldChangeTextIn: tv.selectedRange, replacementText: text))
+            tv.insertText(text)
+        }
+        let sel = tv.selectedRange
+        XCTAssertTrue(c.textView(tv, shouldChangeTextIn: NSRange(location: sel.location - 1, length: 1), replacementText: ""))
+        tv.deleteBackward()
+        XCTAssertEqual(spy.kinds, [.key, .space, .enter, .delete])
+        // 不经代理的改动(听写、程序插入)由打字音自己按前后文字分类。
+        tv.insertText("b")
+        XCTAssertEqual(spy.kinds.last, .some(nil))
     }
 }

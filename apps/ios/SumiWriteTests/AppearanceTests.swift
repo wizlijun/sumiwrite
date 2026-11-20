@@ -63,16 +63,6 @@ final class AppearanceTests: XCTestCase {
         XCTAssertEqual(CaretMetrics.width(fontSize: 96), 3)
     }
 
-    func test_breathingCurve() {
-        let acc = 1e-9
-        XCTAssertEqual(Double(CaretMetrics.opacity(at: 0)), 1, accuracy: acc)
-        XCTAssertEqual(Double(CaretMetrics.opacity(at: 2)), 0.25, accuracy: acc)
-        XCTAssertEqual(Double(CaretMetrics.opacity(at: 4)), 1, accuracy: acc)
-        let o1 = CaretMetrics.opacity(at: 1)
-        XCTAssertTrue(o1 > 0.25 && o1 < 1)
-        XCTAssertEqual(Double(CaretMetrics.opacity(at: 5)), Double(o1), accuracy: acc)
-    }
-
     func test_stylerHeadingAndBold() throws {
         let page = try CorePage.create(pageId: newPageId())
         let c = try page.pasteMarkdown(revision: page.rendered().revision, start: 0, length: 0,
@@ -100,7 +90,9 @@ final class AppearanceTests: XCTestCase {
 
         let baseAttrs = Styler.base(prefs: prefs, baseFont: base)
         let ps = baseAttrs[.paragraphStyle] as? NSParagraphStyle
-        XCTAssertEqual(ps?.lineHeightMultiple, 1.6)
+        // 行距 = 字体行高 × (行距倍数 − 1),加在行与行之间(设计 §5.3)。
+        XCTAssertEqual(ps?.lineSpacing ?? 0, base.lineHeight * 0.6, accuracy: 0.001)
+        XCTAssertEqual(ps?.lineHeightMultiple, 0)
     }
 
     func test_bundledFontsRegister() {

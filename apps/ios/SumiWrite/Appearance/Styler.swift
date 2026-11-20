@@ -5,7 +5,7 @@ enum Styler {
     static func base(prefs: EditorPrefs, baseFont: UIFont) -> [NSAttributedString.Key: Any] {
         [.font: baseFont,
          .foregroundColor: prefs.theme.foreground,
-         .paragraphStyle: paragraph(prefs: prefs, headIndent: 0)]
+         .paragraphStyle: paragraph(prefs: prefs, baseFont: baseFont, headIndent: 0)]
     }
 
     static func attributes(for rendered: RenderedText, prefs: EditorPrefs, baseFont: UIFont) -> [(NSRange, [NSAttributedString.Key: Any])] {
@@ -29,7 +29,7 @@ enum Styler {
             if s.link != nil { a[.underlineStyle] = NSUnderlineStyle.single.rawValue }
             if s.quote {
                 a[.foregroundColor] = prefs.theme.foreground.withAlphaComponent(0.7)
-                a[.paragraphStyle] = paragraph(prefs: prefs, headIndent: baseFont.pointSize)
+                a[.paragraphStyle] = paragraph(prefs: prefs, baseFont: baseFont, headIndent: baseFont.pointSize)
             }
             if !a.isEmpty { out.append((range, a)) }
         }
@@ -45,9 +45,10 @@ enum Styler {
         }
     }
 
-    private static func paragraph(prefs: EditorPrefs, headIndent: CGFloat) -> NSParagraphStyle {
+    /// 行距 = 字体行高 × (行距倍数 − 1),加在行与行之间(设计 §5.3)。
+    private static func paragraph(prefs: EditorPrefs, baseFont: UIFont, headIndent: CGFloat) -> NSParagraphStyle {
         let p = NSMutableParagraphStyle()
-        p.lineHeightMultiple = CGFloat(prefs.lineSpacing)
+        p.lineSpacing = baseFont.lineHeight * CGFloat(prefs.lineSpacing - 1)
         p.headIndent = headIndent
         return p
     }

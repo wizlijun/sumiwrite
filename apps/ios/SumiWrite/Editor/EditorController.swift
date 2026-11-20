@@ -1,155 +1,102 @@
-import SwiftUI
+import Combine
+import os
 import UIKit
 
-/// 编辑面:文本视图、编辑区外顶部的状态条与菜单按钮、键盘避让、聚焦打字、保存接线。
+/// 编辑面:文本视图、自绘光标、键盘避让、聚焦打字、硬件键盘命令、保存接线。
 /// 文字的增删、粘贴、撤销都经 `PageModel` 交给内核;样式来自内核的样式段,经 `Styler` 映射。
+/// 交互细节照搬原型(设计 §5.3)。
 final class EditorController: UIViewController, UITextViewDelegate {
     let textView = SumiTextView()
+    /// 硬件键盘命令与「正在打字」;由外壳接。
+    var onCommand: ((EditorCommand) -> Void)?
+    /// 时钟;测试注入。
+    var now: () -> Date = { Date() }
     /// `nil`、`保存失败` 或 `打不开纸页`。
     private(set) var statusText: String?
+    /// 最近一次应用的偏好(来自 `PrefsModel`)。
     private(set) var prefs: EditorPrefs
 
-    private let page: CorePage?
+    private var page: CorePage?
     /// 强引用:`PageModel` 只弱持有它的 sink,这里不留住它,保存就会悄悄丢掉。
     private let persistence: PagePersistence?
-    /// 编辑面持有纸页库;翻页接线在后续任务。
-    private let library: PageLibrary?
-    private let model: PageModel?
-    private let prefsStore: PrefsStore
+    private var model: PageModel?
+    private let prefsModel: PrefsModel
     private let selectionStore: SelectionStore
     private let sound: TypingSoundPlaying?
 
-    private let statusBar = UIView()
-    private let statusLabel = UILabel()
-    private let menuButton = UIButton(type: .system)
     private let container = UIView()
+    private let cursorView = SumiCursorView()
     private let fadeMask = CAGradientLayer()
+    private var bag = Set<AnyCancellable>()
+    private static let log = Logger(subsystem: "SumiWrite", category: "editor")
 
+    // 聚焦打字状态
     private var tracker = FocusTypingTracker()
+    private var focusMode = false
+    private var faded = false
+    private var inEdit = false
+    private var arrowNav = false
+    private var pendingInsetReset = false
+    private var idleTimer: Timer?
+    private var lastCaretLine: CGFloat = -1
+    private var lastEditTime = Date.distantPast
+    private var editSelection = NSRange(location: NSNotFound, length: 0)
+    /// `shouldChangeTextIn` 判出的按键种类,随后的 `textViewDidChange` 交给打字音。
+    private var pendingKind: KeyKind?
+
     /// 文本视图上一次的文字;打字音拿它与新文字比较。每次文字变化后都刷新(含程序设置、撤销、粘贴)。
     private var lastText = ""
     /// 程序正在改文字或选区;这期间的代理回调不算用户动作。
     private var applyingProgrammaticChange = false
-    /// 用户输入改了文字、`textViewDidChange` 还没到。UITextView 先发选区变更再发文字变更,
-    /// 这期间的选区变更是输入带出来的,不算挪光标(ios.md §3.2)。
-    private var inputPending = false
-    /// 内核结果落到编辑面后光标所在处;紧随其后、与之相符的选区变更同样不算挪光标。
-    private var expectedSelection: NSRange?
-    private var storageObserver: NSObjectProtocol?
-    private var verticalArrowPending = false
-    private var focusPresented = false
-    private var faded = false
-    private var idleTimer: Timer?
-    private var pendingInsetReset = false
     private var didInitialScroll = false
 
-    private static let statusBarHeight: CGFloat = 44
     private static let focusEnter: CFTimeInterval = 0.2
     private static let focusIdle: TimeInterval = 10
     private static let focusRestore: CFTimeInterval = 1.2
 
-    init(open: LibraryOpenResult, prefs: PrefsStore, selection: SelectionStore, sound: TypingSoundPlaying?) {
-        prefsStore = prefs
+    /// `persistence` 或 `page` 为 nil 表示打开失败,编辑面只读。
+    init(persistence: PagePersistence?, page: CorePage?, prefs: PrefsModel, selection: SelectionStore,
+         sound: TypingSoundPlaying?) {
+        prefsModel = prefs
         selectionStore = selection
         self.sound = sound
-        self.prefs = prefs.load()
-        switch open {
-        case .ready(let lib, let p, let pg):
-            library = lib
-            persistence = p
-            page = pg
-            model = PageModel(page: pg, sink: p)
+        self.prefs = prefs.prefs
+        if let persistence, let page {
+            self.persistence = persistence
+            self.page = page
+            model = PageModel(page: page, sink: persistence)
             statusText = nil
-        case .failed(let message):
-            library = nil
-            persistence = nil
-            page = nil
+        } else {
+            self.persistence = nil
+            self.page = nil
             model = nil
-            statusText = message
+            statusText = "打不开纸页"
         }
         super.init(nibName: nil, bundle: nil)
-        persistence?.onFailure = { [weak self] message in self?.saveFailed(message) }
-        textView.coreUndoManager = CoreUndoManager(
-            canUndo: { [weak self] in self?.historyAvailable(redo: false) ?? false },
-            canRedo: { [weak self] in self?.historyAvailable(redo: true) ?? false },
-            undo: { [weak self] in self?.performHistory(redo: false) },
-            redo: { [weak self] in self?.performHistory(redo: true) })
+        self.persistence?.onFailure = { [weak self] message in self?.saveFailed(message) }
+        textView.coreUndoManager = makeUndoManager()
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
 
-    deinit {
-        if let storageObserver { NotificationCenter.default.removeObserver(storageObserver) }
-    }
+    override var prefersStatusBarHidden: Bool { true }
+    override var prefersHomeIndicatorAutoHidden: Bool { true }
+
+    /// 组字中不切页。
+    var canSwitchPage: Bool { textView.markedTextRange == nil }
 
     // MARK: 视图
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        buildViews()
-        applyPrefs()
-        loadPage()
-    }
 
-    override func viewDidAppear(_ animated: Bool) {
-        super.viewDidAppear(animated)
-        applyInterfaceStyle()
-        if textView.isEditable && !textView.isFirstResponder { _ = textView.becomeFirstResponder() }
-    }
-
-    override func viewDidLayoutSubviews() {
-        super.viewDidLayoutSubviews()
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        fadeMask.frame = container.bounds
-        CATransaction.commit()
-        layoutTextInsets()
-        if focusPresented {
-            setFocusInsets()
-            centerCaret(animated: false)
-        }
-        updateFade(duration: 0)
-        if !didInitialScroll && textView.bounds.height > 0 {
-            didInitialScroll = true
-            textView.layoutIfNeeded()
-            textView.scrollRangeToVisible(textView.selectedRange)
-        }
-    }
-
-    private func buildViews() {
-        view.keyboardLayoutGuide.followsUndockedKeyboard = true
-        let safe = view.safeAreaLayoutGuide
-
-        statusBar.translatesAutoresizingMaskIntoConstraints = false
-        statusLabel.translatesAutoresizingMaskIntoConstraints = false
-        menuButton.translatesAutoresizingMaskIntoConstraints = false
         container.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(statusBar)
         view.addSubview(container)
-        statusBar.addSubview(statusLabel)
-        statusBar.addSubview(menuButton)
-
-        statusLabel.font = .preferredFont(forTextStyle: .footnote)
-        statusLabel.adjustsFontForContentSizeCategory = true
-        menuButton.setImage(UIImage(systemName: "textformat.size"), for: .normal)
-        menuButton.accessibilityLabel = "外观"
-        menuButton.addTarget(self, action: #selector(openSettings), for: .touchUpInside)
-
+        view.keyboardLayoutGuide.followsUndockedKeyboard = true
         NSLayoutConstraint.activate([
-            statusBar.topAnchor.constraint(equalTo: safe.topAnchor),
-            statusBar.leadingAnchor.constraint(equalTo: safe.leadingAnchor),
-            statusBar.trailingAnchor.constraint(equalTo: safe.trailingAnchor),
-            statusBar.heightAnchor.constraint(equalToConstant: Self.statusBarHeight),
-            statusLabel.leadingAnchor.constraint(equalTo: statusBar.leadingAnchor, constant: 16),
-            statusLabel.centerYAnchor.constraint(equalTo: statusBar.centerYAnchor),
-            statusLabel.trailingAnchor.constraint(lessThanOrEqualTo: menuButton.leadingAnchor, constant: -8),
-            menuButton.trailingAnchor.constraint(equalTo: statusBar.trailingAnchor, constant: -8),
-            menuButton.centerYAnchor.constraint(equalTo: statusBar.centerYAnchor),
-            menuButton.widthAnchor.constraint(equalToConstant: 44),
-            menuButton.heightAnchor.constraint(equalToConstant: 44),
-            container.topAnchor.constraint(equalTo: statusBar.bottomAnchor),
-            container.leadingAnchor.constraint(equalTo: safe.leadingAnchor),
-            container.trailingAnchor.constraint(equalTo: safe.trailingAnchor),
+            container.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            container.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            container.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             container.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor),
         ])
 
@@ -168,26 +115,85 @@ final class EditorController: UIViewController, UITextViewDelegate {
         textView.smartDashesType = .no
         textView.smartInsertDeleteType = .no
         textView.inlinePredictionType = .no
-        textView.prepareSurface()
+        textView.onArrow = { [weak self] in self?.arrowNav = true }
         textView.pasteHandler = { [weak self] in self?.paste($0) }
-        textView.onVerticalArrow = { [weak self] in self?.verticalArrowPending = true }
         container.addSubview(textView)
-
-        storageObserver = NotificationCenter.default.addObserver(
-            forName: NSTextStorage.didProcessEditingNotification, object: textView.textStorage, queue: nil
-        ) { [weak self] note in
-            guard let self, !self.applyingProgrammaticChange,
-                  let storage = note.object as? NSTextStorage, storage.editedMask.contains(.editedCharacters) else { return }
-            self.inputPending = true
-        }
 
         fadeMask.startPoint = CGPoint(x: 0.5, y: 0)
         fadeMask.endPoint = CGPoint(x: 0.5, y: 1)
         container.layer.mask = fadeMask
+
+        loadPage()
+
+        // `$prefs` 在 willSet 时发值,所以用发来的值而不是回读模型;订阅时先发一次当前值。
+        prefsModel.$prefs
+            .sink { [weak self] p in
+                guard let self, let ok = p.validated() else { return }
+                self.prefs = ok
+                self.applyPrefs()
+            }
+            .store(in: &bag)
+
+        installCursor()
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        installCursor()
+        focusEditor()
+        if ProcessInfo.processInfo.arguments.contains("-SumiDemo") { runDemo() }
+    }
+
+    /// 仅供模拟器自测:按真实输入路径逐字敲入一段文字,用来检查排版、聚焦与渐隐。
+    private func runDemo() {
+        let lines = [
+            "夜里十一点，窗外的雨还没有停。",
+            "I keep the lamp low and the page quiet.",
+            "这一页只写今天想清楚的一件事：先把交接文档写完，再动代码。",
+            "Typewriter mode keeps the current line in the middle.",
+            "上下文一行一行地淡出去，只留下正在写的这一行。",
+            "The cursor breathes, slowly, like someone thinking.",
+            "明天再看这一页，也许会改掉一半。",
+            "But tonight it is enough to have written it down.",
+            "最后一行，写在屏幕正中间。",
+        ]
+        let text = Array(lines.joined(separator: "\n"))
+        var i = 0
+        Timer.scheduledTimer(withTimeInterval: 0.03, repeats: true) { [weak self] t in
+            MainActor.assumeIsolated {
+                guard let self, i < text.count else { t.invalidate(); return }
+                self.textView.insertText(String(text[i]))
+                i += 1
+            }
+        }
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        fadeMask.frame = container.bounds
+        CATransaction.commit()
+        layoutTextInsets()
+        if focusMode {
+            setFocusInsets()
+            updateFade(duration: 0)
+            centerCaret(animated: false)
+        } else {
+            updateFade(duration: 0)
+        }
+        if !didInitialScroll && textView.bounds.height > 0 {
+            didInitialScroll = true
+            textView.layoutIfNeeded()
+            textView.scrollRangeToVisible(textView.selectedRange)
+        }
+    }
+
+    func focusEditor() {
+        if textView.isEditable && !textView.isFirstResponder { textView.becomeFirstResponder() }
     }
 
     private func loadPage() {
-        statusLabel.text = statusText
         guard let model, let page else {
             textView.isEditable = false
             return
@@ -195,47 +201,47 @@ final class EditorController: UIViewController, UITextViewDelegate {
         programmatic {
             textView.textStorage.setAttributedString(NSAttributedString(string: model.rendered.text, attributes: baseAttributes))
             restyle()
+            // 启动时恢复上次的光标(spec §1);切页另见 `show(page:)`。
             textView.selectedRange = clamped(selectionStore.restore(page: page))
         }
+    }
+
+    // MARK: 光标
+
+    private func installCursor() {
+        guard let sel = textView.interactions.compactMap({ $0 as? UITextSelectionDisplayInteraction }).first else {
+            Self.log.error("UITextSelectionDisplayInteraction not found")
+            return
+        }
+        if sel.cursorView !== cursorView { sel.cursorView = cursorView }
     }
 
     // MARK: 外观
 
     private var baseFont: UIFont { prefs.font.uiFont(size: CGFloat(prefs.fontSize)) }
     private var baseAttributes: [NSAttributedString.Key: Any] { Styler.base(prefs: prefs, baseFont: baseFont) }
-
-    /// 校验、应用并持久化;超出范围的值不接受。
-    func updatePrefs(_ p: EditorPrefs) {
-        guard let ok = p.validated(), ok != prefs else { return }
-        prefs = ok
-        _ = prefsStore.save(ok)
-        applyPrefs()
-    }
+    private var lineHeight: CGFloat { baseFont.lineHeight * CGFloat(prefs.lineSpacing) }
 
     private func applyPrefs() {
         let theme = prefs.theme
         view.backgroundColor = theme.background
-        statusBar.backgroundColor = theme.background
-        statusLabel.textColor = theme.foreground
-        menuButton.tintColor = theme.foreground
+        textView.tintColor = theme.foreground
         textView.keyboardAppearance = theme.isDark ? .dark : .light
-        textView.caretView.color = theme.foreground
-        textView.caretView.motion = prefs.caretMotion
-        textView.selectionColor = theme.selection
-        textView.handleColor = theme.foreground
-        textView.tintSelectionViews()
-        // 组字中不重设属性;下一次被接受的输入会重设。
-        if textView.markedTextRange == nil { programmatic { restyle() } }
-        if !prefs.focusTyping { leaveFocus() }
+        cursorView.color = theme.foreground
+        cursorView.breathing = prefs.caretMotion == .breathing
         sound?.preferencesChanged(prefs)
-        applyInterfaceStyle()
-        view.setNeedsLayout()
-        textView.updateCaret()
-    }
 
-    /// 系统状态栏与设置弹层跟随主题的明暗。
-    private func applyInterfaceStyle() {
-        view.window?.overrideUserInterfaceStyle = prefs.theme.isDark ? .dark : .light
+        // 组字中不重设属性;下一次被接受的输入会重设。
+        if textView.markedTextRange == nil {
+            let sel = textView.selectedRange
+            programmatic {
+                restyle()
+                if sel.location != NSNotFound { textView.selectedRange = clamped(sel) }
+            }
+        }
+
+        if !prefs.focusTyping && focusMode { exitFocus() }
+        view.setNeedsLayout()
     }
 
     /// 整段重设属性:先上基础样式,再按内核的样式段(已是互不重叠的平铺段)依次叠加。
@@ -268,56 +274,120 @@ final class EditorController: UIViewController, UITextViewDelegate {
         if textView.textContainerInset != inset { textView.textContainerInset = inset }
     }
 
-    @objc private func openSettings() {
-        let settings = SettingsView(prefs: prefs) { [weak self] in self?.updatePrefs($0) }
-        let host = UIHostingController(rootView: settings)
-        host.modalPresentationStyle = .pageSheet
-        if let sheet = host.sheetPresentationController {
-            sheet.detents = [.medium(), .large()]
-            sheet.prefersGrabberVisible = true
+    // MARK: 纸页
+
+    /// 换到另一页:存旧页光标,重建页面模型与撤销,光标放到文末(设计 §6),退出聚焦。
+    func show(page newPage: CorePage) {
+        guard let persistence else { return }
+        saveSelection()
+        let writable = model?.isWritable ?? true
+        exitFocus(resetInsetsNow: true)
+        tracker.reset()
+        page = newPage
+        let m = PageModel(page: newPage, sink: persistence)
+        m.isWritable = writable
+        model = m
+        textView.coreUndoManager = makeUndoManager()
+        programmatic {
+            textView.textStorage.setAttributedString(NSAttributedString(string: m.rendered.text, attributes: baseAttributes))
+            restyle()
+            // 进入后从文末续写
+            textView.selectedRange = NSRange(location: textView.textStorage.length, length: 0)
+            textView.layoutIfNeeded()
+            textView.scrollRangeToVisible(textView.selectedRange)
         }
-        present(host, animated: true)
+        editSelection = NSRange(location: NSNotFound, length: 0)
+        lastEditTime = .distantPast
+        lastCaretLine = -1
+    }
+
+    private func makeUndoManager() -> CoreUndoManager {
+        CoreUndoManager(
+            canUndo: { [weak self] in self?.historyAvailable(redo: false) ?? false },
+            canRedo: { [weak self] in self?.historyAvailable(redo: true) ?? false },
+            undo: { [weak self] in self?.performHistory(redo: false) },
+            redo: { [weak self] in self?.performHistory(redo: true) })
     }
 
     // MARK: 输入
 
+    /// 所有用户输入(软键盘、拼音预编辑、硬件键盘)都经过这里;以此判定按键种类。粘贴另走 `paste`。
+    func textView(_ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String) -> Bool {
+        guard !applyingProgrammaticChange else { return true }
+        let kind: KeyKind
+        // 组字中:替换成更短、且是原拼音前缀的串 = 退格;替换成汉字 = 选字上屏,算普通键。
+        let marked = textView.markedTextRange.flatMap { textView.text(in: $0) } ?? ""
+        if text.isEmpty || (!marked.isEmpty && (text as NSString).length < range.length && marked.hasPrefix(text)) {
+            kind = .delete
+        } else if text == "\n" {
+            kind = .enter
+        } else if text == " " {
+            kind = .space
+        } else {
+            kind = .key
+        }
+        // 记下这次输入后光标应在的位置:随后到达的选区通知若与之相符,就不算「挪光标」。
+        editSelection = NSRange(location: range.location + (text as NSString).length, length: 0)
+        lastEditTime = now()
+        keyPressed(kind)
+        return true
+    }
+
+    private func keyPressed(_ kind: KeyKind) {
+        pendingKind = kind
+        inEdit = true
+        onCommand?(.typing)
+        DispatchQueue.main.async { [weak self] in self?.afterEdit() }
+    }
+
+    private func afterEdit() {
+        if focusMode { centerCaret(animated: true) }
+        inEdit = false
+        // 代理放行了但文字没变(如文首退格):不把这次的种类留给下一次改动。
+        pendingKind = nil
+    }
+
     func textViewDidChange(_ textView: UITextView) {
         guard let model, !applyingProgrammaticChange else { return }
-        inputPending = false
         let composing = textView.markedTextRange != nil
         let visible = textView.text ?? ""
-        if model.isWritable, textView.isEditable { sound?.play(before: lastText, after: visible) }
+        if model.isWritable, textView.isEditable { sound?.play(before: lastText, after: visible, kind: pendingKind) }
+        pendingKind = nil
         lastText = visible
         let sel = textView.selectedRange
         let caret = sel.location == NSNotFound ? (visible as NSString).length : NSMaxRange(sel)
         switch model.userEdited(visible: visible, composing: composing, caret: caret) {
         case .unchanged:
             // 拼音预编辑也算真实输入(04「聚焦打字」),但不提交、不重设。
-            if composing { noteInput() }
+            if composing { registerInput() }
         case .accepted(let rendered, let caret):
             show(rendered, caret: caret)
-            noteInput()
+            registerInput()
         case .rejected(let rendered, let caret):
             reset(to: rendered, caret: caret)
         }
+        markEdited()
     }
 
     func textViewDidChangeSelection(_ textView: UITextView) {
-        self.textView.updateCaret()
-        self.textView.tintSelectionViews()
-        guard !applyingProgrammaticChange, !inputPending, textView.markedTextRange == nil else { return }
-        if let expected = expectedSelection, textView.selectedRange == expected {
-            expectedSelection = nil
+        guard !applyingProgrammaticChange, textView.markedTextRange == nil else { return }
+        // 外置键盘下,选区通知会晚于文字变更到达;紧随输入的选区变化不算「挪光标」。
+        let followsEdit = textView.selectedRange == editSelection
+            || now().timeIntervalSince(lastEditTime) < 0.5
+        if inEdit || arrowNav || followsEdit {
+            arrowNav = false
+            if focusMode { DispatchQueue.main.async { [weak self] in self?.centerCaret(animated: true) } }
             return
         }
-        expectedSelection = nil
-        if verticalArrowPending {
-            // 聚焦状态下按上、下方向键,当前行仍保持居中。
-            verticalArrowPending = false
-            if focusPresented { centerCaret(animated: true) }
-            return
-        }
-        userMovedCaretOrScrolled()
+        // 用户移动了光标:回到普通页面
+        if focusMode { exitFocus() }
+    }
+
+    /// 文字刚由输入、粘贴或撤销改过:随后到达的选区通知算跟着输入走。
+    private func markEdited() {
+        lastEditTime = now()
+        editSelection = textView.selectedRange
+        DispatchQueue.main.async { [weak self] in self?.afterEdit() }
     }
 
     private func paste(_ markdown: String) {
@@ -325,10 +395,11 @@ final class EditorController: UIViewController, UITextViewDelegate {
         let range = textView.selectedRange
         guard range.location != NSNotFound else { return }
         switch model.paste(markdown: markdown, range: range) {
-        case .unchanged: break
+        case .unchanged: return
         case .accepted(let rendered, let caret): show(rendered, caret: caret)
         case .rejected(let rendered, let caret): reset(to: rendered, caret: caret)
         }
+        markEdited()
     }
 
     // MARK: 撤销与重做
@@ -341,7 +412,7 @@ final class EditorController: UIViewController, UITextViewDelegate {
     private func performHistory(redo: Bool) {
         guard let model, textView.markedTextRange == nil else { return }
         switch redo ? model.redo() : model.undo() {
-        case .unchanged: break
+        case .unchanged: return
         case .accepted(let rendered, let caret): show(rendered, caret: caret)
         case .rejected(let rendered, _):
             // 内核在拒绝时不知道光标;保留当前选区,只夹到文本长度内。
@@ -349,7 +420,7 @@ final class EditorController: UIViewController, UITextViewDelegate {
             let sel = textView.selectedRange
             reset(to: rendered, caret: sel.location == NSNotFound ? length : min(sel.location, length))
         }
-        if focusPresented { centerCaret(animated: true) }
+        markEdited()
     }
 
     // MARK: 把内核结果放到编辑面
@@ -372,7 +443,6 @@ final class EditorController: UIViewController, UITextViewDelegate {
                 textView.selectedRange = clamped(NSRange(location: caret, length: 0))
             }
         }
-        expectedSelection = textView.selectedRange
     }
 
     /// 被拒绝:整段重置为内核文本。
@@ -382,7 +452,6 @@ final class EditorController: UIViewController, UITextViewDelegate {
             restyle()
             textView.selectedRange = clamped(NSRange(location: caret, length: 0))
         }
-        expectedSelection = nil
     }
 
     private func programmatic(_ body: () -> Void) {
@@ -391,7 +460,6 @@ final class EditorController: UIViewController, UITextViewDelegate {
         body()
         applyingProgrammaticChange = was
         lastText = textView.text ?? ""
-        textView.updateCaret()
     }
 
     private func clamped(_ r: NSRange) -> NSRange {
@@ -407,16 +475,26 @@ final class EditorController: UIViewController, UITextViewDelegate {
         model?.isWritable = false
         textView.isEditable = false
         statusText = message
-        statusLabel.text = message
-        leaveFocus()
-        textView.updateCaret()
+        tracker.reset()
+        exitFocus(resetInsetsNow: true)
     }
 
-    /// 退到后台:先存光标锚点,再在后台任务里把写队列做完并落检查点。
-    func sceneDidEnterBackground() {
-        guard let page, let persistence else { return }
+    private func saveSelection() {
+        guard let page else { return }
         let sel = textView.selectedRange
         if sel.location != NSNotFound { selectionStore.save(page: page, range: clamped(sel)) }
+    }
+
+    /// 存光标锚点,再把写队列做完并落检查点。
+    func saveNow(completion: (() -> Void)? = nil) {
+        guard let page, let persistence else { completion?(); return }
+        saveSelection()
+        persistence.flushAndCheckpoint(page: page) { _ in completion?() }
+    }
+
+    /// 退到后台:在后台任务里做 `saveNow`。
+    func sceneDidEnterBackground() {
+        guard page != nil, persistence != nil else { return }
         let app = UIApplication.shared
         var task = UIBackgroundTaskIdentifier.invalid
         let finish = {
@@ -425,7 +503,7 @@ final class EditorController: UIViewController, UITextViewDelegate {
             task = .invalid
         }
         task = app.beginBackgroundTask(withName: "sumi.checkpoint", expirationHandler: finish)
-        persistence.flushAndCheckpoint(page: page) { _ in finish() }
+        saveNow(completion: finish)
     }
 
     // MARK: 聚焦打字
@@ -436,46 +514,45 @@ final class EditorController: UIViewController, UITextViewDelegate {
         prefs.focusTyping && textView.isEditable && (model?.isWritable ?? false)
     }
 
-    private func noteInput() {
+    /// 最近 2 秒内满 4 次输入,或退出后的第一次输入(primed),进入聚焦。
+    private func registerInput() {
         guard canFocus else { return }
-        guard tracker.recordInput(at: CACurrentMediaTime()) else { return }
-        if !focusPresented { enterFocus() }
-        if !faded { setFaded(true, duration: Self.focusEnter) }
-        restartIdleTimer()
-        centerCaret(animated: true)
-    }
-
-    private func userMovedCaretOrScrolled(resetInsetsNow: Bool = true) {
-        tracker.userMovedCaretOrScrolled()
-        exitFocus(resetInsetsNow: resetInsetsNow)
-    }
-
-    /// 退出并清掉计数(偏好关闭、只读、保存失败)。
-    private func leaveFocus() {
-        tracker.reset()
-        exitFocus(resetInsetsNow: true)
+        guard tracker.recordInput(at: now().timeIntervalSinceReferenceDate) else { return }
+        if !focusMode { enterFocus() }
+        if focusMode {
+            if !faded { setFaded(true, duration: Self.focusEnter) }
+            restartIdleTimer()
+        }
     }
 
     private func enterFocus() {
-        focusPresented = true
+        focusMode = true
+        lastCaretLine = -1
         setFocusInsets()
+        centerCaret(animated: true)
     }
 
-    private func exitFocus(resetInsetsNow: Bool) {
+    /// 退出后置 primed:下一次输入立即回到聚焦。
+    private func exitFocus(resetInsetsNow: Bool = true) {
+        let was = focusMode
+        focusMode = false
+        textView.pinnedY = nil
         idleTimer?.invalidate()
         idleTimer = nil
-        textView.lockedOffsetY = nil
+        if was { tracker.userMovedCaretOrScrolled() }
         if faded { setFaded(false, duration: Self.focusEnter) }
-        guard focusPresented else { return }
-        focusPresented = false
         if resetInsetsNow { resetInsets() } else { pendingInsetReset = true }
     }
 
     /// 上下各留半个视区,首行与末行也能居中。
     private func setFocusInsets() {
-        let half = (container.bounds.height / 2).rounded()
+        let half = container.bounds.height / 2
         let inset = UIEdgeInsets(top: half, left: 0, bottom: half, right: 0)
         if textView.contentInset != inset { textView.contentInset = inset }
+    }
+
+    private func resetInsetsIfPending() {
+        if pendingInsetReset && !focusMode { resetInsets() }
     }
 
     private func resetInsets() {
@@ -488,20 +565,23 @@ final class EditorController: UIViewController, UITextViewDelegate {
         if target != y { textView.setContentOffset(CGPoint(x: 0, y: target), animated: !reduceMotion) }
     }
 
-    /// 当前行固定在视区中线;按屏幕像素取整,重复居中落在同一位置。
+    /// 当前行固定在视区垂直中线。结果按屏幕像素取整,重复居中得到同一位置。
     private func centerCaret(animated: Bool) {
-        guard focusPresented, let end = textView.selectedTextRange?.end else { return }
+        guard focusMode, let end = textView.selectedTextRange?.end else { return }
         textView.layoutIfNeeded()
         let caret = textView.caretRect(for: end)
         guard caret.height > 0, !caret.isNull, !caret.isInfinite else { return }
         let h = textView.bounds.height
         let minY = -textView.contentInset.top
         let maxY = max(minY, textView.contentSize.height + textView.contentInset.bottom - h)
+        var y = min(max(caret.midY - h / 2, minY), maxY)
         let scale = traitCollection.displayScale > 0 ? traitCollection.displayScale : 1
-        let y = (min(max(caret.midY - h / 2, minY), maxY) * scale).rounded() / scale
-        textView.lockedOffsetY = y
-        guard abs(textView.contentOffset.y - y) >= 0.5 / scale else { return }
-        if animated && !reduceMotion {
+        y = (y * scale).rounded() / scale
+        textView.pinnedY = y
+        guard abs(textView.contentOffset.y - y) >= 0.5 else { return }
+        let lineChanged = lastCaretLine >= 0 && abs(caret.minY - lastCaretLine) > 1
+        lastCaretLine = caret.minY
+        if animated && lineChanged && !reduceMotion {
             UIView.animate(withDuration: Self.focusEnter, delay: 0,
                            options: [.beginFromCurrentState, .allowUserInteraction, .curveEaseOut]) {
                 self.textView.contentOffset = CGPoint(x: 0, y: y)
@@ -514,7 +594,7 @@ final class EditorController: UIViewController, UITextViewDelegate {
     private func restartIdleTimer() {
         idleTimer?.invalidate()
         idleTimer = Timer.scheduledTimer(withTimeInterval: Self.focusIdle, repeats: false) { [weak self] _ in
-            self?.setFaded(false, duration: Self.focusRestore)
+            MainActor.assumeIsolated { self?.setFaded(false, duration: Self.focusRestore) }
         }
     }
 
@@ -523,23 +603,19 @@ final class EditorController: UIViewController, UITextViewDelegate {
         updateFade(duration: duration)
     }
 
-    /// 上下文按与中线的距离逐级渐隐:相邻一行约 55%,每远一行再乘 0.55,再乘距离平方衰减的边缘系数(04)。
+    /// 上下文按距离逐级渐隐(`FadeMask`),遮罩分 96 段。
     private func updateFade(duration: CFTimeInterval) {
-        let steps = 96
-        let height = max(container.bounds.height, 1)
-        let center = height / 2
-        let line = baseFont.lineHeight * CGFloat(prefs.lineSpacing)
+        let n = 96
+        let H = max(container.bounds.height, 1)
+        let center = H / 2
+        let lh = lineHeight
         var colors: [CGColor] = []
         var locations: [NSNumber] = []
-        for i in 0...steps {
-            let t = CGFloat(i) / CGFloat(steps)
-            let d = abs(height * t - center)
-            var alpha: CGFloat = 1
-            if faded && d > line / 2 {
-                let edge = max(0, 1 - pow(d / center, 2))
-                alpha = pow(0.55, d / line) * edge
-            }
-            colors.append(UIColor(white: 0, alpha: alpha).cgColor)
+        for i in 0...n {
+            let t = CGFloat(i) / CGFloat(n)
+            let y = H * t
+            let a = faded ? FadeMask.opacity(distance: abs(y - center), lineHeight: lh, height: H) : 1
+            colors.append(UIColor(white: 0, alpha: a).cgColor)
             locations.append(NSNumber(value: Double(t)))
         }
         let from = fadeMask.presentation()?.colors ?? fadeMask.colors
@@ -548,19 +624,20 @@ final class EditorController: UIViewController, UITextViewDelegate {
         fadeMask.locations = locations
         fadeMask.colors = colors
         CATransaction.commit()
-        guard duration > 0, !reduceMotion, let from else { return }
-        let anim = CABasicAnimation(keyPath: "colors")
-        anim.fromValue = from
-        anim.toValue = colors
-        anim.duration = duration
-        anim.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-        fadeMask.add(anim, forKey: "fade")
+        if duration > 0 && !reduceMotion, let from {
+            let anim = CABasicAnimation(keyPath: "colors")
+            anim.fromValue = from
+            anim.toValue = colors
+            anim.duration = duration
+            anim.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            fadeMask.add(anim, forKey: "fade")
+        }
     }
 
     // MARK: 滚动
 
     func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
-        userMovedCaretOrScrolled(resetInsetsNow: false)
+        if focusMode { exitFocus(resetInsetsNow: false) }
     }
 
     func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
@@ -569,7 +646,38 @@ final class EditorController: UIViewController, UITextViewDelegate {
 
     func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) { resetInsetsIfPending() }
 
-    private func resetInsetsIfPending() {
-        if pendingInsetReset && !focusPresented { resetInsets() }
+    // MARK: 硬件键盘
+
+    override var keyCommands: [UIKeyCommand]? {
+        [
+            UIKeyCommand(title: "新建一页", action: #selector(cmdNew), input: "n", modifierFlags: .command),
+            UIKeyCommand(title: "上一页", action: #selector(cmdPrev), input: "[", modifierFlags: .command),
+            UIKeyCommand(title: "下一页", action: #selector(cmdNext), input: "]", modifierFlags: .command),
+            UIKeyCommand(title: "纸页列表", action: #selector(cmdOverview), input: "l", modifierFlags: [.command, .shift]),
+            UIKeyCommand(title: "设置", action: #selector(cmdAppearance), input: ",", modifierFlags: .command),
+            UIKeyCommand(title: "放大字号", action: #selector(cmdBigger), input: "=", modifierFlags: .command),
+            UIKeyCommand(title: "缩小字号", action: #selector(cmdSmaller), input: "-", modifierFlags: .command),
+            UIKeyCommand(title: "默认字号", action: #selector(cmdResetSize), input: "0", modifierFlags: .command),
+            UIKeyCommand(title: "菜单", action: #selector(cmdEscape), input: UIKeyCommand.inputEscape, modifierFlags: []),
+        ]
     }
+
+    override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
+        // 组字期间不执行应用命令,Esc 先交给输入法。
+        let mine: [Selector] = [#selector(cmdNew), #selector(cmdPrev), #selector(cmdNext), #selector(cmdOverview),
+                                #selector(cmdAppearance), #selector(cmdBigger), #selector(cmdSmaller),
+                                #selector(cmdResetSize), #selector(cmdEscape)]
+        if mine.contains(action) { return textView.markedTextRange == nil }
+        return super.canPerformAction(action, withSender: sender)
+    }
+
+    @objc private func cmdNew() { onCommand?(.newPage) }
+    @objc private func cmdPrev() { onCommand?(.prev) }
+    @objc private func cmdNext() { onCommand?(.next) }
+    @objc private func cmdOverview() { onCommand?(.overview) }
+    @objc private func cmdAppearance() { onCommand?(.appearance) }
+    @objc private func cmdBigger() { prefsModel.bumpSize(2) }
+    @objc private func cmdSmaller() { prefsModel.bumpSize(-2) }
+    @objc private func cmdResetSize() { prefsModel.prefs.fontSize = EditorPrefs.defaultFontSize }
+    @objc private func cmdEscape() { onCommand?(.menu) }
 }

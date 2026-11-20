@@ -91,7 +91,7 @@ final class TypingSound: TypingSoundPlaying {
     }
 
     /// 输入路径上只读偏好;引擎没就绪时在声音队列上按需启动,分类与排缓冲也都在声音队列上做。
-    func play(before: String, after: String) {
+    func play(before: String, after: String, kind: KeyKind?) {
         let p = prefs()
         guard p.typingSound else { return }
         let pack = p.soundPack
@@ -99,7 +99,7 @@ final class TypingSound: TypingSoundPlaying {
             guard let self else { return }
             self.wanted = pack
             if !self.isReady || self.loadedPack != pack { self.activate(.input) }
-            self.schedule(before: before, after: after)
+            self.schedule(before: before, after: after, kind: kind)
         }
     }
 
@@ -122,9 +122,10 @@ final class TypingSound: TypingSoundPlaying {
 
     // MARK: 声音队列
 
-    private func schedule(before: String, after: String) {
+    private func schedule(before: String, after: String, kind hint: KeyKind?) {
         guard let engine, engine.isRunning, isReady,
-              let kind = KeyKind.classify(before: before, after: after),
+              // 文字没变不发声;变了以输入代理判出的种类为准。
+              let kind = KeyKind.classify(before: before, after: after).map({ hint ?? $0 }),
               var bank = banks[kind], !bank.buffers.isEmpty, !bank.players.isEmpty else { return }
         let player = bank.players[bank.next % bank.players.count]
         bank.next += 1
