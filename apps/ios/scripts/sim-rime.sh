@@ -5,7 +5,7 @@
 # (或 agent)逐张看,对照下面写的预期判定。
 #
 # 用法:bash apps/ios/scripts/sim-rime.sh [--no-build] [场景...]
-#   场景:builtin middle repeat shift switch toggle tap(默认全部,按此顺序)
+#   场景:builtin middle repeat focus shift switch toggle tap(默认全部,按此顺序)
 #   环境变量:SIM_RIME_DEVICE 专用模拟器的名字(默认 sumi-rime-e2e,没有就建一台 iPad Pro 11-inch (M5));
 #            RIME 指 RimeKit 仓库(默认与本仓库同级的 rime-kit)。
 # 每个场景先按 ⌘N 新建空白页,在空白页里做。
@@ -24,6 +24,12 @@
 #          r02 按住 k 一秒:组字里有多个 k(连发)。
 #          r03 Esc:组字清掉,数字不变;仍在聚焦,这一行不跳回页首。
 #          r04 按住 ⌫ 一秒:末尾的多个数字被删(连发),不止一个。
+# focus    f01 ⌘V:粘进 30 段会自动换行的长文字(脚本先用 simctl pbcopy 放进模拟器剪贴板),光标在文末。
+#          f02 ⌘↑、↓ 30 次、← ← ←、n i h a o:光标挪到长页中部某一行的中间再组字;已进入聚焦打字(光标行在
+#              屏幕中部,上下渐隐);候选行紧贴在光标行的下一行。(要光标在长页中间、上下都有大段文字;光标在文末时排版估计值恰好准,修复前也看不出跳动。)
+#          f03 Space:「你好」上屏;候选行仍紧贴光标行的下一行,与 f02 同一高度,不上移盖住光标行或它上面的字
+#              (真机反馈 2026-11-20 的「上屏后候选行上移」)。
+#          f04 n i h a o Space:再上屏一次,同 f03。
 # shift    s01 单按 Shift:候选行右端的「中」变「英」。
 #          s02 a b c:「abc」直接上屏,没有组字、没有候选。
 #          s03 单按 Shift:「英」变回「中」。
@@ -53,7 +59,7 @@ NAME="${SIM_RIME_DEVICE:-sumi-rime-e2e}"
 
 build=1
 if [ "${1:-}" = --no-build ]; then build=0; shift; fi
-SC="${*:-builtin middle repeat shift switch toggle tap}"
+SC="${*:-builtin middle repeat focus shift switch toggle tap}"
 
 mkdir -p "$BIN"
 for t in simkey hwkb; do
@@ -192,6 +198,15 @@ for s in $SC; do
     step r02-hold-k HOLD:k:1000
     step r03-esc ESC
     step r04-hold-bs HOLD:BS:1000
+    ;;
+  focus)
+    para="这是一段比较长的文字，用来让它在屏幕上自动换行，看看上屏之后候选行会不会往上跳、盖住正文。"
+    para="$para$para$para"
+    for _ in $(seq 1 30); do printf '%s\n' "$para"; done | xcrun simctl pbcopy "$U"
+    step f01-paste C+v
+    step f02-nihao C+UP $(printf 'DOWN %.0s' $(seq 1 30)) LEFT LEFT LEFT n i h a o
+    step f03-space SPACE
+    step f04-again n i h a o SPACE
     ;;
   shift)
     step s01-shift SHIFT

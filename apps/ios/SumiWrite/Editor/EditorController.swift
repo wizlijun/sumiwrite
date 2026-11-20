@@ -763,6 +763,10 @@ final class EditorController: UIViewController, UITextViewDelegate {
         guard let bar = rimeAdapter?.bar, bar.superview != nil else { return }
         if !focusMode && !pendingInsetReset { applyRestingInsets(animated: false) }
         guard rimeAdapter?.barVisible == true, container.bounds.height > 0 else { return }
+        // 先让文本视图排好版再读光标行。上屏被内核接受后 `restyle` 整段重设属性,TextKit 2 的排版随之作废,
+        // 不排版时读到的光标行是估计值(长页、自动换行时比真实位置高出几行);按它摆放的候选行之后没有滚动、
+        // 也没有更新来纠正,就停在光标行上面盖住文字(真机反馈 2026-11-20)。
+        textView.layoutIfNeeded()
         let inset = textView.textContainerInset
         let height = RimeCandidateBar.height(for: bar.style.font)
         let width = max(0, textView.bounds.width - inset.left - inset.right)

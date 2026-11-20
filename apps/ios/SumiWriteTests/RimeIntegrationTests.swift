@@ -666,4 +666,65 @@ final class RimeIntegrationTests: XCTestCase {
         h.rime.compose("ni")
         XCTAssertEqual(tv.dropProposal(suggested: ok).operation, .forbidden)
     }
+
+    // MARK: 上屏后候选行不跳(真机反馈 2026-11-20)
+
+    /// 按一键(引擎吞下),按下时引擎推 `update`。
+    private func key(_ h: Harness, _ update: RimeUpdate) {
+        let press = BarePress()
+        h.rime.swallowed.insert(ObjectIdentifier(press))
+        h.rime.onSwallow = { [weak rime = h.rime] _ in rime?.push(update) }
+        h.textView.pressesBegan([press], with: nil)
+        h.textView.pressesEnded([press], with: nil)
+        h.rime.onSwallow = nil
+    }
+
+    private func spin(_ seconds: TimeInterval) {
+        RunLoop.main.run(until: Date().addingTimeInterval(seconds))
+    }
+
+    /// 排版落定后,候选行的顶边应在的位置(编辑面根视图坐标):光标所在行的下一行的顶边;以及光标框。
+    private func expectedBarTop(_ h: Harness) throws -> (bar: CGFloat, caret: CGRect) {
+        let tv = h.textView
+        tv.layoutIfNeeded()
+        let top = try XCTUnwrap(tv.lineTopBelowCaret(pitch: h.controller.view.bounds.height))
+        let caret = tv.convert(tv.caretRect(for: try XCTUnwrap(tv.selectedTextRange?.end)), to: h.controller.view)
+        return (tv.convert(CGPoint(x: 0, y: top), to: h.controller.view).y, caret)
+    }
+
+    /// 自动换行的长页,聚焦打字中在正文中间组字后上屏:候选行仍在光标行的下一行,不上移盖住文字。
+    /// 上屏那次编辑被内核接受后整段重设属性(`restyle`),TextKit 2 的排版随之作废;那一刻读到的光标行是估计值,
+    /// 比真实位置高出几行。候选行若按那个值摆放,之后没有滚动、也没有更新,就一直停在上面(真机上看到的「上移」)。
+    func test_commitInFocusKeepsBarBelowCaretLine() throws {
+        let h = try harness()
+        let tv = h.textView
+        let paragraph = "这是一段比较长的文字，用来让它在窄屏上自动换行，看看候选行会不会跳。"
+        tv.insertText(Array(repeating: paragraph, count: 30).joined(separator: "\n"))
+        tv.selectedRange = NSRange(location: 300, length: 0)
+        spin(0.3)
+        for ch in ["一", "二", "三", "四"] { tv.insertText(ch) }
+        XCTAssertNotNil(tv.pinnedY, "four quick inputs enter focus")
+        spin(0.3)
+        let menu = RimeMenu(rows: [RimeCandidate(index: 0, label: "1", text: "你好")], cursor: 0)
+        var typed = ""
+        for ch in ["n", "i", "h", "a", "o"] {
+            typed += ch
+            key(h, RimeUpdate(preedit: typed, caret: (typed as NSString).length, input: typed, menu: menu))
+        }
+        spin(0.3)
+        let bar = try bar(h)
+        let composing = try expectedBarTop(h)
+        XCTAssertEqual(bar.frame.minY, composing.bar, accuracy: 1, "while composing")
+
+        key(h, RimeUpdate(commit: "你好"))
+        XCTAssertEqual(bar.frame.minY, try expectedBarTop(h).bar, accuracy: 1, "right after the commit")
+        spin(0.5)
+        let settled = try expectedBarTop(h)
+        XCTAssertEqual(bar.frame.minY, settled.bar, accuracy: 1, "after the layout settled")
+        XCTAssertGreaterThanOrEqual(bar.frame.minY, settled.caret.maxY - 0.5, "the bar covers the caret line")
+        XCTAssertEqual(bar.alpha, 1)
+        if abs(settled.caret.minY - composing.caret.minY) < 1 {
+            XCTAssertEqual(bar.frame.minY, composing.bar, accuracy: 1, "same caret line, the bar did not move")
+        }
+    }
 }
