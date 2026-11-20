@@ -31,7 +31,7 @@ cargo +1.99.0 test --manifest-path apps/ios/ffi/Cargo.toml
 
 1. 复制签名模板:`cp apps/ios/Signing.example.xcconfig apps/ios/Signing.local.xcconfig`,在 `Signing.local.xcconfig` 里填自己的团队与 Bundle ID(详见下一节「签名」)。该文件被 git 忽略;没有它,安装脚本会直接退出。
 2. 做过一次性准备(见上)。
-3. 设备连上电脑并解锁,运行 `bash apps/ios/scripts/install-device.sh "<设备名>"`(设备名或 UDID 均可)。脚本依次构建内核、生成工程、用 `xcodebuild -allowProvisioningUpdates` 构建,再用 `xcrun devicectl device install app` 装到设备。
+3. 设备连上电脑并解锁,运行 `bash apps/ios/scripts/install-device.sh "<设备名>"`(设备名或 UDID 均可)。脚本依次构建内核、生成工程、用 `xcodebuild -configuration Release -allowProvisioningUpdates` 构建(Release 配置,输入延迟等手工测量按这个配置记),再用 `xcrun devicectl device install app` 装到设备。
 4. 首次安装后,在设备的「设置 › 通用 › VPN 与设备管理」里信任开发者,然后才能打开应用。
 5. 首次在某台设备上安装,还需要两件事:设备已开启开发者模式(「设置 › 隐私与安全性 › 开发者模式」,开启后需重启),并且设备已与这台 Mac 配对、信任这台 Mac。
 
@@ -60,3 +60,5 @@ cargo +1.99.0 test --manifest-path apps/ios/ffi/Cargo.toml
 ## 签名
 
 复制 `Signing.example.xcconfig` 为 `Signing.local.xcconfig`,填自己的团队与 Bundle ID。该文件已被 `.gitignore` 忽略,仓库里不放任何真值。
+
+`Base.xcconfig` 里的 `PRODUCT_BUNDLE_IDENTIFIER = com.example.sumiwrite` 只是模拟器构建与测试用的占位值,`Signing.local.xcconfig` 会覆盖它。M0/M1 计划正文把这个占位值写作 `local.sumiwrite.placeholder`,以 `Base.xcconfig` 为准。

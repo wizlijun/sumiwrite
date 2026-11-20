@@ -12,7 +12,7 @@ bash "$IOS/scripts/build-core.sh"
 cd "$IOS"
 xcodegen generate
 if [[ "$DEV" =~ ^[0-9A-Fa-f-]{20,}$ ]]; then DEST="platform=iOS,id=$DEV"; else DEST="platform=iOS,name=$DEV"; fi
-xcodebuild -project SumiWrite.xcodeproj -scheme SumiWrite -configuration Debug \
+xcodebuild -project SumiWrite.xcodeproj -scheme SumiWrite -configuration Release \
   -destination "$DEST" -allowProvisioningUpdates -derivedDataPath "$IOS/build/dd" build
-APP="$IOS/build/dd/Build/Products/Debug-iphoneos/SumiWrite.app"
+APP="$IOS/build/dd/Build/Products/Release-iphoneos/SumiWrite.app"
 xcrun devicectl device install app --device "$DEV" "$APP"
