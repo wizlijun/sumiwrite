@@ -780,7 +780,7 @@ mod tests {
         let dir = temp.0.join(&a.sha256);
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join(".partial"), b"font").unwrap();
-        assert!(local_files(&temp.0, &[a.clone()]).unwrap().is_none());
+        assert!(local_files(&temp.0, std::slice::from_ref(&a)).unwrap().is_none());
         #[cfg(unix)]
         {
             std::os::unix::fs::symlink(dir.join(".partial"), dir.join(&a.file)).unwrap();

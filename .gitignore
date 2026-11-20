@@ -4,3 +4,4 @@ protocol/target/
 sync/node_modules/
 sync/.wrangler/
 sync/.local/
+apps/notemd-plugin/backend/target/

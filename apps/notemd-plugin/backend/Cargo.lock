@@ -898,6 +898,7 @@ dependencies = [
 [[package]]
 name = "notemd-plugin-sdk"
 version = "0.1.0"
+source = "git+https://github.com/wizlijun/note.md?tag=plugin-sdk-v0.1.0#e82e2f81324fae94d8a553761a4edc9ac6049007"
 dependencies = [
  "plugin-protocol",
  "serde",
@@ -991,6 +992,7 @@ checksum = "f6b464fbc74e149a392436b17d523f769e057cb6877f6a5c4618bc6f11800548"
 [[package]]
 name = "plugin-protocol"
 version = "0.1.0"
+source = "git+https://github.com/wizlijun/note.md?tag=plugin-sdk-v0.1.0#e82e2f81324fae94d8a553761a4edc9ac6049007"
 dependencies = [
  "schemars",
  "semver",

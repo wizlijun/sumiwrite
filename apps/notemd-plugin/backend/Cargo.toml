@@ -8,7 +8,7 @@ name = "notemd-sumi"
 path = "src/main.rs"
 
 [dependencies]
-notemd-plugin-sdk = { path = "../../../notemd-plugin-sdk" }
+notemd-plugin-sdk = { git = "https://github.com/wizlijun/note.md", tag = "plugin-sdk-v0.1.0" }
 sumi-protocol = { git = "https://github.com/wizlijun/sumiwrite", tag = "core-v0.1.0" }
 write-core = { git = "https://github.com/wizlijun/sumiwrite", tag = "core-v0.1.0" }
 rusqlite = { version = "0.40", features = ["bundled"] }

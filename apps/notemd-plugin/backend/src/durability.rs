@@ -1280,7 +1280,7 @@ impl Worker {
             // no-op revision instead of inserting a duplicate delta; the inbox
             // marker and exact remote receipt commit in the same transaction.
             let pair = self.pair_for(&edit.page_id, &snapshot)?;
-            self.store.commit_remote_with(&self.docs[&edit.page_id], &[edit.op_id.clone()], &pair, |tx| {
+            self.store.commit_remote_with(&self.docs[&edit.page_id], std::slice::from_ref(&edit.op_id), &pair, |tx| {
                 mark_projection_dirty(tx, &entry.id, edit.revision)?;
                 tx.execute("INSERT INTO sumi_echo_receipts(op_id,digest,page_id,epoch,generation,revision) VALUES(?1,?2,?3,?4,?5,?6)",
                     params![receipt.op_id,receipt.digest,receipt.page_id,receipt.epoch,sql_u64(receipt.generation)?,sql_u64(receipt.revision)?]).map_err(db)?;
