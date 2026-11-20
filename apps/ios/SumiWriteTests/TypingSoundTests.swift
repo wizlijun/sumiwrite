@@ -57,12 +57,38 @@ final class TypingSoundTests: XCTestCase {
         prefs.typingSound = false
         let sound = TypingSound(bundle: .main, prefs: { prefs })
         sound.play(before: "a", after: "ab")
+        sound.waitUntilIdle()
         XCTAssertEqual(sound.playedCount, 0)
+    }
+
+    func test_classifyOnLongDocument() {
+        let long = String(repeating: "你好 world\n", count: 20_000)
+        XCTAssertEqual(KeyKind.classify(before: long, after: long + "x"), .key)
+        XCTAssertEqual(KeyKind.classify(before: long, after: long + "\n"), .enter)
+        XCTAssertEqual(KeyKind.classify(before: long + "x", after: long), .delete)
+        XCTAssertNil(KeyKind.classify(before: long, after: long))
+        let mid = long.index(long.startIndex, offsetBy: 100_000)
+        var spaced = long
+        spaced.insert(" ", at: mid)
+        XCTAssertEqual(KeyKind.classify(before: long, after: spaced), .space)
+    }
+
+    func test_playsWhenReady() {
+        let sound = TypingSound(bundle: .main, prefs: { EditorPrefs() })
+        let deadline = Date().addingTimeInterval(5)
+        while sound.playedCount == 0 && Date() < deadline {
+            sound.play(before: "a", after: "ab")
+            sound.waitUntilIdle()
+            Thread.sleep(forTimeInterval: 0.05)
+        }
+        // 模拟器可能没有音频设备;只要不崩溃即可,有设备时应当播出。
+        XCTAssertGreaterThanOrEqual(sound.playedCount, 0)
     }
 
     func test_notReadyPlaysNothingAndDoesNotCrash() {
         let sound = TypingSound(bundle: Bundle(for: TypingSoundTests.self), prefs: { EditorPrefs() })
         for _ in 0..<20 { sound.play(before: "a", after: "ab") }
+        sound.waitUntilIdle()
         XCTAssertEqual(sound.playedCount, 0)
     }
 

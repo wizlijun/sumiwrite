@@ -14,16 +14,26 @@ enum KeyKind: Equatable {
         }
     }
 
-    /// 没有变化时返回 `nil`。
+    /// 没有变化时返回 `nil`。按 UTF-16 求公共前缀与后缀,不建数组、不分配;耗时随文字长度线性但无额外内存。
     static func classify(before: String, after: String) -> KeyKind? {
-        guard let edit = EditDiff.between(before, after) else { return nil }
-        let added = edit.replacement
-        if added.hasSuffix("\n") { return .enter }
-        if added == " " { return .space }
-        if added.isEmpty { return .delete }
-        // 拼音退格:预编辑文字被替换成它自己更短的前缀。
-        let removed = (before as NSString).substring(with: edit.range)
-        if added.count < removed.count && removed.hasPrefix(added) { return .delete }
+        let a = before.utf16, b = after.utf16
+        var ai = a.startIndex, bi = b.startIndex
+        while ai != a.endIndex, bi != b.endIndex, a[ai] == b[bi] {
+            ai = a.index(after: ai)
+            bi = b.index(after: bi)
+        }
+        var ae = a.endIndex, be = b.endIndex
+        while ae != ai, be != bi {
+            let ap = a.index(before: ae), bp = b.index(before: be)
+            guard a[ap] == b[bp] else { break }
+            ae = ap
+            be = bp
+        }
+        if ai == ae && bi == be { return nil }
+        if bi == be { return .delete }
+        let added = b[bi..<be]
+        if added.last == 0x0A { return .enter }
+        if added.count == 1, added.first == 0x20 { return .space }
         return .key
     }
 }

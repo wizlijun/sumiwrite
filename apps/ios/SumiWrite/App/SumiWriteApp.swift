@@ -18,6 +18,8 @@ struct SumiWriteApp: App {
     }
 }
 
+private final class WeakController { weak var controller: EditorController? }
+
 /// M1 只有一页纸:进程里只建一个编辑面。
 final class EditorShell {
     let controller: EditorController
@@ -25,13 +27,15 @@ final class EditorShell {
     init() {
         let defaults = UserDefaults.standard
         let prefs = PrefsStore(defaults: defaults)
-        // 每次发声都读最新偏好,设置里开关或换音色不必重启;闭包只拿 `prefs`,不回指编辑面。
-        let sound = TypingSound(bundle: .main, prefs: { prefs.load() })
+        // 每次发声读编辑面内存里的最新偏好(不在输入路径上解码);弱引用,不与编辑面成环。
+        let live = WeakController()
+        let sound = TypingSound(bundle: .main, prefs: { live.controller?.prefs ?? EditorPrefs() })
         controller = EditorController(
             open: PagePersistence.open(directory: PagePersistence.applicationDirectory),
             prefs: prefs,
             selection: SelectionStore(defaults: defaults),
             sound: sound)
+        live.controller = controller
     }
 }
 

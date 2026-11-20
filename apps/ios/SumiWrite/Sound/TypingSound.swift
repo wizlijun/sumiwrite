@@ -59,12 +59,25 @@ final class TypingSound: TypingSoundPlaying {
         engine.stop()
     }
 
+    /// 输入路径上只读偏好与就绪标志;分类与排缓冲都在声音队列上做。
     func play(before: String, after: String) {
-        let p = prefs()
-        guard p.typingSound, let kind = KeyKind.classify(before: before, after: after) else { return }
+        guard prefs().typingSound else { return }
+        let pack = prefs().soundPack
+        lock.lock()
+        let isReady = ready
+        lock.unlock()
+        guard isReady else { return }
+        queue.async { [weak self] in self?.schedule(before: before, after: after, pack: pack) }
+    }
+
+    /// 等声音队列排空;只供测试。
+    func waitUntilIdle() { queue.sync {} }
+
+    private func schedule(before: String, after: String, pack: SoundPack) {
+        guard engine.isRunning, let kind = KeyKind.classify(before: before, after: after) else { return }
         lock.lock()
         defer { lock.unlock() }
-        let slot = Slot(pack: p.soundPack, kind: kind)
+        let slot = Slot(pack: pack, kind: kind)
         guard ready, var bank = banks[slot], !bank.buffers.isEmpty, !bank.players.isEmpty else { return }
         let player = bank.players[bank.next % bank.players.count]
         bank.next += 1
@@ -91,7 +104,7 @@ final class TypingSound: TypingSoundPlaying {
             try session.setActive(true)
             try engine.start()
             startPlayers()
-            setReady(true)
+            setReady(engine.isRunning)
         } catch {
             setReady(false)
         }
@@ -121,6 +134,8 @@ final class TypingSound: TypingSoundPlaying {
     }
 
     private func startPlayers() {
+        // 节点在引擎停着时 `play()` 会抛出无法捕获的异常,所以只在引擎运行时启动。
+        guard engine.isRunning else { return }
         lock.lock()
         let nodes = banks.values.flatMap(\.players)
         lock.unlock()
@@ -138,7 +153,7 @@ final class TypingSound: TypingSoundPlaying {
                 try AVAudioSession.sharedInstance().setActive(true)
                 if !self.engine.isRunning { try self.engine.start() }
                 self.startPlayers()
-                self.setReady(true)
+                self.setReady(self.engine.isRunning)
             } catch {
                 self.setReady(false)
             }
