@@ -156,4 +156,30 @@ final class PageModelTests: XCTestCase {
         XCTAssertEqual(r.text, "aaa")
         XCTAssertEqual(c, 2)
     }
+
+    // MARK: 换行统一为 LF(终审 I-2)
+
+    func test_lineEndingsNormalizeToLF() {
+        XCTAssertEqual(LineEndings.lf("a\r\nb\rc\n"), "a\nb\nc\n")
+        XCTAssertEqual(LineEndings.lf("\r\r\n"), "\n\n")
+        XCTAssertEqual(LineEndings.lf("无回车"), "无回车")
+    }
+
+    /// 不经 `insertText` 的路径(拖放等)带进的 CR:交给内核前统一,光标按内核结果搬过去。
+    func test_typedCarriageReturnIsNormalizedBeforeCore() throws {
+        let (m, page, _) = try make()
+        let o = m.userEdited(visible: "x\r\ny", composing: false, caret: 4)
+        guard case .accepted(let r, let c) = o else { return XCTFail("\(o)") }
+        XCTAssertEqual(m.lastSubmitted, edit(0, 0, "x\ny"))
+        XCTAssertEqual(page.body(), "x\ny")
+        XCTAssertEqual(r.text, "x\ny")
+        XCTAssertEqual(c, 3)
+    }
+
+    func test_pasteWithCRLFIsAccepted() throws {
+        let (m, page, _) = try make()
+        let o = m.paste(markdown: "# a\r\nb", range: NSRange(location: 0, length: 0))
+        guard case .accepted = o else { return XCTFail("\(o)") }
+        XCTAssertEqual(page.body(), "# a\nb")
+    }
 }

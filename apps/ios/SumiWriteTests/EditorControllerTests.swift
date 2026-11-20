@@ -93,6 +93,19 @@ final class EditorControllerTests: XCTestCase {
         XCTAssertEqual(page.body(), "字")
     }
 
+    /// 粘贴含 CRLF 或单独 CR 的文字:换行统一为 LF 后交给内核,不被静默丢掉(终审 I-2)。
+    func test_pasteNormalizesCarriageReturns() throws {
+        let (c, _, page) = try makeController(tempDir())
+        paste("# a\r\nb", into: c)
+        XCTAssertEqual(page.body(), "# a\nb")
+        XCTAssertFalse((c.textView.text ?? "").contains("\r"))
+        XCTAssertEqual(c.textView.text, page.rendered().text)
+        c.textView.selectedRange = NSRange(location: (c.textView.text as NSString).length, length: 0)
+        paste("\rx\ry", into: c)
+        XCTAssertEqual(page.body(), "# a\nb\nx\ny")
+        XCTAssertEqual(c.textView.text, page.rendered().text)
+    }
+
     func test_undoViaUndoManager() throws {
         let (c, _, _) = try makeController(tempDir())
         type("a", into: c)
@@ -230,6 +243,17 @@ final class EditorControllerTests: XCTestCase {
         c.textView.deleteBackward()
         XCTAssertEqual(page.body(), "谢谢")
         XCTAssertEqual(c.textView.selectedRange, NSRange(location: 1, length: 0))
+    }
+
+    /// 键盘或听写直接插入的 CR 同样统一为 LF。
+    func test_insertTextNormalizesCarriageReturns() throws {
+        let (c, _, page) = try makeController(tempDir())
+        let window = try hostInWindow(c)
+        defer { window.isHidden = true }
+        c.textView.insertText("a\r\nb\rc")
+        XCTAssertEqual(page.body(), "a\nb\nc")
+        XCTAssertEqual(c.textView.text, "a\nb\nc")
+        XCTAssertEqual(c.textView.selectedRange, NSRange(location: 5, length: 0))
     }
 
     func test_prefsChangePersistsAndRestyles() throws {

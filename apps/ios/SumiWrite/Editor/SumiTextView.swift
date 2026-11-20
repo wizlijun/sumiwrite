@@ -197,9 +197,15 @@ final class SumiTextView: UITextView {
 
     // MARK: 粘贴
 
+    /// 换行先统一为 LF(04「粘贴」),内核不收 CR。
     override func paste(_ sender: Any?) {
         guard markedTextRange == nil, let s = pasteboard.string else { return }
-        pasteHandler?(s)
+        pasteHandler?(LineEndings.lf(s))
+    }
+
+    /// 键盘、听写等直接插入的文字同样把 CR 统一为 LF,视图与内核保持一致。
+    override func insertText(_ text: String) {
+        super.insertText(LineEndings.lf(text))
     }
 
     override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {

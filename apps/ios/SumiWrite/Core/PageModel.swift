@@ -37,7 +37,9 @@ final class PageModel {
     func userEdited(visible: String, composing: Bool, caret: Int) -> EditOutcome {
         if composing { return .unchanged }
         if !isWritable { return reject(caret: caret) }
-        guard let edit = EditDiff.between(rendered.text, visible, caret: caret) else { return .unchanged }
+        guard let diff = EditDiff.between(rendered.text, visible, caret: caret) else { return .unchanged }
+        // 拖放、写作工具等不经 `insertText` 的路径也可能带进 CR;交给内核前统一为 LF,视图随后按内核结果对齐。
+        let edit = TextEdit(range: diff.range, replacement: LineEndings.lf(diff.replacement))
         do {
             let commit = try page.applyEdit(
                 revision: rendered.revision, start: UInt32(edit.range.location),
@@ -56,7 +58,7 @@ final class PageModel {
         do {
             let commit = try page.pasteMarkdown(
                 revision: rendered.revision, start: UInt32(range.location),
-                length: UInt32(range.length), markdown: markdown, atMs: clock())
+                length: UInt32(range.length), markdown: LineEndings.lf(markdown), atMs: clock())
             // 选区之后的可见文字不变:光标落在它前面,不靠差异推算(差异在重复字符处会右偏)。
             let tail = rendered.text.utf16.count - NSMaxRange(range)
             return accept(commit, caret: max(range.location, commit.rendered.text.utf16.count - tail))
