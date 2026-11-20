@@ -76,12 +76,12 @@ final class LongPageLayoutTests: XCTestCase {
         return (total, estimated)
     }
 
-    /// 探针:打一键之后(restyle 对全文重设属性),光标之前的段落有多少停在估算值上。
-    /// 不排到光标时,只有可见区附近的几段排过;排到光标时一段不剩。
+    /// 探针:在排好的长页上打一键之后,光标之前的段落有多少停在估算值上。restyle 只重设变了的区段,
+    /// 不排到光标时也只有键入所在的那一段被作废;排到光标时一段不剩。
     func test_paragraphsBeforeTheCaretStayEstimatedAfterAnEdit() throws {
         let c = try editor(characters: 50_000)
         let tv = c.textView
-        for on in [false, true] {
+        for on in [true, false] {
             tv.layoutsThroughCaret = on
             _ = keystroke(c)
             let after = try paragraphsBeforeCaret(tv)
@@ -90,10 +90,10 @@ final class LongPageLayoutTests: XCTestCase {
             if on {
                 XCTAssertEqual(after.estimated, 0)
             } else {
-                XCTAssertGreaterThan(after.estimated, after.total / 2, "most paragraphs before the caret are estimated")
+                XCTAssertLessThanOrEqual(after.estimated, 1, "restyle invalidates only the paragraph typed in")
             }
         }
-        // 再作废一次全文属性(restyle 做的事),不排版:排过的段落又全部回到估算值。
+        // 再作废一次全文属性(换主题、字体、字号时 restyle 做的事),不排版:排过的段落又全部回到估算值。
         tv.layoutsThroughCaret = true
         _ = keystroke(c)
         let storage = tv.textStorage
@@ -142,7 +142,7 @@ final class LongPageLayoutTests: XCTestCase {
         }
         rows.append(String(format: "LAYOUT whole-document ensureLayout after an edit: median %.1f ms; when nothing changed: median %.2f ms",
                            median(full), median(walk)))
-        // restyle 的作废本身:全文重设一次属性,不排版。
+        // 全文属性改动本身(换主题时 restyle 的作废),不排版。
         var invalidate: [Double] = []
         for _ in 0..<10 {
             let t0 = CACurrentMediaTime()

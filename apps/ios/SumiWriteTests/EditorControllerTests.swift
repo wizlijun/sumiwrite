@@ -481,4 +481,36 @@ final class EditorControllerTests: XCTestCase {
         XCTAssertEqual(copied, page.body())
         XCTAssertTrue(copied.contains("#") && copied.contains("https://b"), copied)
     }
+
+    /// restyle 只重设变了的区段:每一步之后,textStorage 与旧做法(全文先上基础样式、再叠加内核样式段)
+    /// 建出的属性串逐段相同(ios.md §3.3「TextKit 2 的估算高度」)。
+    func test_restyleMatchesAFullReset() throws {
+        let h = try harness(tempDir())
+        let c = h.controller, tv = c.textView
+        let window = try hostInWindow(c)
+        defer { window.isHidden = true }
+        func assertMatchesFullReset(_ step: String, line: UInt = #line) {
+            let prefs = c.prefs
+            let font = prefs.font.uiFont(size: CGFloat(prefs.fontSize))
+            let rendered = h.page.rendered()
+            let expected = NSMutableAttributedString(string: rendered.text, attributes: Styler.base(prefs: prefs, baseFont: font))
+            for (range, attrs) in Styler.attributes(for: rendered, prefs: prefs, baseFont: font) {
+                expected.addAttributes(attrs, range: range)
+            }
+            XCTAssertTrue(tv.textStorage.isEqual(to: expected), "\(step): attributes differ from a full reset", line: line)
+        }
+        paste("# 标题\n> 引用\n**粗体** 和 [链接](https://x.y)\n", into: c)
+        assertMatchesFullReset("paste")
+        let heading = (tv.text as NSString).range(of: "标题")
+        tv.selectedRange = NSRange(location: NSMaxRange(heading), length: 0)
+        tv.insertText("字")
+        assertMatchesFullReset("typing at the end of the heading")
+        tv.selectedRange = NSRange(location: heading.location + 1, length: 0)
+        tv.insertText("\n")
+        assertMatchesFullReset("splitting the heading")
+        tv.undoManager?.undo()
+        assertMatchesFullReset("undo")
+        h.prefs.prefs.theme = .paper
+        assertMatchesFullReset("theme")
+    }
 }

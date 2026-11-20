@@ -288,16 +288,25 @@ final class EditorController: UIViewController, UITextViewDelegate {
         placeRimeBar(reveal: false)
     }
 
-    /// 整段重设属性:先上基础样式,再按内核的样式段(已是互不重叠的平铺段)依次叠加。
+    /// 重设属性:全文应有的属性是基础样式再按内核的样式段(已是互不重叠的平铺段)依次叠加;先在副本上算出来,
+    /// 只对与 textStorage 现有属性不同的区段 `setAttributes`。结果与全文重设相同,TextKit 2 只作废真正变了的段落
+    /// (ios.md §3.3「TextKit 2 的估算高度」)。换主题、字体、字号时每段都不同,就是全文重设。
     private func restyle() {
         let storage = textView.textStorage
         let base = baseAttributes
-        storage.beginEditing()
-        storage.setAttributes(base, range: NSRange(location: 0, length: storage.length))
-        if let r = model?.rendered, r.text == storage.string {
+        let whole = NSRange(location: 0, length: storage.length)
+        let target = NSMutableAttributedString(string: storage.string, attributes: base)
+        if let r = model?.rendered, r.text == target.string {
             for (range, attrs) in Styler.attributes(for: r, prefs: prefs, baseFont: baseFont) {
-                storage.addAttributes(attrs, range: range)
+                target.addAttributes(attrs, range: range)
             }
+        }
+        storage.beginEditing()
+        target.enumerateAttributes(in: whole) { attrs, range, _ in
+            var current = NSRange(location: NSNotFound, length: 0)
+            let have = storage.attributes(at: range.location, longestEffectiveRange: &current, in: range)
+            if current == range, (have as NSDictionary).isEqual(to: attrs) { return }
+            storage.setAttributes(attrs, range: range)
         }
         storage.endEditing()
         textView.typingAttributes = base
@@ -520,7 +529,7 @@ final class EditorController: UIViewController, UITextViewDelegate {
         let was = applyingProgrammaticChange
         applyingProgrammaticChange = true
         body()
-        // 这里改过文字或重设了属性(restyle 作废全文排版):排到光标为止,ios.md §3.3「TextKit 2 的估算高度」。
+        // 这里改过文字或属性:排到光标为止,ios.md §3.3「TextKit 2 的估算高度」。
         textView.layoutThroughCaret()
         applyingProgrammaticChange = was
         lastText = textView.text ?? ""
@@ -791,7 +800,7 @@ final class EditorController: UIViewController, UITextViewDelegate {
         guard let bar = rimeAdapter?.bar, bar.superview != nil else { return }
         if !focusMode && !pendingInsetReset { applyRestingInsets(animated: false) }
         guard rimeAdapter?.barVisible == true, container.bounds.height > 0 else { return }
-        // 先让文本视图排好版再读光标行。上屏被内核接受后 `restyle` 整段重设属性,TextKit 2 的排版随之作废,
+        // 先让文本视图排好版再读光标行。上屏被内核接受后改了文字和属性,TextKit 2 的排版随之作废,
         // 不排版时读到的光标行是估计值(长页、自动换行时比真实位置高出几行);按它摆放的候选行之后没有滚动、
         // 也没有更新来纠正,就停在光标行上面盖住文字(真机反馈 2026-11-20)。
         textView.layoutIfNeeded()
