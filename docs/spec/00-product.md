@@ -52,6 +52,8 @@
 | 插件 ID | `notemd.sumi`,不变 |
 | 配套输入法 | Fcitx5 for Sumi |
 
+iOS 主屏显示名是例外:各语言一律显示 Sumi Write,见 [platform/ios §1](platform/ios.md#做)。
+
 改名只改显示名称。以下内容都不随改名变化:
 
 - 插件 ID、包名、协议名、数据路径
