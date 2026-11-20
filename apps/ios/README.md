@@ -10,10 +10,18 @@ rustup +1.99.0 target add aarch64-apple-ios aarch64-apple-ios-sim
 
 另需 Xcode 与 XcodeGen。
 
+实体键盘的内嵌输入法(规范 [`ios.md` §3.6](../../docs/spec/platform/ios.md#36-实体键盘的内嵌输入法))来自本机的 Swift 包 RimeKit:放在 `~/git/rime-kit`(与本仓库同级;`project.yml` 用相对路径 `../../../rime-kit` 引用,GPL-3.0)。先在那里取一次 librime 二进制与雾凇词库:
+
+```
+bash ~/git/rime-kit/scripts/fetch.sh
+```
+
+`test-sim.sh` 与 `install-device.sh` 每次构建前都会再跑一次 `fetch.sh`(已取过就跳过);找不到 RimeKit 时打印「缺 RimeKit:见 apps/ios/README.md」并退出。
+
 ## 构建
 
 - `bash apps/ios/scripts/build-core.sh`:产出 `build/SumiCoreFFI.xcframework`、`build/gen/sumi_ios_ffi.swift` 和 `build/fixtures/`(`yrs-v1.json`、`yjs-v1.json`、`desktop.sqlite3`、`golden.json`)。可重复执行。
-- `xcodegen generate`(在 `apps/ios/` 下):生成 `SumiWrite.xcodeproj`,该工程不入库。
+- `xcodegen generate`(在 `apps/ios/` 下):生成 `SumiWrite.xcodeproj`,该工程不入库;本地包 RimeKit(产品 `RimeKit`、`RimeKitUI`)随之接入。
 - 真机:`bash apps/ios/scripts/install-device.sh <设备名或 UDID>`,需先配好签名。
 
 ## Verification
@@ -23,7 +31,7 @@ bash apps/ios/scripts/test-sim.sh
 cargo +1.99.0 test --manifest-path apps/ios/ffi/Cargo.toml
 ```
 
-第一条构建内核、生成工程并在模拟器(默认 iPhone 17 Pro Max,可用 `SIM` 覆盖)上跑 XCTest,必须以 `** TEST SUCCEEDED **` 结束。
+第一条先取 RimeKit 的二进制与词库(`fetch.sh`),再构建内核、生成工程并在模拟器(默认 iPhone 17 Pro Max,可用 `SIM` 覆盖)上跑 XCTest,必须以 `** TEST SUCCEEDED **` 结束。内嵌输入法的接线由 `RimeIntegrationTests` 用假的输入法覆盖(组字不进内核、上屏、切页前上屏、系统组字照旧拦切页、候选行位置与样式、点按候选与「内 / 系」、打字音);引擎本身的测试在 RimeKit 仓库里跑。
 
 手工项(不进自动测试):性能测量,在真机上记录输入延迟与大页载入时间。
 
@@ -68,11 +76,26 @@ cargo +1.99.0 test --manifest-path apps/ios/ffi/Cargo.toml
 5. 总览:每行一行摘要(空页为灰色「空白的一页」)与修改时间,当前页带铅笔;点某行打开该页;点当前页只关闭面板,光标不跳到文末;左滑「移到废纸篓」;废纸篓为空时该分区不出现;
 6. 设置里每个控件立即生效:主题(六种)、字体、字号滑块、行距滑块、「恢复默认字号与行距」、光标(平缓呼吸/常亮)、聚焦打字、打字音;
 7. 硬件键盘九个快捷键:⌘N、⌘[、⌘]、⇧⌘L、⌘,、⌘=、⌘-、⌘0、Esc;
-8. 拼音组字中(带下划线)按上述快捷键与点菜单切页,被拒绝并提示「请先完成输入」;
+8. 系统拼音组字中(带下划线;没接实体键盘,或候选行上选了「系」)按上述快捷键与点菜单切页,被拒绝并提示「请先完成输入」;内置输入法组字时的切页见「内嵌输入法」第 8 条;
 9. 状态栏与主屏幕指示条始终隐藏;
 10. 光标呼吸平缓、不重启相位;
 11. 保存失败时(难以复现,可用代码注入)菜单条上方出现常驻的「保存失败」;
 12. 划掉应用再打开:回到离开时的纸页,光标位置还在。
+
+## 内嵌输入法手工验收
+
+在 iPad(接实体键盘,如妙控键盘)上逐条执行;模拟器测不了实体键盘、键盘扩展与真实的按键时序。对应规范 [`ios.md` §3.6](../../docs/spec/platform/ios.md#36-实体键盘的内嵌输入法)。
+
+1. 接实体键盘,系统输入源是简体拼音或英文时,在正文里打拼音都由内置输入法接管,不出现系统候选条;候选行在光标下一行出现,带主题底色,字体字号与正文一致。
+2. 组字在光标处带下划线;候选行盖住下一行,打字时不随光标横移,换行时跟着下移一行。
+3. 空格、数字键选词;点 ‹ › 翻页;手指点候选上屏;上屏后正文与内核一致(划掉应用再打开仍在),光标在上屏文字之后。
+4. Shift 切中英,候选行上的「中 / 英」跟着变;按住 Shift 时点正文,松开不误切中英。
+5. 按住退格、按住字母连发;快打长句不丢键;每次按键打字音只响一声,修饰键不响。
+6. 点「系」切回系统输入法(组字清掉,按键全交给系统),再点「内」切回来,两边都对;划掉应用再打开,「内 / 系」的选择还在。
+7. 拔掉实体键盘,只用软键盘:候选行消失,软键盘与系统输入法的行为与没有内嵌输入法时完全相同。
+8. 内置输入法组字中按 ⌘[、⌘]、⌘N、⇧⌘L、⌘,,点菜单的 ‹ › 新建、总览、设置,或切到后台:组字按原文上屏进内核,不丢,再切换;选「系」用系统拼音组字时切页,照旧提示「请先完成输入」。组字中 ⌘= ⌘- ⌘0 不生效,Esc 交给输入法。
+9. 从正文中间续写:组字插在光标处、后文照常回流;候选行盖住下一行,聚焦打字时不被渐隐淡掉;光标在视区最后一行时正文先上滚一行,候选行留在视区里。
+10. 组字中点正文别处、粘贴、⌘Z 都不响应;上屏后恢复。
 
 ## 签名
 
