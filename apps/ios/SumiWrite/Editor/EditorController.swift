@@ -716,7 +716,9 @@ final class EditorController: UIViewController, UITextViewDelegate {
         textView.onFocusChange = { [weak self] focused in
             guard let self else { return }
             if !focused { rimeHeld.removeAll() }
-            quietly { self.rimeAdapter?.focusChanged(focused && self.textView.isEditable) }
+            // 失焦时按原文上屏的那次文字变化不算打字(同切页前,ios.md §3.6):走 aside,文字仍经 textViewDidChange 进内核。
+            let change = { self.quietly { self.rimeAdapter?.focusChanged(focused && self.textView.isEditable) } }
+            if focused { change() } else { aside(change) }
         }
         textView.onTouchBegan = { [weak self] modifiers in self?.rimeAdapter?.touchBegan(modifiers: modifiers) }
         textView.isLockedForComposition = { [weak self] in self?.rimeAdapter?.isComposing ?? false }

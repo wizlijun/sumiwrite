@@ -465,6 +465,24 @@ final class RimeIntegrationTests: XCTestCase {
         XCTAssertEqual(typing(), 0)
     }
 
+    /// 失去焦点时的上屏也不算打字:不进聚焦打字的计数、不发声,文字照样经 textViewDidChange 进内核(终审 Minor 1)。
+    func test_blurFlushIsNotTyping() throws {
+        let h = try harness()
+        for ch in ["一", "二"] { h.textView.insertText(ch) }
+        h.rime.compose("hao")
+        let typing = typed(h)
+        let sounds = h.sound.total
+        XCTAssertTrue(h.textView.resignFirstResponder())
+        XCTAssertEqual(h.rime.flushCount, 1)
+        XCTAssertEqual(h.page.body(), "一二hao", "flushed text reached the core")
+        XCTAssertEqual(typing(), 0)
+        XCTAssertEqual(h.sound.total, sounds)
+        // 失焦上屏若算第三次输入,重新取得焦点后再打一个字就会满四次进聚焦;不算则还差一次。
+        XCTAssertTrue(h.textView.becomeFirstResponder())
+        h.textView.insertText("四")
+        XCTAssertNil(h.textView.pinnedY, "the blur flush was not the third input")
+    }
+
     /// 保存失败后编辑面不可编辑:组字结束,引擎停用,按键原样交给系统,不发声(复审 2)。
     func test_readOnlyKeepsEngineOff() throws {
         let h = try harness()
