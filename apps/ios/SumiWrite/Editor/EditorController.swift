@@ -108,6 +108,11 @@ final class EditorController: UIViewController, UITextViewDelegate {
         aside { rimeAdapter?.flush() }
     }
 
+    /// 设置面板「复制全文」:与全选后复制相同,只写纯文本正文。系统输入法组字中返回 nil;空页返回空串。
+    func pageTextForCopy() -> String? {
+        textView.markedTextRange == nil ? textView.text ?? "" : nil
+    }
+
     // MARK: 视图
 
     override func viewDidLoad() {

@@ -3,10 +3,24 @@ import SwiftUI
 
 struct AppearanceView: View {
     @ObservedObject var prefs: PrefsModel
+    var copyText: () -> String? = { "" }
+    @State private var copyNote: String?
 
     var body: some View {
         NavigationStack {
             Form {
+                Section {
+                    let empty = copyText()?.isEmpty ?? false
+                    Button {
+                        guard let text = copyText() else { copyNote = "请先完成输入"; return }
+                        UIPasteboard.general.string = text
+                        copyNote = "已复制 \(text.count) 字"
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { copyNote = nil }
+                    } label: { Label("复制全文", systemImage: "doc.on.doc") }
+                    .disabled(empty)
+                    if empty { Text("本页是空的").font(.footnote).foregroundStyle(.secondary) }
+                    else if let copyNote { Text(copyNote).font(.footnote).foregroundStyle(.secondary) }
+                } header: { Text("本页") }
                 Section("主题") {
                     Picker("主题", selection: $prefs.prefs.theme) {
                         ForEach(ThemeID.allCases, id: \.self) { t in

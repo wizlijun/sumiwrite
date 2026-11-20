@@ -110,7 +110,7 @@ struct ContentView: View {
             .preferredColorScheme(scheme)
         }
         .sheet(isPresented: $showAppearance, onDismiss: refocus) {
-            AppearanceView(prefs: prefs)
+            AppearanceView(prefs: prefs, copyText: { controller.pageTextForCopy() })
                 .presentationDetents([.medium, .large])
                 .preferredColorScheme(scheme)
         }
