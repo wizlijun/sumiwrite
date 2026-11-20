@@ -182,3 +182,8 @@
 - **身份层是否已与纸页层分开**到能换登录方式 `[未定]`([ADR 0011](../adr/0011-ios-personal-use-identity-layer.md))。
 - **移动端电量与后台重连**:旧主规范 P2 阶段要求的验收项不在 M0–M5 里。现行 [ios.md §4.2](../spec/platform/ios.md) `[未定]`。
 - **二维码配对**:桌面只输出邀请文本,加二维码要改桌面插件(设计 §10.1 **[我的判断]**)。现行 [later.md §6.2](../spec/platform/later.md)。
+- **Unicode 规范等价可能让视图与内核分叉(iOS M1 终审,延后)**:`EditDiff.between` 与 `EditorController` 的 `show`、`restyle` 用 Swift 的 `String` 相等比较,规范等价的 NFD 与 NFC 被当成相等(`"e\u{301}" == "\u{e9}"` 为真)。若输入法把一种形式换成另一种,不产生编辑,视图的 UTF-16 与内核就分叉,之后样式区间可能越界。修法是改按 `utf16` 逐单元比较,`restyle` 另按 `storage.length` 钳制;M2 前处理 `[未定]`。源:`apps/ios/SumiWrite/Core/EditDiff.swift`、`apps/ios/SumiWrite/Editor/EditorController.swift`。
+- **每笔提交在主线程上建两次完整快照(iOS M1 终审,延后)**:`PagePersistence.committed` 每笔提交都调用 `page.pageId()` 与 `page.epoch()`,FFI 里这两个各建一次完整的 `doc.snapshot()`,长页面上拖慢输入。打开时缓存这两个值即可;M2 前处理 `[未定]`。源:`apps/ios/SumiWrite/Core/PagePersistence.swift`、`apps/ios/ffi/src/lib.rs`(`page_id`、`epoch`)。
+- **outbox 表只写不清(iOS M1 终审,延后)**:每次 `commit_local_delta_with` 都向 `outbox` 插一行,M1 没有任何消费者,表随按键增长,只占磁盘。清理策略随 M3 同步落地再定 `[未定]`。源:`core/src/storage.rs`(`commit_local_delta_with`)。
+- **缺少「重启 → 编辑 → 再打开」的测试(iOS M1 终审,延后)**:`PagePersistenceTests` 没有覆盖重启后先编辑、再重新打开这条路径。按内核语义它是对的(重启后修订等于 durable head,下一笔是 head+1),手工清单第 9、13 条依赖它;补一个 XCTest `[未定]`。源:`apps/ios/SumiWriteTests/PagePersistenceTests.swift`。
+- **呼吸光标动画没有限帧(iOS M1 终审,延后)**:`CaretView` 的 `CAKeyframeAnimation` 无限重复,ProMotion 机型上可能按 120 Hz 合成,只影响耗电。可设 `preferredFrameRateRange`(例如最低 10、最高 30、首选 20)`[未定]`。源:`apps/ios/SumiWrite/Editor/SumiTextView.swift`。
