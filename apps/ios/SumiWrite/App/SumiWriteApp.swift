@@ -1,3 +1,4 @@
+import RimeKit
 import SwiftUI
 import UIKit
 
@@ -43,8 +44,11 @@ final class AppEnvironment {
             persistence = nil
             page = nil
         }
+        // 实体键盘的内嵌输入法(ios.md §3.6):进程里只建一个,只用随包词库。
+        let rime = RimeInput(host: .sumiWrite)
+        rime.configure(enabled: true, dictionary: .bundled)
         controller = EditorController(persistence: persistence, page: page, prefs: prefs,
-                                      selection: SelectionStore(defaults: defaults), sound: sound)
+                                      selection: SelectionStore(defaults: defaults), sound: sound, rime: rime)
         live.controller = controller
     }
 }

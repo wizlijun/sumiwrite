@@ -1,5 +1,6 @@
 import Combine
 import os
+import RimeKitUI
 import UIKit
 
 /// 编辑面:文本视图、自绘光标、键盘避让、聚焦打字、硬件键盘命令、保存接线。
@@ -27,6 +28,10 @@ final class EditorController: UIViewController, UITextViewDelegate {
     private let prefsModel: PrefsModel
     private let selectionStore: SelectionStore
     private let sound: TypingSoundPlaying?
+    /// 实体键盘的内嵌输入法(ios.md §3.6);没接输入法时为 nil,编辑面照旧只走系统输入。
+    private(set) var rimeAdapter: RimeTextViewAdapter?
+    /// 大于 0:正在调适配器(按键、上屏、焦点变化),这期间文字变化不按文字另响打字音。
+    private var rimeQuiet = 0
 
     private let container = UIView()
     private let cursorView = SumiCursorView()
@@ -58,9 +63,10 @@ final class EditorController: UIViewController, UITextViewDelegate {
     private static let focusIdle: TimeInterval = 10
     private static let focusRestore: CFTimeInterval = 1.2
 
-    /// `persistence` 或 `page` 为 nil 表示打开失败,编辑面只读。
+    /// `persistence` 或 `page` 为 nil 表示打开失败,编辑面只读。`rime` 是进程里唯一的内嵌输入法,
+    /// 「内/系」的选择记在 `rimeDefaults`。
     init(persistence: PagePersistence?, page: CorePage?, prefs: PrefsModel, selection: SelectionStore,
-         sound: TypingSoundPlaying?) {
+         sound: TypingSoundPlaying?, rime: RimeInputDriving? = nil, rimeDefaults: UserDefaults = .standard) {
         prefsModel = prefs
         selectionStore = selection
         self.sound = sound
@@ -79,6 +85,7 @@ final class EditorController: UIViewController, UITextViewDelegate {
         super.init(nibName: nil, bundle: nil)
         self.persistence?.onFailure = { [weak self] message in self?.saveFailed(message) }
         textView.coreUndoManager = makeUndoManager()
+        if let rime { attachRime(rime, defaults: rimeDefaults) }
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
@@ -86,8 +93,13 @@ final class EditorController: UIViewController, UITextViewDelegate {
     override var prefersStatusBarHidden: Bool { true }
     override var prefersHomeIndicatorAutoHidden: Bool { true }
 
-    /// 组字中不切页。
-    var canSwitchPage: Bool { textView.markedTextRange == nil }
+    /// 系统输入法组字中不切页;内置输入法的组字可以,切之前由 `prepareToSwitch` 上屏。
+    var canSwitchPage: Bool { textView.markedTextRange == nil || rimeAdapter?.isComposing == true }
+
+    /// 切页、开总览、开设置之前调用:内置输入法的组字按原文上屏进内核(不发打字音)。
+    func prepareToSwitch() {
+        quietly { rimeAdapter?.flush() }
+    }
 
     // MARK: 视图
 
@@ -126,6 +138,9 @@ final class EditorController: UIViewController, UITextViewDelegate {
         fadeMask.startPoint = CGPoint(x: 0.5, y: 0)
         fadeMask.endPoint = CGPoint(x: 0.5, y: 1)
         container.layer.mask = fadeMask
+
+        // 候选行是文本视图的兄弟、在最上层,不在渐隐遮罩里;点按不会被文本视图的手势接走。
+        if let bar = rimeAdapter?.bar { view.addSubview(bar) }
 
         loadPage()
 
@@ -191,6 +206,7 @@ final class EditorController: UIViewController, UITextViewDelegate {
             textView.layoutIfNeeded()
             textView.scrollRangeToVisible(textView.selectedRange)
         }
+        placeRimeBar(reveal: false)
     }
 
     func focusEditor() {
@@ -234,6 +250,7 @@ final class EditorController: UIViewController, UITextViewDelegate {
         cursorView.color = theme.foreground
         cursorView.breathing = prefs.caretMotion == .breathing
         sound?.preferencesChanged(prefs)
+        rimeAdapter?.bar.style = .sumi(prefs)
 
         // 组字中不重设属性;下一次被接受的输入会重设。
         if textView.markedTextRange == nil {
@@ -355,7 +372,9 @@ final class EditorController: UIViewController, UITextViewDelegate {
         guard let model, !applyingProgrammaticChange else { return }
         let composing = textView.markedTextRange != nil
         let visible = textView.text ?? ""
-        if model.isWritable, textView.isEditable { sound?.play(before: lastText, after: visible, kind: pendingKind) }
+        if rimeQuiet == 0, model.isWritable, textView.isEditable {
+            sound?.play(before: lastText, after: visible, kind: pendingKind)
+        }
         pendingKind = nil
         lastText = visible
         let sel = textView.selectedRange
@@ -371,9 +390,11 @@ final class EditorController: UIViewController, UITextViewDelegate {
             reset(to: rendered, caret: caret)
         }
         markEdited()
+        placeRimeBar(reveal: true)
     }
 
     func textViewDidChangeSelection(_ textView: UITextView) {
+        placeRimeBar(reveal: !applyingProgrammaticChange)
         guard !applyingProgrammaticChange, textView.markedTextRange == nil else { return }
         // 外置键盘下,选区通知会晚于文字变更到达;紧随输入的选区变化不算「挪光标」。
         let followsEdit = textView.selectedRange == editSelection
@@ -499,6 +520,8 @@ final class EditorController: UIViewController, UITextViewDelegate {
     /// 退到后台:在后台任务里做 `saveNow`。
     func sceneDidEnterBackground() {
         guard page != nil, persistence != nil else { return }
+        // 失去活跃时 `RimeInput` 已自己上屏;这里再保一次,避免组字留在屏幕上没进内核。
+        prepareToSwitch()
         let app = UIApplication.shared
         var task = UIBackgroundTaskIdentifier.invalid
         let finish = {
@@ -561,10 +584,11 @@ final class EditorController: UIViewController, UITextViewDelegate {
 
     private func resetInsets() {
         pendingInsetReset = false
-        guard textView.contentInset != .zero else { return }
+        let resting = restingInsets
+        guard textView.contentInset != resting else { return }
         let y = textView.contentOffset.y
-        textView.contentInset = .zero
-        let maxY = max(0, textView.contentSize.height - textView.bounds.height)
+        textView.contentInset = resting
+        let maxY = max(0, textView.contentSize.height + resting.bottom - textView.bounds.height)
         let target = min(max(y, 0), maxY)
         if target != y { textView.setContentOffset(CGPoint(x: 0, y: target), animated: !reduceMotion) }
     }
@@ -650,6 +674,67 @@ final class EditorController: UIViewController, UITextViewDelegate {
 
     func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) { resetInsetsIfPending() }
 
+    /// 手指拖动时候选行只跟着走;系统自发的滚动(插入后滚到光标)之后再看要不要上滚。
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        placeRimeBar(reveal: !(scrollView.isTracking || scrollView.isDragging || scrollView.isDecelerating))
+    }
+
+    // MARK: 内嵌输入法(ios.md §3.6)
+
+    private func attachRime(_ rime: RimeInputDriving, defaults: UserDefaults) {
+        let adapter = RimeTextViewAdapter(textView: textView, input: rime, defaults: defaults, style: .sumi(prefs))
+        rimeAdapter = adapter
+        adapter.onBarChange = { [weak self] in self?.placeRimeBar(reveal: true) }
+        adapter.onUpdate = { [weak self] _ in self?.placeRimeBar(reveal: true) }
+        textView.pressHandler = self
+        textView.onFocusChange = { [weak self] focused in self?.quietly { self?.rimeAdapter?.focusChanged(focused) } }
+        textView.onTouchBegan = { [weak self] modifiers in self?.rimeAdapter?.touchBegan(modifiers: modifiers) }
+        textView.isLockedForComposition = { [weak self] in self?.rimeAdapter?.isComposing ?? false }
+    }
+
+    private func quietly(_ body: () -> Void) {
+        rimeQuiet += 1
+        body()
+        rimeQuiet -= 1
+    }
+
+    /// 平时正文底下留出候选行的高度,光标在最后一行时也能把下一行(候选行)滚进视区。
+    private var restingInsets: UIEdgeInsets {
+        guard let adapter = rimeAdapter, adapter.barVisible else { return .zero }
+        return UIEdgeInsets(top: 0, left: 0, bottom: RimeCandidateBar.height(for: adapter.bar.style.font), right: 0)
+    }
+
+    /// 候选行盖住光标的下一行:左缘、宽度与正文列一致,高度随字号;位置由光标所在行算出,所以只在光标换行时动。
+    /// `reveal`:不在聚焦打字、光标所在行在视区里、而候选行会落到视区外时,先把正文上滚到候选行露全
+    /// (光标在视区最后一行时就是上滚一行)。聚焦打字时光标行居中,不需要。
+    private func placeRimeBar(reveal: Bool) {
+        guard let bar = rimeAdapter?.bar, bar.superview != nil else { return }
+        if !focusMode && !pendingInsetReset && textView.contentInset != restingInsets {
+            textView.contentInset = restingInsets
+        }
+        guard rimeAdapter?.barVisible == true, container.bounds.height > 0 else { return }
+        let inset = textView.textContainerInset
+        let height = RimeCandidateBar.height(for: bar.style.font)
+        let width = max(0, textView.bounds.width - inset.left - inset.right)
+        guard let top = textView.lineTopBelowCaret(pitch: lineHeight) else { return }
+        let visible = container.frame
+        var y = textView.convert(CGPoint(x: 0, y: top), to: view).y
+        let caretLine = textView.selectedTextRange.map { textView.convert(textView.caretRect(for: $0.end), to: view) }
+        let caretVisible = caretLine.map { $0.minY >= visible.minY - 0.5 && $0.maxY <= visible.maxY + 0.5 } ?? false
+        if reveal && caretVisible && !focusMode && textView.pinnedY == nil && y + height > visible.maxY + 0.5 {
+            let overflow = y + height - visible.maxY
+            let scale = traitCollection.displayScale > 0 ? traitCollection.displayScale : 1
+            let target = ((textView.contentOffset.y + overflow) * scale).rounded(.up) / scale
+            textView.setContentOffset(CGPoint(x: textView.contentOffset.x, y: target), animated: false)
+            y = textView.convert(CGPoint(x: 0, y: top), to: view).y
+        }
+        y = min(max(y, visible.minY), max(visible.minY, visible.maxY - height))
+        let x = textView.convert(CGPoint(x: inset.left, y: 0), to: view).x
+        let frame = CGRect(x: x, y: y, width: width, height: height)
+        if bar.frame != frame { bar.frame = frame }
+        view.bringSubviewToFront(bar)
+    }
+
     // MARK: 硬件键盘
 
     override var keyCommands: [UIKeyCommand]? {
@@ -671,6 +756,10 @@ final class EditorController: UIViewController, UITextViewDelegate {
         let mine: [Selector] = [#selector(cmdNew), #selector(cmdPrev), #selector(cmdNext), #selector(cmdOverview),
                                 #selector(cmdAppearance), #selector(cmdBigger), #selector(cmdSmaller),
                                 #selector(cmdResetSize), #selector(cmdEscape)]
+        // 内置输入法组字中,切页类命令放行(先上屏再切);字号命令与 Esc 照旧不放行。
+        let switching: [Selector] = [#selector(cmdNew), #selector(cmdPrev), #selector(cmdNext),
+                                     #selector(cmdOverview), #selector(cmdAppearance)]
+        if switching.contains(action) { return canSwitchPage }
         if mine.contains(action) { return textView.markedTextRange == nil }
         return super.canPerformAction(action, withSender: sender)
     }
@@ -684,4 +773,19 @@ final class EditorController: UIViewController, UITextViewDelegate {
     @objc private func cmdSmaller() { prefsModel.bumpSize(-2) }
     @objc private func cmdResetSize() { prefsModel.prefs.fontSize = EditorPrefs.defaultFontSize }
     @objc private func cmdEscape() { onCommand?(.menu) }
+}
+
+extension EditorController: KeyPressHandling {
+    /// 先给内嵌输入法;它吞下的每个按下的键响一声打字音(按键码分种类),由它引起的上屏、组字不另响。
+    func unhandled(_ presses: Set<UIPress>, began: Bool) -> Set<UIPress> {
+        guard let adapter = rimeAdapter else { return presses }
+        var rest = presses
+        quietly { rest = adapter.unhandled(presses, began: began) }
+        if began, model?.isWritable == true, textView.isEditable {
+            for press in presses.subtracting(rest) {
+                if let kind = KeyKind.of(press) { sound?.play(kind: kind) }
+            }
+        }
+        return rest
+    }
 }

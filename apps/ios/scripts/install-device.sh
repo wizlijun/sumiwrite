@@ -8,6 +8,13 @@ if [ ! -f "$IOS/Signing.local.xcconfig" ]; then
   echo "缺少 apps/ios/Signing.local.xcconfig,见 apps/ios/README.md 的「签名」一节" >&2
   exit 1
 fi
+# 内嵌输入法 RimeKit 在 ~/git/rime-kit(与 project.yml 的本地包路径一致);它的二进制与词库由 fetch.sh 取。
+RIME="$IOS/../../../rime-kit"
+if [ ! -f "$RIME/scripts/fetch.sh" ]; then
+  echo "缺 RimeKit:见 apps/ios/README.md" >&2
+  exit 1
+fi
+bash "$RIME/scripts/fetch.sh"
 bash "$IOS/scripts/build-core.sh"
 cd "$IOS"
 xcodegen generate

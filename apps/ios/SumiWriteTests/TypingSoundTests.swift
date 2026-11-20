@@ -202,6 +202,7 @@ final class TypingSoundTests: XCTestCase {
             calls.append((before, after))
             kinds.append(kind)
         }
+        func play(kind: KeyKind) { kinds.append(kind) }
         func preferencesChanged(_ prefs: EditorPrefs) { prefsSeen.append(prefs) }
     }
 

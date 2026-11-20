@@ -122,10 +122,26 @@ final class TypingSound: TypingSoundPlaying {
 
     // MARK: 声音队列
 
+    func play(kind: KeyKind) {
+        let p = prefs()
+        guard p.typingSound else { return }
+        let pack = p.soundPack
+        queue.async { [weak self] in
+            guard let self else { return }
+            self.wanted = pack
+            if !self.isReady || self.loadedPack != pack { self.activate(.input) }
+            self.schedule(kind)
+        }
+    }
+
     private func schedule(before: String, after: String, kind hint: KeyKind?) {
+        // 文字没变不发声;变了以输入代理判出的种类为准。
+        guard let kind = KeyKind.classify(before: before, after: after).map({ hint ?? $0 }) else { return }
+        schedule(kind)
+    }
+
+    private func schedule(_ kind: KeyKind) {
         guard let engine, engine.isRunning, isReady,
-              // 文字没变不发声;变了以输入代理判出的种类为准。
-              let kind = KeyKind.classify(before: before, after: after).map({ hint ?? $0 }),
               var bank = banks[kind], !bank.buffers.isEmpty, !bank.players.isEmpty else { return }
         let player = bank.players[bank.next % bank.players.count]
         bank.next += 1

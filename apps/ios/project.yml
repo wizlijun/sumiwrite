@@ -9,6 +9,10 @@ configFiles:
 settings:
   base:
     SWIFT_VERSION: "5.0"
+packages:
+  # 内嵌输入法 RimeKit:本机 ~/git/rime-kit(路径相对本文件),先在那里跑 scripts/fetch.sh。见 README「一次性准备」。
+  RimeKit:
+    path: ../../../rime-kit
 targets:
   SumiWrite:
     type: application
@@ -22,6 +26,10 @@ targets:
     dependencies:
       - framework: build/SumiCoreFFI.xcframework
         embed: false
+      - package: RimeKit
+        product: RimeKit
+      - package: RimeKit
+        product: RimeKitUI
     info:
       path: build/Info-app.plist
       properties:

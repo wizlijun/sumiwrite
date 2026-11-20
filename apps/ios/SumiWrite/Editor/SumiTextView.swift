@@ -1,8 +1,9 @@
 import UIKit
 
-/// 可替换的按键入口(给今后的外接键盘输入法 RimeKit 留的口)。返回 `true` 表示这次按键已被处理。
+/// 可替换的按键入口(实体键盘的内嵌输入法,ios.md §3.6):按下(`began`)与松开、取消的按键先交给它,
+/// 它返回没接走的那些,照常交给 `UITextView`。
 protocol KeyPressHandling: AnyObject {
-    func handle(_ presses: Set<UIPress>, event: UIPressesEvent?, phase: UIPress.Phase) -> Bool
+    func unhandled(_ presses: Set<UIPress>, began: Bool) -> Set<UIPress>
 }
 
 /// TextKit 2 正文视图:聚焦时的滚动锁、光标框、按键入口与粘贴。光标本身由 `SumiCursorView` 画。
@@ -10,12 +11,18 @@ protocol KeyPressHandling: AnyObject {
 final class SumiTextView: UITextView {
     /// 注入的内核撤销;`UITextView` 自带的撤销栈因此不生效。
     var coreUndoManager: CoreUndoManager?
-    var pressHandler: KeyPressHandling?
+    weak var pressHandler: KeyPressHandling?
     /// 收到要粘贴的字符串;组字中、剪贴板没有字符串时不会调用。
     var pasteHandler: ((String) -> Void)?
     var pasteboard: UIPasteboard = .general
     /// 硬件键盘的上、下方向键(未被 `pressHandler` 接走时)。
     var onArrow: (() -> Void)?
+    /// 成为或不再是第一响应者之后(`super` 同意了才调;参数是现在是否聚焦)。
+    var onFocusChange: ((Bool) -> Void)?
+    /// 手指落在正文上,带着当时按住的修饰键。
+    var onTouchBegan: ((UIKeyModifierFlags) -> Void)?
+    /// 内置输入法组字中:点按挪光标、选择、粘贴等编辑动作一律不接(滚动照常)。
+    var isLockedForComposition: () -> Bool = { false }
 
     /// 聚焦打字时锁定的纵向偏移。非 nil 时,系统自发的滚动(插入后自动滚到光标、
     /// 内容尺寸变化时的校正)一律钉回这里;用户手指拖动不受限。
@@ -34,6 +41,32 @@ final class SumiTextView: UITextView {
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
 
     override var undoManager: UndoManager? { coreUndoManager ?? super.undoManager }
+
+    // MARK: 焦点与触摸
+
+    @discardableResult
+    override func becomeFirstResponder() -> Bool {
+        let ok = super.becomeFirstResponder()
+        if ok { onFocusChange?(isFirstResponder) }
+        return ok
+    }
+
+    @discardableResult
+    override func resignFirstResponder() -> Bool {
+        let ok = super.resignFirstResponder()
+        if ok { onFocusChange?(false) }
+        return ok
+    }
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        onTouchBegan?(event?.modifierFlags ?? [])
+        super.touchesBegan(touches, with: event)
+    }
+
+    override func gestureRecognizerShouldBegin(_ g: UIGestureRecognizer) -> Bool {
+        if g !== panGestureRecognizer && isLockedForComposition() { return false }
+        return super.gestureRecognizerShouldBegin(g)
+    }
 
     // MARK: 滚动锁
 
@@ -118,7 +151,14 @@ final class SumiTextView: UITextView {
         super.insertText(LineEndings.lf(text))
     }
 
+    private static let editActions: [Selector] = [
+        #selector(cut(_:)), #selector(copy(_:)), #selector(paste(_:)), #selector(delete(_:)),
+        #selector(select(_:)), #selector(selectAll(_:)), #selector(pasteAndMatchStyle(_:)),
+        #selector(toggleBoldface(_:)), #selector(toggleItalics(_:)), #selector(toggleUnderline(_:)),
+    ]
+
     override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
+        if isLockedForComposition() && Self.editActions.contains(action) { return false }
         if action == #selector(paste(_:)) {
             return markedTextRange == nil && isEditable && pasteboard.hasStrings
         }
@@ -128,15 +168,23 @@ final class SumiTextView: UITextView {
     // MARK: 按键入口
 
     override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
-        if let h = pressHandler, h.handle(presses, event: event, phase: .began) { return }
-        if presses.contains(where: { [.keyboardUpArrow, .keyboardDownArrow].contains($0.key?.keyCode) }) {
+        let rest = pressHandler?.unhandled(presses, began: true) ?? presses
+        guard !rest.isEmpty else { return }
+        if rest.contains(where: { [.keyboardUpArrow, .keyboardDownArrow].contains($0.key?.keyCode) }) {
             onArrow?()
         }
-        super.pressesBegan(presses, with: event)
+        super.pressesBegan(rest, with: event)
     }
 
     override func pressesEnded(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
-        if let h = pressHandler, h.handle(presses, event: event, phase: .ended) { return }
-        super.pressesEnded(presses, with: event)
+        let rest = pressHandler?.unhandled(presses, began: false) ?? presses
+        guard !rest.isEmpty else { return }
+        super.pressesEnded(rest, with: event)
+    }
+
+    override func pressesCancelled(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        let rest = pressHandler?.unhandled(presses, began: false) ?? presses
+        guard !rest.isEmpty else { return }
+        super.pressesCancelled(rest, with: event)
     }
 }

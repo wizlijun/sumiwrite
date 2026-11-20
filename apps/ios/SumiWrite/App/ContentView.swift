@@ -128,7 +128,7 @@ struct ContentView: View {
                 chromeButton("chevron.right", "下一页") { switchPage { library.next() } }
                 chromeButton("plus", "新建") { switchPage { library.newPage() } }
                 chromeButton("square.grid.2x2", "总览") { openOverview() }
-                chromeButton("gearshape", "设置") { showAppearance = true }
+                chromeButton("gearshape", "设置") { openAppearance() }
                 chromeButton("trash", "移到废纸篓") {
                     if switchPage({ library.moveToTrash(library.currentID) }) {
                         flash("已移到废纸篓,可在总览里恢复")
@@ -158,13 +158,15 @@ struct ContentView: View {
         .accessibilityLabel(label)
     }
 
-    /// 组字中不切页;否则先存,再调纸页库,有目标页才重建编辑面。返回是否真的执行了。
+    /// 系统输入法组字中不切页;内置输入法的组字先按原文上屏(ios.md §3.6),再存,再调纸页库,
+    /// 有目标页才重建编辑面。返回是否真的执行了。
     @discardableResult
     private func switchPage(_ change: () -> CorePage?) -> Bool {
         guard controller.canSwitchPage else {
             flash("请先完成输入")
             return false
         }
+        controller.prepareToSwitch()
         controller.saveNow()
         if let page = change() { controller.show(page: page) }
         controller.focusEditor()
@@ -172,9 +174,16 @@ struct ContentView: View {
     }
 
     private func openOverview() {
+        controller.prepareToSwitch()
         controller.saveNow()
         library.refresh()
         showOverview = true
+    }
+
+    /// 设置面板盖住编辑面:内置输入法的组字先上屏。
+    private func openAppearance() {
+        controller.prepareToSwitch()
+        showAppearance = true
     }
 
     private func handle(_ cmd: EditorCommand) {
@@ -183,7 +192,7 @@ struct ContentView: View {
         case .prev: switchPage { library.prev() }
         case .next: switchPage { library.next() }
         case .overview: openOverview()
-        case .appearance: showAppearance = true
+        case .appearance: openAppearance()
         case .menu: withAnimation(.easeOut(duration: 0.15)) { chromeOpen.toggle() }
         case .typing:
             if chromeOpen { chromeOpen = false }
