@@ -30,6 +30,11 @@ describe('Sumi language and host diagnostics', () => {
     expect(i18n.hostMessage('')).toBe('')
   })
   it.each([
+    ['en', '尚未设置归档目录', 'No archive folder set yet'], ['ja', '尚未设置归档目录', '保存先フォルダが未設定です'],
+    ['en', '归档目录不可用', 'The archive folder is unavailable'], ['ja', '归档目录不可用', '保存先フォルダを利用できません'],
+    ['zh', '归档目录不可用', '归档目录不可用'],
+  ])('translates the archive host message %s %s', (locale, source, expected) => expect(createI18n(locale).hostMessage(source)).toBe(expected))
+  it.each([
     ['zh', '离线保存中。', '操作未完成。'],
     ['ja', 'オフラインで保存中。', '操作を完了できませんでした。'],
     ['en', 'Saving offline.', 'The operation could not be completed.'],

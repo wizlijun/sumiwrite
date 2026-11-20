@@ -1,7 +1,7 @@
 import './style.css'
 import { isApplePlatformSync, primaryShortcut, shortcutEventBlocked } from './shortcuts'
 import { createI18n } from './i18n'
-import { fontPresets, pageLabel, preferencesFromForm, type SumiState, type SurfaceHandle, type Bounds, type FontState, type SoundState } from './contract'
+import { fontPresets, pageLabel, preferencesFromForm, type ArchiveInfo, type SumiState, type SurfaceHandle, type Bounds, type FontState, type SoundState } from './contract'
 
 interface Bridge {
   locale?: string
@@ -371,6 +371,44 @@ function showFonts(form: HTMLFormElement) {
   }
   fontPanel = { render, poll, pause, dispose() { active = false; pause() } }
 }
+let archiveInfo: ArchiveInfo | undefined
+function applyArchive(info: ArchiveInfo) {
+  archiveInfo = info
+  document.getElementById('archive-prompt')?.remove()
+  if (info.archive === null) {
+    const prompt = document.createElement('div'); prompt.id = 'archive-prompt'; prompt.setAttribute('role', 'status')
+    const text = document.createElement('span'); text.textContent = t('请选择稿子归档到哪个文件夹。选好之前照常写字，文件稍后写出。', 'Choose a folder to archive your writing. Keep writing meanwhile; files are written afterwards.', '原稿の保存先フォルダを選んでください。選ぶまでは通常どおり書けます。ファイルは後から書き出されます。')
+    const choose = document.createElement('button'); choose.type = 'button'; choose.id = 'archive-prompt-choose'; choose.textContent = t('选择…', 'Choose…', '選択…')
+    choose.onclick = () => void run(chooseArchive)
+    prompt.append(text, choose); el('notice-slot').before(prompt)
+  }
+  renderArchiveSection()
+}
+function renderArchiveSection() {
+  const path = document.getElementById('archive-path'); if (!path || !archiveInfo) return
+  path.textContent = archiveInfo.archive ?? t('尚未设置归档目录', 'No archive folder set yet', '保存先フォルダが未設定です')
+  el('archive-status').textContent = archiveInfo.archive !== null && !archiveInfo.available ? t('归档目录不可用', 'The archive folder is unavailable', '保存先フォルダを利用できません') : ''
+  const list = el('archive-untaken'); list.replaceChildren()
+  list.hidden = archiveInfo.untaken.length === 0
+  document.getElementById('archive-untaken-hint')!.hidden = list.hidden
+  for (const name of archiveInfo.untaken) { const item = document.createElement('li'); item.textContent = name; list.append(item) }
+}
+async function loadArchive() { applyArchive(await request<ArchiveInfo>('archive_get')) }
+async function chooseArchive() { applyArchive(await request<ArchiveInfo>('archive_choose')) }
+function showArchive(form: HTMLFormElement) {
+  const section = document.createElement('section'); section.className = 'archive-settings'
+  const heading = document.createElement('h2'); heading.textContent = t('归档目录', 'Archive folder', '保存先フォルダ'); section.setAttribute('aria-label', heading.textContent)
+  const path = document.createElement('p'); path.id = 'archive-path'
+  const status = document.createElement('p'); status.id = 'archive-status'; status.setAttribute('role', 'status')
+  const choose = document.createElement('button'); choose.type = 'button'; choose.id = 'archive-choose'; choose.textContent = t('选择…', 'Choose…', '選択…')
+  choose.onclick = () => void run(chooseArchive)
+  const recover = document.createElement('button'); recover.type = 'button'; recover.id = 'archive-recover'; recover.textContent = t('从归档目录选文件恢复…', 'Recover from a file in the archive folder…', '保存先フォルダのファイルから復元…')
+  recover.onclick = () => void run(async () => { await request<{ path: string | null }>('recovery_choose') })
+  const hint = document.createElement('p'); hint.id = 'archive-untaken-hint'; hint.hidden = true
+  hint.textContent = t('这些是升级前的旧纸页库，未接管，也不会被删除。', 'These are page libraries from before the upgrade. They were not taken over and will not be deleted.', 'これらはアップグレード前の旧ページライブラリです。引き継がれず、削除もされません。')
+  const untaken = document.createElement('ul'); untaken.id = 'archive-untaken'
+  section.append(heading, path, status, choose, recover, hint, untaken); form.append(section)
+}
 function showSounds(form: HTMLFormElement) {
   const section = document.createElement('section'); section.className = 'sound-settings'; section.setAttribute('aria-label', t('键盘音效', 'Typing sounds', '打鍵音'))
   const heading = document.createElement('h2'); heading.textContent = section.getAttribute('aria-label'); section.append(heading)
@@ -433,6 +471,7 @@ function showSounds(form: HTMLFormElement) {
 }
 async function showAppearance() {
   await openPanel(t('外观', 'Appearance', '外観'))
+  await loadArchive()
   const form = document.createElement('form')
   const labels = { theme: t('配色', 'Colors', '配色'), caretMotion: t('光标效果', 'Caret', 'カーソル'), fontSize: t('字号', 'Font size', '文字サイズ'), lineHeight: t('行距', 'Line height', '行の高さ'), maxColumns: t('正文宽度（半角列）', 'Width (half-width columns)', '本文の幅（半角文字数）'), bottomInset: t('额外底部留白', 'Extra bottom space', '下部の追加余白') }
   for (const [key, label] of Object.entries(labels)) {
@@ -473,10 +512,12 @@ async function showAppearance() {
     hint.textContent = t('在 macOS 输入菜单中选择 Fcitx5 for Sumi。正文获得输入焦点时，候选字会自动沿用正文排版；搜索框和其他应用继续使用输入法候选窗口。联动不可用时自动恢复输入法候选窗口。', 'Choose Fcitx5 for Sumi in the macOS Input menu. While the writing editor has focus, candidates automatically use the text’s layout. Search fields and other apps use the input method’s candidate window. If integration is unavailable, the candidate window is restored automatically.', 'macOS の入力メニューで Fcitx5 for Sumi を選択してください。本文にフォーカスがある間、変換候補は本文のレイアウトで表示されます。検索欄やほかのアプリでは入力メソッドの候補ウインドウを使います。連携できない場合は候補ウインドウに自動で戻ります。')
     section.append(title, hint); form.append(section)
   }
+  showArchive(form)
   showSounds(form)
   const submit = document.createElement('button'); submit.type = 'submit'; submit.textContent = t('应用', 'Apply', '適用'); form.append(submit)
   form.onsubmit = event => { event.preventDefault(); void run(async () => { applyState(await request<SumiState>('preferences', { preferences: preferencesFromForm(form, state!.preferences.fontFamily, state!.preferences.startFullscreen ?? true), preserveFont: true })); await closePanel() }) }
   el('panel-body').append(form)
+  renderArchiveSection()
   fontPanel?.render(); void fontPanel?.poll(); soundPanel?.render(); void soundPanel?.read()
 }
 async function showSync() {
@@ -585,4 +626,5 @@ void run(async () => {
     if (state?.available && !state.activePageId) await page('create')
     else await mountPage(true)
   }
+  if (state?.available) await loadArchive()
 })

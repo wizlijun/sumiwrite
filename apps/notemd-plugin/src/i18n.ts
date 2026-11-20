@@ -57,6 +57,8 @@ const hostMessages: readonly (readonly [string, string, string])[] = [
   ['Font download exceeds expected size', 'The font download exceeds its expected size.', 'フォントのダウンロードが想定サイズを超えています。'],
   ['Incomplete font download', 'The font download is incomplete.', 'フォントのダウンロードが完了していません。'],
   ['Font size or SHA-256 verification failed', 'Font size or SHA-256 verification failed.', 'フォントサイズまたは SHA-256 の検証に失敗しました。'],
+  ['尚未设置归档目录', 'No archive folder set yet', '保存先フォルダが未設定です'],
+  ['归档目录不可用', 'The archive folder is unavailable', '保存先フォルダを利用できません'],
   ['Unexpected font archive structure', 'The font archive has an unexpected structure.', 'フォントアーカイブの構成が想定と異なります。'],
   ['Unexpected font archive member', 'The font archive contains an unexpected file.', 'フォントアーカイブに想定外のファイルが含まれています。'],
   ['Unexpected archived font size', 'The archived font size does not match.', 'アーカイブ内のフォントサイズが一致しません。'],

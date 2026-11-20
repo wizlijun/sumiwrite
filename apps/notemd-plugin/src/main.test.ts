@@ -1,7 +1,7 @@
 /// <reference types="node" />
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { defaultPreferences, fontPresets, type SumiState, type FontState, type SoundState } from './contract'
+import { defaultPreferences, fontPresets, type SumiState, type FontState, type SoundState, type ArchiveInfo } from './contract'
 import { readFileSync } from 'node:fs'
 const styles = readFileSync(`${__dirname}/style.css`, 'utf8')
 
@@ -15,7 +15,7 @@ const fontState = (overrides: Partial<FontState> = {}): FontState => ({
   selectedFont: 'Sumi Plex', pendingFont: null, ...overrides,
 })
 const fontButton = (family: string) => document.querySelector<HTMLButtonElement>(`button[data-font="${family}"]`)!
-async function setup(next = state(), mount?: () => Promise<unknown>, locale = 'zh', platform = 'MacIntel') {
+async function setup(next = state(), mount?: () => Promise<unknown>, locale = 'zh', platform = 'MacIntel', archive: ArchiveInfo = { archive: '/a/b', available: true, untaken: [] }, chosen: ArchiveInfo = archive) {
   vi.spyOn(navigator, 'platform', 'get').mockReturnValue(platform)
   vi.resetModules()
   document.body.innerHTML = '<div id="app"></div>'
@@ -24,6 +24,9 @@ async function setup(next = state(), mount?: () => Promise<unknown>, locale = 'z
     if (method === 'host.sumi.state' || method === 'host.sumi.page' || method === 'host.sumi.preferences' || method === 'host.sumi.pair') return next
     if (method === 'host.sumi.invite') return { invitation: '{"spaceId":"test-space","code":"test-only","expiresAt":123456}' }
     if (method === 'host.sumi.mount') return mount ? mount() : { id: 'surface-a', generation: 1 }
+    if (method === 'host.sumi.archive_get') return archive
+    if (method === 'host.sumi.archive_choose') return chosen
+    if (method === 'host.sumi.recovery_choose') return { path: null }
     if (method === 'host.sumi.sound_state') return { enabled: true, preset: 'typewriter', permission: 'granted', status: 'ready' }
     if (method === 'host.sumi.fonts') return fontState({ selectedFont: next.preferences.fontFamily })
     return null
@@ -44,7 +47,7 @@ describe('Sumi native writing shell', () => {
   })
   it('mounts the selected page once without sending its body through JavaScript', async () => {
     const request = await setup()
-    expect(request.mock.calls.map(call => call[0])).toEqual(['host.sumi.state', 'host.sumi.mount', 'host.sumi.visible', 'host.sumi.focus'])
+    expect(request.mock.calls.map(call => call[0])).toEqual(['host.sumi.state', 'host.sumi.mount', 'host.sumi.visible', 'host.sumi.focus', 'host.sumi.archive_get'])
     expect(document.querySelector('[contenteditable],textarea')).toBeNull()
   })
   it('detaches a mount that completes after the window is unloaded', async () => {
@@ -1042,5 +1045,43 @@ describe('Sumi independent typing sound settings', () => {
     request.mockClear(); receive({ type: 'sumi-window-state', visible: true }); await settle()
     expect(request).toHaveBeenCalledWith('host.sumi.sound_state', {})
     expect(request.mock.calls.some(([method]) => method === 'host.sumi.sound_request_permission')).toBe(false)
+  })
+  describe('archive folder', () => {
+    const open = async (...args: Parameters<typeof setup> extends [unknown?, unknown?, unknown?, unknown?, ...infer R] ? R : never) => {
+      const request = await setup(state(), undefined, 'zh', 'MacIntel', ...args)
+      document.getElementById('appearance')!.click(); await settle(); await settle()
+      return request
+    }
+    it('appearance shows archive path and availability', async () => {
+      await open({ archive: '/a/b', available: true, untaken: [] })
+      expect(document.getElementById('archive-path')!.textContent).toBe('/a/b')
+      expect(document.getElementById('archive-status')!.textContent).toBe('')
+    })
+    it('shows the unavailable status', async () => {
+      await open({ archive: '/a/b', available: false, untaken: [] })
+      expect(document.getElementById('archive-status')!.textContent).toBe('归档目录不可用')
+    })
+    it('choose archive calls host and re-renders', async () => {
+      const request = await open({ archive: '/a/b', available: true, untaken: [] }, { archive: '/c/d', available: true, untaken: [] })
+      document.getElementById('archive-choose')!.click(); await settle()
+      expect(request.mock.calls.filter(call => call[0] === 'host.sumi.archive_choose')).toHaveLength(1)
+      expect(document.getElementById('archive-path')!.textContent).toBe('/c/d')
+    })
+    it('recover from archive calls recovery_choose', async () => {
+      const request = await open()
+      document.getElementById('archive-recover')!.click(); await settle()
+      expect(request.mock.calls.filter(call => call[0] === 'host.sumi.recovery_choose')).toHaveLength(1)
+    })
+    it('untaken libraries are listed as a hint', async () => {
+      await open({ archive: '/a/b', available: true, untaken: ['/old/1', '/old/2'] })
+      expect(document.querySelectorAll('#archive-untaken li')).toHaveLength(2)
+    })
+    it('null archive shows startup prompt', async () => {
+      const request = await setup(state(), undefined, 'zh', 'MacIntel', { archive: null, available: false, untaken: [] }, { archive: '/c/d', available: true, untaken: [] })
+      expect(document.getElementById('archive-prompt')).not.toBeNull()
+      document.querySelector<HTMLButtonElement>('#archive-prompt button')!.click(); await settle()
+      expect(request.mock.calls.filter(call => call[0] === 'host.sumi.archive_choose')).toHaveLength(1)
+      expect(document.getElementById('archive-prompt')).toBeNull()
+    })
   })
 })

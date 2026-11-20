@@ -14,7 +14,7 @@ from pathlib import Path
 
 SCHEMA = 1
 PLUGIN_ID = 'notemd.sumi'
-HOST_CONTRACT = 1
+HOST_CONTRACT = 2
 FONT_SUFFIXES = {'.ttf', '.otf', '.woff', '.woff2', '.ttc', '.otc'}
 
 

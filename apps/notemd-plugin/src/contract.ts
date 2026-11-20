@@ -21,6 +21,7 @@ export interface SumiState {
   sync: { connected: boolean; pending: number; message?: string }
   saveState: 'saved' | 'saving' | 'projection-pending' | 'error'
 }
+export interface ArchiveInfo { archive: string | null; available: boolean; untaken: string[] }
 export interface SurfaceHandle { id: string; generation: number }
 export interface Bounds { x: number; y: number; width: number; height: number }
 export interface FontStatus {

@@ -17,7 +17,7 @@ spec.loader.exec_module(vs)
 META = {
     'schema': 1, 'plugin': 'notemd.sumi', 'version': '0.1.16',
     'target': 'aarch64-apple-darwin', 'engines_notemd': '>=6.1111.1',
-    'host_contract': 1, 'core_tag': 'core-v0.1.0',
+    'host_contract': 2, 'core_tag': 'core-v0.2.0',
     'source_tag': None, 'source_commit': 'a' * 40,
 }
 
@@ -40,6 +40,10 @@ class VerifyStageTests(unittest.TestCase):
         self.addCleanup(self._tmp.cleanup)
         self.root = Path(self._tmp.name)
         self.stage = make_stage(self.root)
+
+    def test_host_contract_is_2(self):
+        self.assertEqual(vs.HOST_CONTRACT, 2)
+        self.assertEqual(META['host_contract'], 2)
 
     def test_checklist_roundtrip(self):
         checklist = vs.build_checklist(self.stage, META)
