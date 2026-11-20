@@ -349,16 +349,23 @@ final class EditorController: UIViewController, UITextViewDelegate {
 
     // MARK: 把内核结果放到编辑面
 
-    /// 被接受:文字相同只重设属性;不同就按可见文本的差异对 textStorage 做最小替换。
+    /// 被接受:文字相同只重设属性;不同就按可见文本的差异(锚在结果光标上)对 textStorage 做最小替换。
+    /// 文字没有替换、视图选区又已经止于结果光标时,不动选区:那就是用户的真实光标。
     private func show(_ rendered: RenderedText, caret: Int) {
         programmatic {
             let storage = textView.textStorage
-            if storage.string != rendered.text, let edit = EditDiff.between(storage.string, rendered.text) {
+            var replaced = false
+            if storage.string != rendered.text,
+               let edit = EditDiff.between(storage.string, rendered.text, caret: caret) {
                 storage.replaceCharacters(in: edit.range,
                                           with: NSAttributedString(string: edit.replacement, attributes: baseAttributes))
+                replaced = true
             }
             restyle()
-            textView.selectedRange = clamped(NSRange(location: caret, length: 0))
+            let sel = textView.selectedRange
+            if replaced || sel.location == NSNotFound || NSMaxRange(sel) != caret {
+                textView.selectedRange = clamped(NSRange(location: caret, length: 0))
+            }
         }
         expectedSelection = textView.selectedRange
     }

@@ -201,6 +201,37 @@ final class EditorControllerTests: XCTestCase {
         XCTAssertNotNil(c.textView.lockedOffsetY, "the first input after a move returns to focus")
     }
 
+    /// 两段之间隔着空行,在上一段末尾回车:光标留在用户处,接着打的字留在上一段之后(终审 I-1)。
+    func test_enterBeforeBlankLineKeepsRealCaret() throws {
+        let (c, _, page) = try makeController(tempDir())
+        let window = try hostInWindow(c)
+        defer { window.isHidden = true }
+        type("a\n\nb", into: c)
+        c.textView.selectedRange = NSRange(location: 1, length: 0)
+        c.textView.insertText("\n")
+        XCTAssertEqual(c.textView.text, "a\n\n\nb")
+        XCTAssertEqual(page.body(), "a\n\n\nb")
+        XCTAssertEqual(c.textView.selectedRange, NSRange(location: 2, length: 0))
+        c.textView.insertText("c")
+        XCTAssertEqual(page.body(), "a\nc\n\nb")
+        XCTAssertEqual(c.textView.selectedRange, NSRange(location: 3, length: 0))
+    }
+
+    /// 叠词:`谢|谢` 处再打 `谢`,再退格;光标都留在用户处。
+    func test_doubledCharacterKeepsRealCaret() throws {
+        let (c, _, page) = try makeController(tempDir())
+        let window = try hostInWindow(c)
+        defer { window.isHidden = true }
+        type("谢谢", into: c)
+        c.textView.selectedRange = NSRange(location: 1, length: 0)
+        c.textView.insertText("谢")
+        XCTAssertEqual(page.body(), "谢谢谢")
+        XCTAssertEqual(c.textView.selectedRange, NSRange(location: 2, length: 0))
+        c.textView.deleteBackward()
+        XCTAssertEqual(page.body(), "谢谢")
+        XCTAssertEqual(c.textView.selectedRange, NSRange(location: 1, length: 0))
+    }
+
     func test_prefsChangePersistsAndRestyles() throws {
         let d = freshDefaults()
         let (c, _, _) = try makeController(tempDir(), defaults: d)

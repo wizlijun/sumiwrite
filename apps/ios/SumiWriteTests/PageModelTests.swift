@@ -102,4 +102,58 @@ final class PageModelTests: XCTestCase {
         guard case .rejected = m.userEdited(visible: "a", composing: false, caret: 1) else { return XCTFail() }
         XCTAssertEqual(sink.commits.count, 0)
     }
+
+    // MARK: 重复字符处的编辑锚在视图光标上(终审 I-1)
+
+    /// 先把正文打成 `start`,再把视图改成 `visible`、光标在 `caret`;断言交给内核的区间与结果光标。
+    private func check(_ start: String, _ visible: String, caret: Int, sent: TextEdit,
+                       file: StaticString = #filePath, line: UInt = #line) throws {
+        let (m, page, _) = try make()
+        guard case .accepted = m.userEdited(visible: start, composing: false, caret: start.utf16.count) else {
+            return XCTFail("setup rejected", file: file, line: line)
+        }
+        let o = m.userEdited(visible: visible, composing: false, caret: caret)
+        guard case .accepted(let r, let c) = o else { return XCTFail("\(o)", file: file, line: line) }
+        XCTAssertEqual(m.lastSubmitted, sent, file: file, line: line)
+        XCTAssertEqual(r.text, visible, file: file, line: line)
+        XCTAssertEqual(page.body(), visible, file: file, line: line)
+        XCTAssertEqual(c, caret, file: file, line: line)
+    }
+
+    private func edit(_ l: Int, _ n: Int, _ r: String) -> TextEdit {
+        TextEdit(range: NSRange(location: l, length: n), replacement: r)
+    }
+
+    func test_enterAtParagraphEndBeforeBlankLine() throws {
+        try check("a\n\nb", "a\n\n\nb", caret: 2, sent: edit(1, 0, "\n"))
+    }
+
+    func test_typingDoubledCharacter() throws {
+        try check("谢", "谢谢", caret: 2, sent: edit(1, 0, "谢"))
+        try check("谢谢", "谢谢谢", caret: 2, sent: edit(1, 0, "谢"))
+    }
+
+    func test_backspaceInsideBlankLines() throws {
+        try check("a\n\n\nb", "a\n\nb", caret: 2, sent: edit(2, 1, ""))
+    }
+
+    func test_backspaceOnDoubledCharacter() throws {
+        try check("谢谢谢", "谢谢", caret: 1, sent: edit(1, 1, ""))
+    }
+
+    func test_emojiNextToRepeatedCharacter() throws {
+        try check("😀aa", "😀aaa", caret: 4, sent: edit(3, 0, "a"))
+        try check("😀😀", "😀😀😀", caret: 4, sent: edit(2, 0, "😀"))
+        try check("😀😀😀", "😀😀", caret: 2, sent: edit(2, 2, ""))
+    }
+
+    /// 粘贴的结果光标落在粘贴内容之后,不因重复字符右偏。
+    func test_pasteAfterSameCharacterKeepsCaretAfterPaste() throws {
+        let (m, _, _) = try make()
+        _ = m.userEdited(visible: "aa", composing: false, caret: 2)
+        let o = m.paste(markdown: "a", range: NSRange(location: 1, length: 0))
+        guard case .accepted(let r, let c) = o else { return XCTFail("\(o)") }
+        XCTAssertEqual(r.text, "aaa")
+        XCTAssertEqual(c, 2)
+    }
 }

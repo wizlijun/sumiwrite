@@ -18,6 +18,8 @@ final class PageModel {
     private let clock: () -> Int64
     private(set) var rendered: RenderedText
     var isWritable = true
+    /// 最近一次交给内核 `applyEdit` 的可见区间替换;只供测试读取。
+    private(set) var lastSubmitted: TextEdit?
 
     init(page: CorePage, sink: CommitSink?,
          clock: @escaping () -> Int64 = { Int64(Date().timeIntervalSince1970 * 1000) }) {
@@ -30,18 +32,19 @@ final class PageModel {
     var canUndo: Bool { page.canUndo() }
     var canRedo: Bool { page.canRedo() }
 
+    /// `caret` 是视图在这次编辑后的真实光标(UTF-16)。差异锚在它的左侧;内核接受且正文与视图一致时,
+    /// 结果光标就是它,不从差异推算。
     func userEdited(visible: String, composing: Bool, caret: Int) -> EditOutcome {
         if composing { return .unchanged }
         if !isWritable { return reject(caret: caret) }
-        guard let edit = EditDiff.between(rendered.text, visible) else { return .unchanged }
+        guard let edit = EditDiff.between(rendered.text, visible, caret: caret) else { return .unchanged }
         do {
             let commit = try page.applyEdit(
                 revision: rendered.revision, start: UInt32(edit.range.location),
                 length: UInt32(edit.range.length), replacement: edit.replacement, atMs: clock())
-            var newCaret = edit.range.location + edit.replacement.utf16.count
-            if commit.rendered.text != visible, let fix = EditDiff.between(visible, commit.rendered.text) {
-                newCaret = fix.range.location + fix.replacement.utf16.count
-            }
+            lastSubmitted = edit
+            let shown = commit.rendered.text
+            let newCaret = shown.utf16.elementsEqual(visible.utf16) ? caret : Self.map(caret, from: visible, to: shown)
             return accept(commit, caret: newCaret)
         } catch {
             return reject(caret: caret)
@@ -54,7 +57,9 @@ final class PageModel {
             let commit = try page.pasteMarkdown(
                 revision: rendered.revision, start: UInt32(range.location),
                 length: UInt32(range.length), markdown: markdown, atMs: clock())
-            return accept(commit, caret: changeEnd(rendered.text, commit.rendered.text, fallback: range.location))
+            // 选区之后的可见文字不变:光标落在它前面,不靠差异推算(差异在重复字符处会右偏)。
+            let tail = rendered.text.utf16.count - NSMaxRange(range)
+            return accept(commit, caret: max(range.location, commit.rendered.text.utf16.count - tail))
         } catch {
             return reject(caret: range.location)
         }
@@ -76,6 +81,15 @@ final class PageModel {
     private func changeEnd(_ old: String, _ new: String, fallback: Int) -> Int {
         guard let d = EditDiff.between(old, new) else { return fallback }
         return d.range.location + d.replacement.utf16.count
+    }
+
+    /// 内核的结果与视图不同(例如换行被统一)时,把视图光标搬到内核文本上:改动之前不动,之后按长度差平移,
+    /// 落在改动之内就放到改动末尾。
+    private static func map(_ caret: Int, from visible: String, to shown: String) -> Int {
+        guard let fix = EditDiff.between(visible, shown) else { return caret }
+        if caret < fix.range.location { return caret }
+        if caret >= NSMaxRange(fix.range) { return caret + fix.replacement.utf16.count - fix.range.length }
+        return fix.range.location + fix.replacement.utf16.count
     }
 
     private func accept(_ commit: EditCommit, caret: Int) -> EditOutcome {
