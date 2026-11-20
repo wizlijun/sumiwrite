@@ -15,7 +15,10 @@ note.md 宿主里的 Sumi Write 插件:前端界面、Rust 后台(crate `notemd-
 ```sh
 cargo +1.99.0 test --manifest-path apps/notemd-plugin/backend/Cargo.toml
 cargo +1.99.0 clippy --manifest-path apps/notemd-plugin/backend/Cargo.toml --all-targets -- -D warnings
-cd apps/notemd-plugin && npm ci && npm test && npm run check && npm run build
+npm --prefix apps/notemd-plugin ci
+npm --prefix apps/notemd-plugin test
+npm --prefix apps/notemd-plugin run check
+npm --prefix apps/notemd-plugin run build
 python3 -I -m unittest discover -s apps/notemd-plugin/scripts -p 'test_*.py'
 ```
 

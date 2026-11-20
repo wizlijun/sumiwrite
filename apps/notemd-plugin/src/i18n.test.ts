@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createI18n, normalizeLocale } from '../../../src/lib/sumi/i18n'
+import { createI18n, normalizeLocale } from './i18n'
 import manifestSource from '../manifest.v2.json?raw'
 import htmlSource from '../index.html?raw'
 

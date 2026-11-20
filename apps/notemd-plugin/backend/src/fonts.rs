@@ -40,8 +40,9 @@ struct Manifest {
     cascades: HashMap<String, Vec<String>>,
     assets: Vec<Asset>,
 }
+pub const MANIFEST_JSON: &str = include_str!("../../resources/sumi/manifest.json");
 static MANIFEST: LazyLock<Manifest> = LazyLock::new(|| {
-    serde_json::from_str(include_str!("../../resources/sumi/manifest.json"))
+    serde_json::from_str(MANIFEST_JSON)
         .expect("trusted Sumi Write font manifest")
 });
 type Progress = Arc<dyn Fn(u64) + Send + Sync>;

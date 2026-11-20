@@ -1,6 +1,6 @@
 import './style.css'
-import { isApplePlatformSync, primaryShortcut, shortcutEventBlocked } from '../../shared/shortcuts'
-import { createI18n } from '../../../src/lib/sumi/i18n'
+import { isApplePlatformSync, primaryShortcut, shortcutEventBlocked } from './shortcuts'
+import { createI18n } from './i18n'
 import { fontPresets, pageLabel, preferencesFromForm, type SumiState, type SurfaceHandle, type Bounds, type FontState, type SoundState } from './contract'
 
 interface Bridge {
