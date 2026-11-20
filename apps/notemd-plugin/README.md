@@ -8,7 +8,15 @@ note.md 宿主里的 Sumi Write 插件:前端界面、Rust 后台(crate `notemd-
 - `src/`、`index.html`、`vite.config.ts`、`vitest.config.ts`、`tsconfig.json`、`package.json`:前端。
 - `manifest.v2.json`:插件清单。
 - `resources/`:`sounds/`、`sumi/`(字体与许可文本,按字节保持不变)。
-- `scripts/`:`verify-linux-binary.py`、`verify-sounds.py` 及其测试。
+- `scripts/`:`build-artifact.sh`、`verify-stage.py`、`verify-linux-binary.py`、`verify-sounds.py` 及其测试。
+
+## 构建待签名构建物
+
+```sh
+apps/notemd-plugin/scripts/build-artifact.sh --target <三元组> --out <目录> [--debug]
+```
+
+输出 `<目录>/stage/`(未签名的安装布局)与 `<目录>/checklist.json`(含 `source_commit` 与每个文件的 SHA-256)。`<目录>` 必须不存在或为空。脚本不读任何签名或公证凭据;签名、公证与上架在 note.md。格式见 [`docs/handoff/03-notemd-contract.md`](../../docs/handoff/03-notemd-contract.md) §5。
 
 ## Verification
 

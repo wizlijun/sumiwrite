@@ -199,7 +199,7 @@ owner 是“当前持有某纸页编辑面的 `(窗口, 标签页, 编辑面)`�
 
 `SumiState.saveState` 的取值逻辑(`state_value`):任一页有 `error`、待重试的本地编辑、或未落地的原生草稿 → `error`;任一页持久修订号落后于内存修订号 → `saving`;任一页投影出错 → `projection-pending`;否则 `saved`。`sync.pending` 为待发送的 outbox 条目数。
 
-**契约外的耦合,须在第 2 期解决**(见 §7):`plugins-src/write/src/main.ts` 还 import 了 `../../shared/shortcuts` 与 `../../../src/lib/sumi/i18n`,二者在宿主仓库里,不在上表。
+**契约外的耦合,第 2 期已解决**(见 §7):迁移前 `plugins-src/write/src/main.ts` 还 import 了 `../../shared/shortcuts` 与 `../../../src/lib/sumi/i18n`,二者在宿主仓库里,不在上表。现在 sumiwrite 自带 `apps/notemd-plugin/src/shortcuts.ts` 与 `i18n.ts`,不再 import 宿主文件。
 
 ### 1.4 表 D:后台服务握手与服务消息
 
@@ -306,7 +306,7 @@ owner 是“当前持有某纸页编辑面的 `(窗口, 标签页, 编辑面)`�
 
 ## 2. 依赖方向
 
-两个方向都按**固定 tag** 引用,不跟分支;两者在 crate 层面不成环。 **[我的判断]**(设计 §5.3 第 2 条;其中“共享快捷键 TypeScript 的处理方式由第 2 期定”同属 [我的判断],第 5 条签名与上架归属亦是。)
+两个方向都按**固定 tag** 引用,不跟分支;两者在 crate 层面不成环。 **[我的判断]**(设计 §5.3 第 2 条;其中“共享快捷键 TypeScript 的处理方式”第 2 期已定为 sumiwrite 自带一份,同属 [我的判断],第 5 条签名与上架归属亦是。)
 
 | 方向 | 引用什么 | 怎么引用 |
 |---|---|---|
@@ -316,7 +316,7 @@ owner 是“当前持有某纸页编辑面的 `(窗口, 标签页, 编辑面)`�
 - **本地联调**:在任一侧的 `Cargo.toml` 用 `[patch]` 指向另一侧的本地目录;提交前去掉。
 - **现状**(基线):宿主与插件后台都按 `path` 依赖 `write-core`、`sumi-protocol`(`src-tauri/Cargo.toml`、`plugins-src/write/backend/Cargo.toml`;`sumi-protocol/Cargo.toml` 的 `write-core = { path = "../write-core" }`);尚无 `core-v*` tag。第 1 期迁移完成时才打第一个。
 - `core-vX.Y.Z` 的版本号与 `host-contract` 的版本号**是否联动**:`[未定]`,见 §7。
-- 共享快捷键 TypeScript(`plugins-src/shared/shortcuts`)的归属与同步方式:`[未定]`,由第 2 期计划定。
+- 共享快捷键 TypeScript(`plugins-src/shared/shortcuts`)的归属与同步方式:第 2 期已定,sumiwrite 自带 `apps/notemd-plugin/src/shortcuts.ts`,note.md 的原件不动,两者不同步。
 
 ---
 
@@ -373,7 +373,7 @@ owner 是“当前持有某纸页编辑面的 `(窗口, 标签页, 编辑面)`�
 | 插件市场上架 | note.md | `plugins-registry/`、`scripts/gen-plugin-index.mjs` |
 | 待签名构建物与校验清单 | **sumiwrite 交付** | 见下 |
 
-**sumiwrite 交付物**(本设计的 `[我的判断]`;状态 `[未定]`,任务 8 交付后补证据):
+**sumiwrite 交付物**(本设计的 `[我的判断]`;状态 `[未定]`。sumiwrite 侧已交付,证据:[`build-artifact.sh`](https://github.com/wizlijun/sumiwrite/blob/notemd-plugin-v0.1.16/apps/notemd-plugin/scripts/build-artifact.sh)、[`verify-stage.py`](https://github.com/wizlijun/sumiwrite/blob/notemd-plugin-v0.1.16/apps/notemd-plugin/scripts/verify-stage.py)(tag `notemd-plugin-v0.1.16`)。note.md 侧在分支 `sumi/plugin-from-sumiwrite`(9288b33d),待用户合并;合并后补 note.md 的 blob 链接再改为已交付):
 
 入口:`apps/notemd-plugin/scripts/build-artifact.sh --target <三元组> --out <目录> [--debug]`。`--debug` 用调试构建,供 note.md 的开发安装,发版不用。非 `--debug` 时工作树有已跟踪文件的改动即拒绝运行,保证 `source_commit` 属实。`<目录>` 必须不存在或为空;产出恰好是 `stage/` 与 `checklist.json`。脚本不读取、不需要任何签名或公证凭据。
 
@@ -394,6 +394,8 @@ owner 是“当前持有某纸页编辑面的 `(窗口, 标签页, 编辑面)`�
 
 note.md 收到后:比对 `source_commit` → `verify_checklist` → macOS 目标签名并公证二进制,替换 `bin/notemd-sumi`(签名身份、团队 ID、公证凭据只在 note.md 一侧,按引用取用)→ 打包 → minisign → 生成索引 → 上架。签名密钥与公证凭据**不进入** sumiwrite。
 
+**`SUMIWRITE_DIR` 约定**:note.md 里需要本仓库文件的脚本统一读环境变量 `SUMIWRITE_DIR`(默认 `../sumiwrite`),缺目录时报清楚的错。note.md 的 `pnpm build` 与 `scripts/release.sh` 因此都会跑 `scripts/prepare-sumi-font.py`,必须有 sumiwrite 检出;它填充的缓存 `src-tauri/resources/sumi` 不被宿主打包。是否把它从宿主构建里去掉,由 note.md 决定(记入 [04-known-gaps.md](04-known-gaps.md) §4.8)。
+
 ---
 
 ## 6. 来源索引
@@ -405,10 +407,10 @@ note.md 收到后:比对 `source_commit` → `verify_checklist` → macOS 目标
 1. **“约 20 个 `host.sumi.*` 命令”**:实际 UI 桥可调 20 个(表 A),另有一个仅供后台进程回调用的 `host.sumi.service`(表 D1,不在 `mod.rs` 的 `dispatch` 里,只在 `host_api.rs`/`process.rs`/`service.rs`)。设计文档的“约”可改为精确值。
 2. **“原生编辑面的命令与事件”**:`tauri-plugin-native-editor` 实际**不注册任何 JS 命令**(`lib.rs` 文件头),设计文档措辞容易误导;本文按 Rust API + `SurfaceCommand`/`NativeEvent` 枚举记录。
 3. **“owner 交接”**:owner 状态在宿主 `src-tauri/src/sumi/mod.rs` 的 `Owner`,不在原生编辑插件里;契约面见表 B6。
-4. **契约外的跨仓耦合**:`plugins-src/write/src/main.ts` import `../../shared/shortcuts` 与 `../../../src/lib/sumi/i18n`;`contract.ts` 与宿主 `Preferences` 的默认值、范围两处各存一份。设计文档 §5.2 已提到文案与快捷键由第 2 期定,尚无结论 `[未定]`。
+4. **契约外的跨仓耦合**:`plugins-src/write/src/main.ts` import `../../shared/shortcuts` 与 `../../../src/lib/sumi/i18n`;`contract.ts` 与宿主 `Preferences` 的默认值、范围两处各存一份。第 2 期已定:sumiwrite 自带 `shortcuts.ts` 与 `i18n.ts`,`main.ts` 不再 import 宿主文件;`contract.ts` 与宿主 `Preferences` 的两份默认值与范围第 2 期未处理,留待下次契约版本变化时由两边一起定 `[未定]`。
 5. **`core-vX.Y.Z` 与 `host-contract` 版本是否联动** `[未定]`。当前宿主以 `path` 依赖内核,无 tag。
 6. **服务协议 `VERSION=1` 与 `host-contract v1` 的关系**:二者数值同为 1 但含义不同(前者是私有通道线上版本,后者是整个耦合面的快照版本);主版本升级时是否必须同时改 `VERSION` `[未定]`。
 7. **`Writing Page` frontmatter 缺 `generated` 署名**:见 §3 末尾提示。是否符合 OKF §7 的人工撰写署名要求 `[未定]`。
 8. **`host.sumi.sound_*` 三条命令**不在 `mod.rs` 的 `dispatch()` 内实现,而在 `sound::dispatch`;仍由 `mod.rs` 路由,故被 `check_contract` 覆盖。
-9. **构建物与校验清单的具体格式** `[未定]`(§5)。
+9. **构建物与校验清单的具体格式**:第 2 期已定,见 §5;sumiwrite 侧已交付,note.md 侧待用户合并(`[未定]`)。
 10. **宿主发版 tag 与插件版本的对应记录**:宿主 `v6.1117.1` 与插件 `0.1.16` 的对应只能从 manifest 与 CHANGELOG 间接推断,无单一登记处;本文把这组对应写作 `host-contract v1` 的定义。

@@ -89,6 +89,8 @@ note.md 侧:
 
 ## 第 2 期:迁插件壳、资源与插件侧脚本
 
+状态:sumiwrite 侧已完成(tag `notemd-plugin-v0.1.16`,[`build-artifact.sh`](https://github.com/wizlijun/sumiwrite/blob/notemd-plugin-v0.1.16/apps/notemd-plugin/scripts/build-artifact.sh));note.md 侧 `[未定]`:在分支 `sumi/plugin-from-sumiwrite`(9288b33d),待用户合并。
+
 ### 前置条件
 
 - 第 1 期完成,note.md 已按 tag 引用 `core/` 与 `protocol/`。
