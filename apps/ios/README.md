@@ -86,6 +86,8 @@ cargo +1.99.0 test --manifest-path apps/ios/ffi/Cargo.toml
 
 在 iPad(接实体键盘,如妙控键盘)上逐条执行;模拟器测不了实体键盘、键盘扩展与真实的按键时序。对应规范 [`ios.md` §3.6](../../docs/spec/platform/ios.md#36-实体键盘的内嵌输入法)。
 
+上机前可先在模拟器上过一遍:`bash apps/ios/scripts/sim-rime.sh [--no-build] [场景...]` 在专用模拟器(默认名 `sumi-rime-e2e`,没有就建)上打开实体键盘,用 RimeKit 的 `tools/sim/simkey` 发真实的 HID 按键,点按由 UI 测试 `SumiWriteUITests/TapServer` 代点,每步截图到 `build/sim-rime/<场景>/`;各场景每张截图的预期写在脚本开头,逐张对照判定。它只是测试工具,不进 Verification,也不代替下面的真机项。
+
 1. 接实体键盘,系统输入源是简体拼音或英文时,在正文里打拼音都由内置输入法接管,不出现系统候选条;候选行在光标下一行出现,带主题底色,字体字号与正文一致。
 2. 组字在光标处带下划线;候选行盖住下一行,打字时不随光标横移,换行时跟着下移一行。
 3. 空格、数字键选词;点 ‹ › 翻页;手指点候选上屏;上屏后正文与内核一致(划掉应用再打开仍在),光标在上屏文字之后。

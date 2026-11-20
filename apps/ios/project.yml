@@ -61,6 +61,19 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         TEST_HOST: $(BUILT_PRODUCTS_DIR)/SumiWrite.app/SumiWrite
         BUNDLE_LOADER: $(TEST_HOST)
+  # 只给 scripts/sim-rime.sh 用:在模拟器上替脚本点按候选行(脚本用 simkey 发键)。不进 Verification。
+  SumiWriteUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: SumiWriteUITests
+    dependencies:
+      - target: SumiWrite
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: $(inherited).uitests
+        TEST_TARGET_NAME: SumiWrite
 schemes:
   SumiWrite:
     build:
@@ -70,3 +83,11 @@ schemes:
     test:
       targets:
         - SumiWriteTests
+  SumiWriteUI:
+    build:
+      targets:
+        SumiWrite: all
+        SumiWriteUITests: [test]
+    test:
+      targets:
+        - SumiWriteUITests
