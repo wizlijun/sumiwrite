@@ -1,23 +1,25 @@
 #!/usr/bin/env bash
 # 内嵌输入法(ios.md §3.6)的模拟器端到端检查:在专用模拟器上打开实体键盘、装上并启动应用,用 RimeKit 的
 # simkey 发真实的 HID 按键,每一步之后截图到 build/sim-rime/<场景>/(build/ 被 git 忽略)。点按(候选、
-# 「内 / 系」、‹ ›)由 UI 测试 SumiWriteUITests/TapServer 代点。只做测试工具,不进 Verification;截图由人
+# 状态字和它的菜单项、‹ ›)由 UI 测试 SumiWriteUITests/TapServer 代点。只做测试工具,不进 Verification;截图由人
 # (或 agent)逐张看,对照下面写的预期判定。
 #
 # 用法:bash apps/ios/scripts/sim-rime.sh [--no-build] [场景...]
-#   场景:builtin middle repeat focus shift switch toggle tap(默认全部,按此顺序)
+#   场景:builtin middle repeat focus shift english switch toggle tap(默认全部,按此顺序)
 #   环境变量:SIM_RIME_DEVICE 专用模拟器的名字(默认 sumi-rime-e2e,没有就建一台 iPad Pro 11-inch (M5));
 #            RIME 指 RimeKit 仓库(默认与本仓库同级的 rime-kit)。
 # 每个场景先按 ⌘N 新建空白页,在空白页里做。
 #
-# 全程:候选行在光标的下一行、带主题底色;任何截图(toggle 的 t03 除外)都不出现系统的候选条。
+# 全程:候选行在光标的下一行;有组字或候选时整行带主题底色,右端最后一个是状态字(中 / 英 / 系,比正文小、
+# 颜色淡,紧挨 › 或最后一个候选);空闲时(下文「空闲」)只在右端剩状态字那一小块底色,下一行其余的字露出来。
+# 任何截图(toggle 的 t03 除外)都不出现系统的候选条。
 #
-# builtin  00 ⌘N:空白页,候选行只有「中」「内」。
+# builtin  00 ⌘N:空白页,空闲:右端只有一小块「中」。
 #          b01 n i h a o:光标处是带下划线的组字(拼音,如「ni hao」),候选行第一个是「1 你好」且带下划线。
-#          b02 Space:「你好」上屏,组字与候选消失,候选行回到只有「中」「内」,光标在「你好」之后。
-# middle   m01 1 2 3 4 5 6 ⏎ 7 8 9 0 ↑:第一行「123456」,光标在其中(约在 4 之后);候选行(只有「中」「内」)
-#              不透明,盖住第二行。
-#          m02 n i h a o:组字插在第一行光标处,同一行里它后面的数字往后挪(后文回流)。
+#          b02 Space:「你好」上屏,组字与候选消失,回到空闲,光标在「你好」之后。
+# middle   m01 1 2 3 4 5 6 ⏎ 7 8 9 0 ↑:第一行「123456」,光标在其中(约在 4 之后);空闲,第二行「7890」露出,
+#              右端「中」那一小块在第二行的高度。
+#          m02 n i h a o:组字插在第一行光标处,同一行里它后面的数字往后挪(后文回流);候选行整行不透明,盖住第二行。
 #          m03 Space:第一行是「1234你好56」之类(你好插在光标处)。
 #          m04 ↓:光标到第二行,第二行「7890」露出且原样,第一行仍是 m03 的样子。
 # repeat   r01 二十个数字:一行数字(已进入聚焦打字,当前行在屏幕中部)。
@@ -30,18 +32,24 @@
 #          f03 Space:「你好」上屏;候选行仍紧贴光标行的下一行,与 f02 同一高度,不上移盖住光标行或它上面的字
 #              (真机反馈 2026-11-20 的「上屏后候选行上移」)。
 #          f04 n i h a o Space:再上屏一次,同 f03。
-# shift    s01 单按 Shift:候选行右端的「中」变「英」。
-#          s02 a b c:「abc」直接上屏,没有组字、没有候选。
-#          s03 单按 Shift:「英」变回「中」。
+# shift    s01 单按左 Shift:状态字「中」变「英」。
+#          s02 a b c:「abc」直接上屏,没有组字、没有候选,仍空闲。
+#          s03 单按左 Shift:「英」变回「中」。
 #          s04 n i h a o Space:「abc你好」。
+#          s05 单按右 Shift:仍是「中」(雾凇 default.yaml 的 Shift_R: noop)。
+# english  e01 点状态字:弹出系统菜单「中文」「英文」「系统输入法」,「中文」打勾。
+#          e02 点「英文」:菜单收起,状态字变「英」。
+#          e03 a b c:「abc」直接上屏,没有组字、没有候选,仍空闲。
+#          e04 点状态字、点「中文」:状态字变回「中」。
+#          e05 n i h a o Space:「abc你好」。
 # switch   w01 n i h a o:组字中(同 b01)。
-#          w02 ⌘]:末页按 › 新建一页:新的空白页,没有组字,候选行只有「中」「内」,没有「请先完成输入」。
+#          w02 ⌘]:末页按 › 新建一页:新的空白页,没有组字,空闲(只有「中」一小块),没有「请先完成输入」。
 #          w03 ⌘[:回到上一页,原文「nihao」已上屏(不是标记文字,没有下划线,也没有候选)。
 # toggle   t01 n i h a o:组字中。
-#          t02 点「内」:组字清掉(不上屏,正文为空),按钮变「系」;仍在聚焦,光标行不跳回页首。
+#          t02 点状态字、点「系统输入法」:组字清掉(不上屏,正文为空),状态字变「系」;仍在聚焦,光标行不跳回页首。
 #          t03 n i h a o:按键交给系统输入法(本机系统输入源第一个是简体拼音,所以可能出现系统的组字或候选条,
-#              也可能是英文字母直接上屏);候选行里没有内置的候选,右端仍是「系」。
-#          t04 Space、点「系」:系统那边结束;按钮变回「内」。
+#              也可能是英文字母直接上屏);候选行里没有内置的候选,右端仍是「系」那一小块。
+#          t04 Space、点状态字、点「中文」:系统那边结束;状态字变回「中」。
 #          t05 n i h a o:又是内置的组字与候选(同 b01)。
 #          t06 Space:「你好」上屏。
 # tap      p01 n i h a o:组字中。
@@ -59,7 +67,7 @@ NAME="${SIM_RIME_DEVICE:-sumi-rime-e2e}"
 
 build=1
 if [ "${1:-}" = --no-build ]; then build=0; shift; fi
-SC="${*:-builtin middle repeat focus shift switch toggle tap}"
+SC="${*:-builtin middle repeat focus shift english switch toggle tap}"
 
 mkdir -p "$BIN"
 for t in simkey hwkb; do
@@ -171,15 +179,21 @@ tap() {
   printf 'tap %s\n' "$label" > "$SYNC/cmd.tmp" && mv "$SYNC/cmd.tmp" "$SYNC/cmd"
   for _ in $(seq 1 400); do [ -f "$SYNC/done" ] && break; sleep 0.1; done
   local r; r=$(cat "$SYNC/done" 2>/dev/null || echo timeout)
-  [ "$r" = ok ] || echo "  点「$label」:$r" >&2
-  shot "$n"
+  [ "$r" = ok ] || echo "  点「${label}」:${r}" >&2
+  [ -n "$n" ] && shot "$n"
+}
+# choose <截图名> <菜单项>:点状态字,等菜单弹出,点菜单项。
+choose() {
+  tap "" 切换输入法
+  sleep 0.5
+  tap "$1" "$2"
 }
 
 for s in $SC; do
   DIR="$OUT/$s"; rm -rf "$DIR"; mkdir -p "$DIR"
   echo "$s"
   case $s in
-  toggle | tap) serve ;;
+  english | toggle | tap) serve ;;
   esac
   step 00-new C+n
   case $s in
@@ -213,6 +227,14 @@ for s in $SC; do
     step s02-abc a b c
     step s03-shift SHIFT
     step s04-nihao n i h a o SPACE
+    step s05-right-shift RSHIFT
+    ;;
+  english)
+    tap e01-menu 切换输入法
+    tap e02-english 英文
+    step e03-abc a b c
+    choose e04-chinese 中文
+    step e05-nihao n i h a o SPACE
     ;;
   switch)
     step w01-nihao n i h a o
@@ -221,10 +243,10 @@ for s in $SC; do
     ;;
   toggle)
     step t01-nihao n i h a o
-    tap t02-to-system 切换内置输入法
+    choose t02-to-system 系统输入法
     step t03-system-nihao n i h a o
     key SPACE
-    tap t04-to-builtin 切换内置输入法
+    choose t04-to-builtin 中文
     step t05-nihao n i h a o
     step t06-space SPACE
     ;;

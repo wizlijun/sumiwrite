@@ -44,6 +44,11 @@ private final class FakeRime: RimeInputDriving {
         clearCount += 1
         push(RimeUpdate())
     }
+    /// 与 `RimeInput.setAscii` 一样随即推一次更新。
+    func setAscii(_ on: Bool) {
+        ascii = on
+        push(RimeUpdate(input: composing, ascii: on))
+    }
 
     func push(_ update: RimeUpdate) {
         composing = update.input
@@ -377,26 +382,85 @@ final class RimeIntegrationTests: XCTestCase {
         XCTAssertEqual(h.rime.selected, [1])
     }
 
-    /// 点「系」:组字清掉,停用;再点「内」切回。选择记在 `rime.builtin`。
+    /// 选菜单项(点状态字弹出的系统菜单;测试里直接调菜单项的回调),等主队列下一轮。
+    private func choose(_ choice: RimeInputChoice, in bar: RimeCandidateBar) {
+        bar.onChoose?(choice)
+        drainMain()
+        bar.layoutIfNeeded()
+    }
+
+    /// 状态字:候选行右端只有一个字,点它弹出菜单;点按落在它上面(不被文本视图接走)。
+    func test_statusCharacterOpensMenu() throws {
+        let h = try harness()
+        h.rime.compose("ni", menu: RimeMenu(rows: [RimeCandidate(index: 0, label: "1", text: "你")], cursor: 0))
+        let bar = try bar(h)
+        bar.layoutIfNeeded()
+        XCTAssertTrue(bar.statusMenu)
+        XCTAssertNil(button("切换内置输入法", in: bar))
+        let status = try XCTUnwrap(button("切换输入法", in: bar))
+        XCTAssertEqual(status.currentAttributedTitle?.string, "中")
+        XCTAssertTrue(status.showsMenuAsPrimaryAction)
+        XCTAssertEqual(status.menu?.children.map(\.title), ["中文", "英文", "系统输入法"])
+        let point = status.convert(CGPoint(x: status.bounds.midX, y: status.bounds.midY), to: h.window)
+        let hit = try XCTUnwrap(h.window.hitTest(point, with: nil))
+        XCTAssertTrue(hit === status || hit.isDescendant(of: status), "tap lands on \(hit)")
+    }
+
+    /// 选「系统输入法」:组字清掉,停用;再选「中文」切回。选择记在 `rime.builtin`。
     func test_toggleTapSwitchesAndPersists() throws {
         let h = try harness()
         h.rime.compose("ni")
         let bar = try bar(h)
         bar.layoutIfNeeded()
-        let toggle = try XCTUnwrap(button("切换内置输入法", in: bar))
-        let point = toggle.convert(CGPoint(x: toggle.bounds.midX, y: toggle.bounds.midY), to: h.window)
-        let hit = try XCTUnwrap(h.window.hitTest(point, with: nil))
-        XCTAssertTrue(hit === toggle || hit.isDescendant(of: toggle), "tap lands on \(hit)")
-        toggle.sendActions(for: .touchUpInside)
+        choose(.system, in: bar)
         XCTAssertEqual(h.rime.clearCount, 1)
         XCTAssertNil(h.textView.markedTextRange)
         XCTAssertEqual(h.page.body(), "")
         XCTAssertEqual(h.rime.active.last, false)
         XCTAssertEqual(h.defaults.object(forKey: RimeTextViewAdapter.builtinKey) as? Bool, false)
-        XCTAssertFalse(bar.isHidden, "the bar stays so 内 can be tapped back")
-        toggle.sendActions(for: .touchUpInside)
+        XCTAssertFalse(bar.isHidden, "the bar stays so the built-in input method can be chosen back")
+        XCTAssertEqual(button("切换输入法", in: bar)?.currentAttributedTitle?.string, "系")
+        choose(.chinese, in: bar)
         XCTAssertEqual(h.rime.active.last, true)
         XCTAssertEqual(h.defaults.object(forKey: RimeTextViewAdapter.builtinKey) as? Bool, true)
+        XCTAssertEqual(button("切换输入法", in: bar)?.currentAttributedTitle?.string, "中")
+    }
+
+    /// 选「英文」:引擎切到 ascii_mode,状态字随即变「英」;Shift 切回时(引擎推 ascii=false)跟着变「中」。
+    func test_menuEnglishSetsAsciiAndFollowsShift() throws {
+        let h = try harness()
+        let bar = try bar(h)
+        bar.layoutIfNeeded()
+        choose(.english, in: bar)
+        XCTAssertTrue(h.rime.ascii)
+        XCTAssertEqual(button("切换输入法", in: bar)?.currentAttributedTitle?.string, "英")
+        h.rime.push(RimeUpdate(ascii: false))
+        bar.layoutIfNeeded()
+        XCTAssertEqual(button("切换输入法", in: bar)?.currentAttributedTitle?.string, "中")
+    }
+
+    /// 空闲(无组字、无候选、无提示):候选行只画状态字那一块,点在下一行别处落到正文上;正文底下照样留出候选行的高度。
+    func test_idleBarShrinksToStatusCharacter() throws {
+        let h = try harness()
+        h.textView.insertText("第一行\n第二行\n第三行")
+        h.textView.selectedRange = NSRange(location: 3, length: 0)
+        h.controller.view.layoutIfNeeded()
+        drainMain()
+        let bar = try bar(h)
+        bar.layoutIfNeeded()
+        XCTAssertFalse(bar.isHidden)
+        XCTAssertFalse(bar.isOpaque)
+        let status = try XCTUnwrap(button("切换输入法", in: bar))
+        let left = bar.convert(CGPoint(x: 20, y: bar.bounds.midY), to: h.window)
+        let hit = try XCTUnwrap(h.window.hitTest(left, with: nil))
+        XCTAssertTrue(hit === h.textView || hit.isDescendant(of: h.textView), "tap lands on \(hit)")
+        let onStatus = status.convert(CGPoint(x: status.bounds.midX, y: 4), to: h.window)
+        XCTAssertTrue(try XCTUnwrap(h.window.hitTest(onStatus, with: nil)) === status)
+        XCTAssertEqual(h.textView.contentInset.bottom, RimeCandidateBar.height(for: bar.style.font), accuracy: 0.5)
+        // 组字时整行不透明。
+        h.rime.compose("ni", menu: RimeMenu(rows: [RimeCandidate(index: 0, label: "1", text: "你")], cursor: 0))
+        bar.layoutIfNeeded()
+        XCTAssertTrue(bar.isOpaque)
     }
 
     /// 重开应用:选「系」的记录还在,接着实体键盘也不启用。
@@ -650,8 +714,7 @@ final class RimeIntegrationTests: XCTestCase {
         t += 1
         let bar = try bar(h)
         bar.layoutIfNeeded()
-        try XCTUnwrap(button("切换内置输入法", in: bar)).sendActions(for: .touchUpInside)
-        drainMain()
+        choose(.system, in: bar)
         XCTAssertEqual(h.textView.text, "一二三四")
         XCTAssertNotNil(h.textView.pinnedY, "switching to the system input method is not a caret move")
     }

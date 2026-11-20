@@ -110,4 +110,5 @@ final class RimeLandingProbe: RimeInputDriving {
     func flush() { base.flush() }
     func interrupt() { base.interrupt() }
     func clear() { base.clear() }
+    func setAscii(_ on: Bool) { base.setAscii(on) }
 }
