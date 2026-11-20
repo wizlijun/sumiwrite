@@ -480,3 +480,15 @@ fn future_pending_clocks_of_the_active_actor_are_rejected() {
     put(&mut d, 4, 0, "L", 20);
     assert_eq!(d.body(), "safeL");
 }
+#[test]
+fn undo_and_redo_availability_follows_history() {
+    let mut d = new();
+    assert!(!d.can_undo());
+    put(&mut d, 0, 0, "a", 1);
+    assert!(d.can_undo());
+    assert!(!d.can_redo());
+    d.undo(2).unwrap();
+    assert!(d.can_redo());
+    put(&mut d, 0, 0, "b", 3);
+    assert!(!d.can_redo());
+}
