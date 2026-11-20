@@ -139,6 +139,7 @@ pub enum Request {
     AppliedIncoming { receipts: Vec<IncomingReceipt> },
     PendingInbox { page_id: String },
     ReceiveRemote { incoming: PendingUpdate, generation: u64 },
+    SetArchive { archive: Option<std::path::PathBuf> },
 }
 
 /// Proves this exact operation committed, even if a later edit is already durable.
