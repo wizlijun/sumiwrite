@@ -19,7 +19,10 @@ bash "$IOS/scripts/build-core.sh"
 cd "$IOS"
 xcodegen generate
 if [[ "$DEV" =~ ^[0-9A-Fa-f-]{20,}$ ]]; then DEST="platform=iOS,id=$DEV"; else DEST="platform=iOS,name=$DEV"; fi
+# 每次安装用新的构建号(年月日时分),否则 iOS 认为同一版本、不刷新主屏图标。
+BUILD_NUMBER="$(date +%Y%m%d%H%M)"
 xcodebuild -project SumiWrite.xcodeproj -scheme SumiWrite -configuration Release \
-  -destination "$DEST" -allowProvisioningUpdates -derivedDataPath "$IOS/build/dd" build
+  -destination "$DEST" -allowProvisioningUpdates -derivedDataPath "$IOS/build/dd" \
+  CURRENT_PROJECT_VERSION="$BUILD_NUMBER" build
 APP="$IOS/build/dd/Build/Products/Release-iphoneos/SumiWrite.app"
 xcrun devicectl device install app --device "$DEV" "$APP"
