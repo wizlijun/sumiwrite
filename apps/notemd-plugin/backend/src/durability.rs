@@ -138,6 +138,9 @@ impl Durability {
                             worker.last_edit = Instant::now();
                         }
                     }
+                    if worker.retry_due() {
+                        worker.retry_projections();
+                    }
                 }
             })
             .map_err(error)?;
@@ -505,7 +508,19 @@ struct Worker {
     notify: Arc<dyn Fn(DurableEvent) + Send + Sync>,
     dirty_since: Option<Instant>,
     last_edit: Instant,
+    /// Set while projection jobs failed and remain queued.
+    retry: Option<Retry>,
 }
+/// Backoff for retained projection jobs. Failures were already reported once
+/// via `Saved { projected: false }`; retries stay silent until they succeed.
+struct Retry {
+    at: Instant,
+    delay: Duration,
+    /// The archive was missing; retry as soon as it reappears instead of waiting.
+    waiting_for_archive: bool,
+}
+const RETRY_INITIAL: Duration = Duration::from_secs(1);
+const RETRY_MAX: Duration = Duration::from_secs(60);
 impl Worker {
     fn open(
         archive: Option<PathBuf>,
@@ -543,6 +558,7 @@ impl Worker {
             notify,
             dirty_since: None,
             last_edit: Instant::now(),
+            retry: None,
         };
         worker.retarget(archive)?;
         // A conflict or a missing archive never makes the database unreadable.
@@ -646,6 +662,8 @@ impl Worker {
         }).map_err(error)?;
         self.archive = archive;
         if reset {
+            // The queue was cleared; republishing goes through the dirty rows.
+            self.retry = None;
             self.dirty_since = Some(Instant::now());
         }
         Ok(())
@@ -705,7 +723,57 @@ impl Worker {
         if first_error.is_none() {
             self.dirty_since = None;
         }
+        if self.retry_due() {
+            self.retry_projections();
+        }
         first_error.map_or(Ok(()), Err)
+    }
+    fn archive_present(&self) -> bool {
+        self.archive.as_deref().is_some_and(Path::is_dir)
+    }
+    fn schedule_retry(&mut self, error: &str) {
+        let missing = (error == NO_ARCHIVE || error == projection::ARCHIVE_UNAVAILABLE) && !self.archive_present();
+        let retry = self.retry.get_or_insert_with(|| Retry {
+            at: Instant::now() + RETRY_INITIAL,
+            delay: RETRY_INITIAL,
+            waiting_for_archive: false,
+        });
+        retry.waiting_for_archive |= missing;
+    }
+    fn retry_due(&self) -> bool {
+        self.retry.as_ref().is_some_and(|retry| {
+            Instant::now() >= retry.at || (retry.waiting_for_archive && self.archive_present())
+        })
+    }
+    /// Republish every page that still has queued jobs. Success emits `Saved`;
+    /// failure only doubles the delay, so a missing archive or a first-write
+    /// conflict neither spins nor floods the host with events.
+    fn retry_projections(&mut self) {
+        let Some(previous) = self.retry.take() else { return };
+        let ids = self.store.transaction(|tx| {
+            let mut s = tx.prepare("SELECT page_id FROM sumi_projection_queue GROUP BY page_id ORDER BY MIN(job_id)").map_err(db)?;
+            let rows = s.query_map([], |r| r.get::<_, String>(0)).map_err(db)?
+                .collect::<std::result::Result<Vec<_>, _>>().map_err(db)?;
+            Ok(rows)
+        }).map_err(error);
+        let ids = match ids {
+            Ok(ids) => ids,
+            Err(e) => {
+                self.schedule_retry(&e);
+                Vec::new()
+            }
+        };
+        for id in ids {
+            if self.publish_page(&id).is_ok() {
+                if let Ok(Some((_, pair, revision))) = self.published_files(&id) {
+                    self.report_saved(&id, revision, pair.markdown, Ok(()));
+                }
+            }
+        }
+        if let Some(retry) = self.retry.as_mut() {
+            retry.delay = (previous.delay * 2).min(RETRY_MAX);
+            retry.at = Instant::now() + retry.delay;
+        }
     }
     fn checkpoint_page(&mut self, id: &str) -> Result<()> {
         self.ensure_document(id)?;
@@ -985,6 +1053,9 @@ impl Worker {
     }
     fn emit_saved(&mut self, id: &str, revision: u64, raw_markdown: String) {
         let result = self.publish_page(id);
+        self.report_saved(id, revision, raw_markdown, result);
+    }
+    fn report_saved(&mut self, id: &str, revision: u64, raw_markdown: String, result: Result<()>) {
         // Identify only the exact bytes successfully published by this worker. A later
         // filesystem stat could observe an external edit and incorrectly label it ours.
         let projection_identity = if result.is_ok() {
@@ -1076,7 +1147,15 @@ impl Worker {
         }
         Ok(ObservedFiles::External { pair: observed.pair()? })
     }
+    /// Publish queued jobs; a failure leaves them queued and schedules a retry.
     fn publish_page(&mut self, id: &str) -> Result<()> {
+        let result = self.publish_jobs(id);
+        if let Err(e) = &result {
+            self.schedule_retry(e);
+        }
+        result
+    }
+    fn publish_jobs(&mut self, id: &str) -> Result<()> {
         loop {
             let pending=self.store.transaction(|tx|tx.query_row("SELECT job_id,filename,full_state,revision,baseline,markdown,metadata FROM sumi_projection_queue WHERE page_id=?1 ORDER BY job_id LIMIT 1",[id],|r|Ok((r.get::<_,i64>(0)?,r.get::<_,String>(1)?,r.get::<_,Vec<u8>>(2)?,read_u64(r,3)?,r.get::<_,String>(4)?,FilePair{markdown:r.get(5)?,metadata:r.get(6)?}))).optional().map_err(db)).map_err(error)?;
             let Some((job_id, filename, state, revision, baseline, pair)) = pending else {
@@ -3090,13 +3169,61 @@ mod tests {
         assert!(queue_len(&mut worker) > 0);
         assert_eq!(last_saved(&events, &id), (false, Some(projection::ARCHIVE_UNAVAILABLE.into())));
         assert!(!archive.exists(), "no shadow archive may be created at the original path");
+        // While the archive is gone, idle checkpoints neither retry nor report again.
+        let reported = events.lock().unwrap().len();
+        for _ in 0..3 {
+            worker.checkpoint_dirty().unwrap();
+        }
+        assert_eq!(events.lock().unwrap().len(), reported);
+        assert!(!archive.exists());
         std::fs::rename(&away, &archive).unwrap();
-        // The next checkpoint barrier (Durability::flush) republishes retained jobs.
-        worker.drain().unwrap();
+        // The archive is back: the next checkpoint republishes retained jobs.
         worker.checkpoint_dirty().unwrap();
-        worker.recover_projections().unwrap();
         assert_eq!(on_disk_body(&archive, &filename), ui.body());
         assert_eq!(queue_len(&mut worker), 0);
+        assert_eq!(last_saved(&events, &id), (true, None));
+        assert!(worker.retry.is_none());
+    }
+    #[test]
+    fn conflicting_first_write_retries_with_backoff_and_silently() {
+        let dir = tempfile::tempdir().unwrap();
+        let private = tempfile::tempdir().unwrap();
+        let (a, b) = (dir.path().join("A"), dir.path().join("B"));
+        std::fs::create_dir(&a).unwrap();
+        std::fs::create_dir(&b).unwrap();
+        let events: Events = Arc::default();
+        let mut worker = open_archived(Some(a.clone()), &private.path().join("db.sqlite3"), &events);
+        let (id, ui) = page(&mut worker, "ours");
+        let filename = worker.entry(&id).unwrap().filename().unwrap();
+        let (foreign, _) = projection::paths(&b, &filename).unwrap();
+        std::fs::write(&foreign, "someone else's file").unwrap();
+        worker.set_archive(Some(b.clone())).unwrap();
+        worker.checkpoint_dirty().unwrap();
+        assert_eq!(last_saved(&events, &id), (false, Some(projection::FIRST_WRITE_CONFLICT.into())));
+        assert_eq!(worker.retry.as_ref().unwrap().delay, RETRY_INITIAL);
+        assert!(!worker.retry.as_ref().unwrap().waiting_for_archive);
+        // Not due yet: ticks do nothing and say nothing.
+        let reported = events.lock().unwrap().len();
+        for _ in 0..5 {
+            worker.checkpoint_dirty().unwrap();
+            assert!(!worker.retry_due());
+        }
+        assert_eq!(events.lock().unwrap().len(), reported);
+        // A due retry that still conflicts is silent and doubles the delay.
+        worker.retry.as_mut().unwrap().at = Instant::now();
+        worker.checkpoint_dirty().unwrap();
+        assert_eq!(events.lock().unwrap().len(), reported);
+        assert_eq!(worker.retry.as_ref().unwrap().delay, RETRY_INITIAL * 2);
+        assert_eq!(std::fs::read_to_string(&foreign).unwrap(), "someone else's file");
+        assert_eq!(queue_len(&mut worker), 1);
+        // Once the foreign file is gone, the next due retry publishes and reports success.
+        std::fs::remove_file(&foreign).unwrap();
+        worker.retry.as_mut().unwrap().at = Instant::now();
+        worker.checkpoint_dirty().unwrap();
+        assert_eq!(on_disk_body(&b, &filename), ui.body());
+        assert_eq!(last_saved(&events, &id), (true, None));
+        assert_eq!(queue_len(&mut worker), 0);
+        assert!(worker.retry.is_none());
     }
     #[test]
     fn set_archive_republishes_into_new_directory_and_keeps_old_bytes() {
