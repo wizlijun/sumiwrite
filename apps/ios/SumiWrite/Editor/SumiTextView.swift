@@ -8,7 +8,7 @@ protocol KeyPressHandling: AnyObject {
 
 /// TextKit 2 正文视图:聚焦时的滚动锁、光标框、按键入口与粘贴。光标本身由 `SumiCursorView` 画。
 /// 文字的增删、撤销都由 `EditorController` 经内核完成,这里不做。
-final class SumiTextView: UITextView {
+final class SumiTextView: UITextView, UITextDropDelegate {
     /// 注入的内核撤销;`UITextView` 自带的撤销栈因此不生效。
     var coreUndoManager: CoreUndoManager?
     weak var pressHandler: KeyPressHandling?
@@ -36,6 +36,7 @@ final class SumiTextView: UITextView {
         super.init(frame: .zero, textContainer: nil)
         // 写作工具的就地会话会和程序化的重排样式打架,「还原」又依赖已被挡掉的系统撤销栈;只留面板模式。
         if #available(iOS 18, *) { writingToolsBehavior = .limited }
+        textDropDelegate = self
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
@@ -66,6 +67,18 @@ final class SumiTextView: UITextView {
     override func gestureRecognizerShouldBegin(_ g: UIGestureRecognizer) -> Bool {
         if g !== panGestureRecognizer && isLockedForComposition() { return false }
         return super.gestureRecognizerShouldBegin(g)
+    }
+
+    // MARK: 拖入
+
+    func textDroppableView(_ textDroppableView: UIView & UITextDroppable,
+                           proposalForDrop drop: UITextDropRequest) -> UITextDropProposal {
+        dropProposal(suggested: drop.suggestedProposal)
+    }
+
+    /// 组字中拖入会改文字或选区,让 UIKit 去掉标记文字:一律不接。
+    func dropProposal(suggested: UITextDropProposal) -> UITextDropProposal {
+        isLockedForComposition() ? UITextDropProposal(operation: .forbidden) : suggested
     }
 
     // MARK: 滚动锁

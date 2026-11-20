@@ -73,3 +73,41 @@ extension UITextView {
         return (next ?? frame.maxY) + inset
     }
 }
+
+/// 包住宿主交给适配器的输入法:引擎的更新正在落进文字时 `landing` 大于 0。宿主据此分辨一次文字变化
+/// 是引擎自己的上屏(如失去活跃时),还是系统输入(ios.md §3.6「打字音」)。其余调用原样转交。
+final class RimeLandingProbe: RimeInputDriving {
+    private let base: RimeInputDriving
+    private(set) var landing = 0
+    private var handler: ((RimeUpdate) -> Void)?
+
+    init(_ base: RimeInputDriving) {
+        self.base = base
+        base.onUpdate = { [weak self] update in
+            guard let self else { return }
+            landing += 1
+            defer { landing -= 1 }
+            handler?(update)
+        }
+    }
+
+    var onUpdate: ((RimeUpdate) -> Void)? {
+        get { handler }
+        set { handler = newValue }
+    }
+
+    var onStatus: ((RimeStatus) -> Void)? {
+        get { base.onStatus }
+        set { base.onStatus = newValue }
+    }
+
+    var status: RimeStatus { base.status }
+    var ascii: Bool { base.ascii }
+    func setActive(_ on: Bool) { base.setActive(on) }
+    func handlePress(_ press: UIPress, began: Bool) -> Bool { base.handlePress(press, began: began) }
+    func select(_ index: Int) { base.select(index) }
+    func page(next: Bool) { base.page(next: next) }
+    func flush() { base.flush() }
+    func interrupt() { base.interrupt() }
+    func clear() { base.clear() }
+}

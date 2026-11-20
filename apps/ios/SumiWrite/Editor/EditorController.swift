@@ -32,6 +32,13 @@ final class EditorController: UIViewController, UITextViewDelegate {
     private(set) var rimeAdapter: RimeTextViewAdapter?
     /// 大于 0:正在调适配器(按键、上屏、焦点变化),这期间文字变化不按文字另响打字音。
     private var rimeQuiet = 0
+    /// 大于 0:这期间的上屏不算打字(不发声、不发 typing、不进聚焦打字),如切页前、变成只读时。
+    private var rimeAside = 0
+    /// 大于 0:正在处理候选行上的点按(选字、翻页),引擎随之上屏算一次打字。
+    private var rimeTap = 0
+    /// 被内嵌输入法吞下、还没松开的键;按住时引擎自己连发的上屏算打字。
+    private var rimeHeld = Set<ObjectIdentifier>()
+    private var rimeProbe: RimeLandingProbe?
 
     private let container = UIView()
     private let cursorView = SumiCursorView()
@@ -98,7 +105,7 @@ final class EditorController: UIViewController, UITextViewDelegate {
 
     /// 切页、开总览、开设置之前调用:内置输入法的组字按原文上屏进内核(不发打字音)。
     func prepareToSwitch() {
-        quietly { rimeAdapter?.flush() }
+        aside { rimeAdapter?.flush() }
     }
 
     // MARK: 视图
@@ -263,6 +270,8 @@ final class EditorController: UIViewController, UITextViewDelegate {
 
         if !prefs.focusTyping && focusMode { exitFocus() }
         view.setNeedsLayout()
+        // 字号变了,候选行的高度、位置和底部留白跟着变;适配器不会因为换样式而通知。
+        placeRimeBar(reveal: false)
     }
 
     /// 整段重设属性:先上基础样式,再按内核的样式段(已是互不重叠的平铺段)依次叠加。
@@ -350,7 +359,7 @@ final class EditorController: UIViewController, UITextViewDelegate {
         // 记下这次输入后光标应在的位置:随后到达的选区通知若与之相符,就不算「挪光标」。
         editSelection = NSRange(location: range.location + (text as NSString).length, length: 0)
         lastEditTime = now()
-        keyPressed(kind)
+        if !rimeCommitAside { keyPressed(kind) }
         return true
     }
 
@@ -372,7 +381,8 @@ final class EditorController: UIViewController, UITextViewDelegate {
         guard let model, !applyingProgrammaticChange else { return }
         let composing = textView.markedTextRange != nil
         let visible = textView.text ?? ""
-        if rimeQuiet == 0, model.isWritable, textView.isEditable {
+        let aside = rimeCommitAside
+        if rimeQuiet == 0, !aside, model.isWritable, textView.isEditable {
             sound?.play(before: lastText, after: visible, kind: pendingKind)
         }
         pendingKind = nil
@@ -382,14 +392,14 @@ final class EditorController: UIViewController, UITextViewDelegate {
         switch model.userEdited(visible: visible, composing: composing, caret: caret) {
         case .unchanged:
             // 拼音预编辑也算真实输入(04「聚焦打字」),但不提交、不重设。
-            if composing { registerInput() }
+            if composing && !aside { registerInput() }
         case .accepted(let rendered, let caret):
             show(rendered, caret: caret)
-            registerInput()
+            if !aside { registerInput() }
         case .rejected(let rendered, let caret):
             reset(to: rendered, caret: caret)
         }
-        markEdited()
+        if !aside { markEdited() }
         placeRimeBar(reveal: true)
     }
 
@@ -499,6 +509,8 @@ final class EditorController: UIViewController, UITextViewDelegate {
     private func saveFailed(_ message: String) {
         model?.isWritable = false
         textView.isEditable = false
+        // 只读的编辑面不接内嵌输入法:组字按原文结束(内核拒收,文字退回已存的样子),引擎停用。
+        aside { rimeAdapter?.focusChanged(false) }
         statusText = message
         tracker.reset()
         exitFocus(resetInsetsNow: true)
@@ -584,13 +596,18 @@ final class EditorController: UIViewController, UITextViewDelegate {
 
     private func resetInsets() {
         pendingInsetReset = false
+        applyRestingInsets(animated: !reduceMotion)
+    }
+
+    /// 换成平时的留白,并把滚动位置夹回新的可滚范围。
+    private func applyRestingInsets(animated: Bool) {
         let resting = restingInsets
         guard textView.contentInset != resting else { return }
         let y = textView.contentOffset.y
         textView.contentInset = resting
         let maxY = max(0, textView.contentSize.height + resting.bottom - textView.bounds.height)
         let target = min(max(y, 0), maxY)
-        if target != y { textView.setContentOffset(CGPoint(x: 0, y: target), animated: !reduceMotion) }
+        if target != y { textView.setContentOffset(CGPoint(x: 0, y: target), animated: animated) }
     }
 
     /// 当前行固定在视区垂直中线。结果按屏幕像素取整,重复居中得到同一位置。
@@ -682,12 +699,22 @@ final class EditorController: UIViewController, UITextViewDelegate {
     // MARK: 内嵌输入法(ios.md §3.6)
 
     private func attachRime(_ rime: RimeInputDriving, defaults: UserDefaults) {
-        let adapter = RimeTextViewAdapter(textView: textView, input: rime, defaults: defaults, style: .sumi(prefs))
+        let probe = RimeLandingProbe(rime)
+        rimeProbe = probe
+        let adapter = RimeTextViewAdapter(textView: textView, input: probe, defaults: defaults, style: .sumi(prefs))
         rimeAdapter = adapter
         adapter.onBarChange = { [weak self] in self?.placeRimeBar(reveal: true) }
         adapter.onUpdate = { [weak self] _ in self?.placeRimeBar(reveal: true) }
+        let select = adapter.bar.onSelect, page = adapter.bar.onPage
+        adapter.bar.onSelect = { [weak self] index in self?.tapping { select?(index) } }
+        adapter.bar.onPage = { [weak self] next in self?.tapping { page?(next) } }
         textView.pressHandler = self
-        textView.onFocusChange = { [weak self] focused in self?.quietly { self?.rimeAdapter?.focusChanged(focused) } }
+        // 只读时不算聚焦:引擎不启用,按键照常交给系统(打开或保存失败)。
+        textView.onFocusChange = { [weak self] focused in
+            guard let self else { return }
+            if !focused { rimeHeld.removeAll() }
+            quietly { self.rimeAdapter?.focusChanged(focused && self.textView.isEditable) }
+        }
         textView.onTouchBegan = { [weak self] modifiers in self?.rimeAdapter?.touchBegan(modifiers: modifiers) }
         textView.isLockedForComposition = { [weak self] in self?.rimeAdapter?.isComposing ?? false }
     }
@@ -696,6 +723,26 @@ final class EditorController: UIViewController, UITextViewDelegate {
         rimeQuiet += 1
         body()
         rimeQuiet -= 1
+    }
+
+    private func aside(_ body: () -> Void) {
+        rimeAside += 1
+        body()
+        rimeAside -= 1
+    }
+
+    private func tapping(_ body: () -> Void) {
+        rimeTap += 1
+        body()
+        rimeTap -= 1
+    }
+
+    /// 这次文字变化是不算打字的上屏:切页前、变成只读时;或引擎自己落下的更新,而当时既没按着它吞下的键、
+    /// 也不在点候选、也不在宿主调它的按键与焦点入口里(如失去活跃时引擎自己上屏)。
+    private var rimeCommitAside: Bool {
+        if rimeAside > 0 { return true }
+        guard let probe = rimeProbe, probe.landing > 0 else { return false }
+        return rimeQuiet == 0 && rimeTap == 0 && rimeHeld.isEmpty
     }
 
     /// 平时正文底下留出候选行的高度,光标在最后一行时也能把下一行(候选行)滚进视区。
@@ -709,9 +756,7 @@ final class EditorController: UIViewController, UITextViewDelegate {
     /// (光标在视区最后一行时就是上滚一行)。聚焦打字时光标行居中,不需要。
     private func placeRimeBar(reveal: Bool) {
         guard let bar = rimeAdapter?.bar, bar.superview != nil else { return }
-        if !focusMode && !pendingInsetReset && textView.contentInset != restingInsets {
-            textView.contentInset = restingInsets
-        }
+        if !focusMode && !pendingInsetReset { applyRestingInsets(animated: false) }
         guard rimeAdapter?.barVisible == true, container.bounds.height > 0 else { return }
         let inset = textView.textContainerInset
         let height = RimeCandidateBar.height(for: bar.style.font)
@@ -728,7 +773,8 @@ final class EditorController: UIViewController, UITextViewDelegate {
             textView.setContentOffset(CGPoint(x: textView.contentOffset.x, y: target), animated: false)
             y = textView.convert(CGPoint(x: 0, y: top), to: view).y
         }
-        y = min(max(y, visible.minY), max(visible.minY, visible.maxY - height))
+        // 光标行滚出视区时不显示,不贴在边上盖住别的字(alpha:显隐归适配器管)。
+        bar.alpha = caretVisible ? 1 : 0
         let x = textView.convert(CGPoint(x: inset.left, y: 0), to: view).x
         let frame = CGRect(x: x, y: y, width: width, height: height)
         if bar.frame != frame { bar.frame = frame }
@@ -778,11 +824,18 @@ final class EditorController: UIViewController, UITextViewDelegate {
 extension EditorController: KeyPressHandling {
     /// 先给内嵌输入法;它吞下的每个按下的键响一声打字音(按键码分种类),由它引起的上屏、组字不另响。
     func unhandled(_ presses: Set<UIPress>, began: Bool) -> Set<UIPress> {
-        guard let adapter = rimeAdapter else { return presses }
+        // 只读时引擎不启用(`onFocusChange`),按键原样交给系统。
+        guard let adapter = rimeAdapter, textView.isEditable else { return presses }
         var rest = presses
         quietly { rest = adapter.unhandled(presses, began: began) }
-        if began, model?.isWritable == true, textView.isEditable {
-            for press in presses.subtracting(rest) {
+        let taken = presses.subtracting(rest)
+        if began {
+            rimeHeld.formUnion(taken.map(ObjectIdentifier.init))
+        } else {
+            rimeHeld.subtract(presses.map(ObjectIdentifier.init))
+        }
+        if began, model?.isWritable == true {
+            for press in taken {
                 if let kind = KeyKind.of(press) { sound?.play(kind: kind) }
             }
         }

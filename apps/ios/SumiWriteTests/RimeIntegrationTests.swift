@@ -28,7 +28,12 @@ private final class FakeRime: RimeInputDriving {
         if began { onSwallow?(press) }
         return true
     }
-    func select(_ index: Int) { selected.append(index) }
+    /// 点候选时推的更新(模拟引擎上屏)。
+    var onSelect: ((Int) -> Void)?
+    func select(_ index: Int) {
+        selected.append(index)
+        onSelect?(index)
+    }
     func page(next: Bool) { paged.append(next) }
     func flush() {
         flushCount += 1
@@ -94,6 +99,7 @@ final class RimeIntegrationTests: XCTestCase {
         let page: CorePage
         let library: PageLibrary
         let defaults: UserDefaults
+        let prefs: PrefsModel
         let rime: FakeRime
         let sound: SpySound
         let window: UIWindow
@@ -115,7 +121,8 @@ final class RimeIntegrationTests: XCTestCase {
         rime.status = RimeStatus(state: .ready, keyboard: keyboard)
         configure?(rime, d)
         let sound = SpySound()
-        let c = EditorController(persistence: p, page: page, prefs: PrefsModel(store: PrefsStore(defaults: d)),
+        let prefs = PrefsModel(store: PrefsStore(defaults: d))
+        let c = EditorController(persistence: p, page: page, prefs: prefs,
                                  selection: SelectionStore(defaults: d), sound: sound, rime: rime, rimeDefaults: d)
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
@@ -126,7 +133,7 @@ final class RimeIntegrationTests: XCTestCase {
         windows.append(window)
         XCTAssertTrue(c.textView.becomeFirstResponder())
         drainMain()
-        return Harness(controller: c, persistence: p, page: page, library: lib, defaults: d, rime: rime,
+        return Harness(controller: c, persistence: p, page: page, library: lib, defaults: d, prefs: prefs, rime: rime,
                        sound: sound, window: window)
     }
 
@@ -438,5 +445,168 @@ final class RimeIntegrationTests: XCTestCase {
         h.controller.prepareToSwitch()
         XCTAssertEqual(h.page.body(), "ni")
         XCTAssertEqual(h.sound.total, before)
+    }
+
+    // MARK: 复审修正
+
+    private func typed(_ h: Harness) -> (() -> Int) {
+        var count = 0
+        h.controller.onCommand = { if $0 == .typing { count += 1 } }
+        return { count }
+    }
+
+    /// 切页前的上屏不算打字:不发 typing,不进聚焦打字(复审 1)。
+    func test_switchFlushIsNotTyping() throws {
+        let h = try harness()
+        h.rime.compose("ni")
+        let typing = typed(h)
+        h.controller.prepareToSwitch()
+        XCTAssertEqual(h.page.body(), "ni")
+        XCTAssertEqual(typing(), 0)
+    }
+
+    /// 保存失败后编辑面不可编辑:组字结束,引擎停用,按键原样交给系统,不发声(复审 2)。
+    func test_readOnlyKeepsEngineOff() throws {
+        let h = try harness()
+        h.rime.compose("ni")
+        h.persistence.onFailure?("保存失败")
+        XCTAssertFalse(h.textView.isEditable)
+        XCTAssertEqual(h.rime.active.last, false)
+        XCTAssertFalse(h.controller.rimeAdapter?.isComposing ?? true)
+        XCTAssertNil(h.textView.markedTextRange)
+        let press = BarePress()
+        h.rime.swallowed.insert(ObjectIdentifier(press))
+        XCTAssertEqual(h.controller.unhandled([press], began: true), [press])
+        XCTAssertEqual(h.sound.keySounds, [])
+        // 不可编辑时再取得焦点也不启用。
+        h.textView.resignFirstResponder()
+        h.textView.becomeFirstResponder()
+        XCTAssertNotEqual(h.rime.active.last, true)
+    }
+
+    /// 打不开纸页(只读)时引擎从不启用。
+    func test_openFailureNeverActivates() throws {
+        let name = "sumi.rime.test.\(UUID().uuidString)"
+        suites.append(name)
+        let d = try XCTUnwrap(UserDefaults(suiteName: name))
+        let rime = FakeRime()
+        let c = EditorController(persistence: nil, page: nil, prefs: PrefsModel(store: PrefsStore(defaults: d)),
+                                 selection: SelectionStore(defaults: d), sound: SpySound(), rime: rime, rimeDefaults: d)
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: 430, height: 900)
+        window.rootViewController = c
+        window.makeKeyAndVisible()
+        window.layoutIfNeeded()
+        windows.append(window)
+        _ = c.textView.becomeFirstResponder()
+        drainMain()
+        XCTAssertFalse(rime.active.contains(true))
+        let press = BarePress()
+        rime.swallowed.insert(ObjectIdentifier(press))
+        XCTAssertEqual(c.unhandled([press], began: true), [press])
+    }
+
+    /// 光标所在行滚出视区:候选行不贴在边上,而是不显示;滚回来再显示(复审 4)。
+    func test_barHiddenWhileCaretLineOffscreen() throws {
+        let h = try harness()
+        let tv = h.textView
+        tv.insertText(Array(repeating: "一行", count: 60).joined(separator: "\n"))
+        h.controller.view.layoutIfNeeded()
+        if let tlm = tv.textLayoutManager, let tcm = tlm.textContentManager { tlm.ensureLayout(for: tcm.documentRange) }
+        let bar = try bar(h)
+        tv.setContentOffset(.zero, animated: false)
+        drainMain()
+        XCTAssertEqual(bar.alpha, 0, "caret line is off screen")
+        let visible = tv.convert(tv.bounds, to: h.controller.view)
+        XCTAssertTrue(bar.alpha == 0 || bar.frame.minY >= visible.minY)
+        tv.selectedRange = NSRange(location: 4, length: 0) // 第二行
+        drainMain()
+        XCTAssertEqual(bar.alpha, 1)
+        XCTAssertEqual(bar.frame.minY, try paragraphTop(h, offset: 6), accuracy: 1)
+    }
+
+    /// 改字号后候选行跟着重摆:高度随新字号,位置仍在下一行(复审 5)。
+    func test_barFollowsFontSize() throws {
+        let h = try harness()
+        h.textView.insertText("第一行\n第二行")
+        h.textView.selectedRange = NSRange(location: 3, length: 0)
+        drainMain()
+        let bar = try bar(h)
+        let before = bar.frame.height
+        h.prefs.bumpSize(8)
+        drainMain()
+        XCTAssertGreaterThan(bar.style.font.pointSize, 0)
+        XCTAssertEqual(bar.frame.height, RimeCandidateBar.height(for: bar.style.font), accuracy: 0.5)
+        XCTAssertGreaterThan(bar.frame.height, before)
+        XCTAssertEqual(bar.frame.minY, try paragraphTop(h, offset: 4), accuracy: 1)
+        XCTAssertEqual(h.textView.contentInset.bottom, bar.frame.height, accuracy: 0.5)
+    }
+
+    /// 候选行消失、底部留白收回时,滚动位置夹回内容范围内(复审 6)。
+    func test_insetChangeClampsOffset() throws {
+        let h = try harness()
+        let tv = h.textView
+        tv.insertText(Array(repeating: "一行", count: 60).joined(separator: "\n"))
+        h.controller.view.layoutIfNeeded()
+        if let tlm = tv.textLayoutManager, let tcm = tlm.textContentManager { tlm.ensureLayout(for: tcm.documentRange) }
+        drainMain()
+        XCTAssertGreaterThan(tv.contentInset.bottom, 0)
+        let bottom = tv.contentSize.height + tv.contentInset.bottom - tv.bounds.height
+        tv.setContentOffset(CGPoint(x: 0, y: bottom), animated: false)
+        h.rime.push(status: RimeStatus(state: .ready, keyboard: false))
+        drainMain()
+        XCTAssertEqual(tv.contentInset.bottom, 0)
+        XCTAssertLessThanOrEqual(tv.contentOffset.y, max(0, tv.contentSize.height - tv.bounds.height) + 0.5)
+    }
+
+    /// 不是按键引起、也不是点候选的上屏(如失去活跃时引擎自己上屏):不发声,不算打字(复审 7)。
+    func test_engineCommitWithoutKeyIsSilent() throws {
+        let h = try harness()
+        h.rime.compose("ni")
+        let before = h.sound.total
+        let typing = typed(h)
+        h.rime.push(RimeUpdate(commit: "ni"))
+        XCTAssertEqual(h.page.body(), "ni")
+        XCTAssertEqual(h.sound.total, before)
+        XCTAssertEqual(typing(), 0)
+    }
+
+    /// 按住键时引擎自己连发的上屏照常按文字发声。
+    func test_heldKeyRepeatSounds() throws {
+        let h = try harness()
+        let press = BarePress()
+        h.rime.swallowed.insert(ObjectIdentifier(press))
+        h.textView.pressesBegan([press], with: nil)
+        XCTAssertEqual(h.sound.keySounds, [.key])
+        h.rime.push(RimeUpdate(commit: "a"))
+        XCTAssertEqual(h.sound.textSounds.count, 1)
+        h.textView.pressesEnded([press], with: nil)
+        h.rime.push(RimeUpdate(commit: "b"))
+        XCTAssertEqual(h.sound.textSounds.count, 1, "no key held: silent")
+    }
+
+    /// 点候选上屏照常发声。
+    func test_candidateTapCommitSounds() throws {
+        let h = try harness()
+        h.rime.compose("ni", menu: RimeMenu(rows: [RimeCandidate(index: 0, label: "1", text: "你")], cursor: 0))
+        h.rime.onSelect = { [weak rime = h.rime] _ in rime?.push(RimeUpdate(commit: "你")) }
+        let bar = try bar(h)
+        bar.layoutIfNeeded()
+        let before = h.sound.total
+        try XCTUnwrap(button("你", in: bar)).sendActions(for: .touchUpInside)
+        XCTAssertEqual(h.page.body(), "你")
+        XCTAssertEqual(h.sound.total, before + 1)
+    }
+
+    /// 组字中不接受拖入(复审 8)。
+    func test_compositionForbidsDrop() throws {
+        let h = try harness()
+        let tv = h.textView
+        XCTAssertTrue(tv.textDropDelegate === tv)
+        let ok = UITextDropProposal(operation: .copy)
+        XCTAssertEqual(tv.dropProposal(suggested: ok).operation, .copy)
+        h.rime.compose("ni")
+        XCTAssertEqual(tv.dropProposal(suggested: ok).operation, .forbidden)
     }
 }
