@@ -1014,8 +1014,15 @@ impl Document {
             .collect();
         let inherited_first = previous.iter().filter_map(|l| l.first_ms).min();
         let inherited_last = previous.iter().filter_map(|l| l.last_ms).max();
+        // body_index splits the newest body item (the text undo/redo just restored). Yrs only
+        // squashes that split back when it is still the client's last block at commit, so the
+        // index needs its own transaction before the timing entry is appended; a split restored
+        // item would make a later undo delete only its first half.
+        let index = body_index(
+            &self.body,
+            &mut self.doc.transact_mut_with("timing-history"),
+        );
         let mut txn = self.doc.transact_mut_with("timing-history");
-        let index = body_index(&self.body, &mut txn);
         let mut spans = Vec::new();
         let mut pos = 0;
         for line in &restored.lines {

@@ -39,6 +39,8 @@ final class TypingSound: TypingSoundPlaying {
     /// 收到打断 `.began` 后为真;这期间输入与稍后重试都不启动,等 `.ended`、回到前台、媒体服务重置或偏好变化。
     private var interrupted = false
     private var retryPending = false
+    /// 语音输入借走了会话(`.record`):这期间什么都不激活,等 `reclaimSession`(ios.md §3.8「音频」)。
+    private var yielded = false
 
     /// 以下由 `lock` 保护:声音队列写,`play` 与测试读。
     private let lock = NSLock()
@@ -117,6 +119,25 @@ final class TypingSound: TypingSoundPlaying {
         }
     }
 
+    /// 语音输入开始前调用:会话要交给录音,这期间输入、打断结束、引擎配置变化都不去把会话改回 `.playback`。
+    /// 同步设标记:排在前面的 `activate(.input)` 跑完才返回,之后的都看得到它,不会在 VoiceKit 设 `.record` 时
+    /// 插进来改回 `.playback`。调用方在主线程,声音队列从不同步等主线程,不会死锁。
+    func yieldSession() {
+        setReady(false)
+        queue.sync { yielded = true }
+    }
+
+    /// 语音输入用完会话之后调用:重新配置 `.playback` + `.mixWithOthers`,重启引擎与播放节点。
+    /// 打断(来电)还没结束时不抢,等 `.ended` 或回到前台。
+    func reclaimSession() {
+        setReady(false)
+        queue.async { [weak self] in
+            guard let self else { return }
+            self.yielded = false
+            if !self.interrupted { self.activate(.event) }
+        }
+    }
+
     /// 等声音队列排空;只供测试。
     func waitUntilIdle() { queue.sync {} }
 
@@ -175,7 +196,7 @@ final class TypingSound: TypingSoundPlaying {
 
     /// 按 `wanted` 激活会话、必要时建引擎并启动;任何失败都只是无声。
     private func activate(_ trigger: Trigger) {
-        guard let pack = wanted else { return }
+        guard let pack = wanted, !yielded else { return }
         if trigger != .event && interrupted { return }
         if trigger == .input, let t = lastInputFailure, Date().timeIntervalSince(t) < Self.retryInterval { return }
         locked { attempts += 1 }

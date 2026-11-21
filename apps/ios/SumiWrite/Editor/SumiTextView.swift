@@ -209,6 +209,12 @@ final class SumiTextView: UITextView, UITextDropDelegate {
         super.pressesBegan(rest, with: event)
     }
 
+    /// 过了按键入口、晚到的按下(长按右 ⌥ 说话的门限放回先吞下的右 ⌥,ios.md §3.8):直接交给 `UITextView`。
+    func forwardBegan(_ presses: Set<UIPress>) {
+        guard !presses.isEmpty else { return }
+        super.pressesBegan(presses, with: nil)
+    }
+
     override func pressesEnded(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
         let rest = pressHandler?.unhandled(presses, began: false) ?? presses
         guard !rest.isEmpty else { return }

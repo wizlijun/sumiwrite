@@ -6,7 +6,7 @@ import XCTest
 
 /// 假的内嵌输入法:记下编辑面要它做的事,测试经它推更新与状态。与 `RimeInput` 一样,`flush()` 与 `clear()`
 /// 都同步回一次更新(`flush`:按原文上屏当前的输入;`clear`:空更新)。
-private final class FakeRime: RimeInputDriving {
+final class FakeRime: RimeInputDriving {
     var onUpdate: ((RimeUpdate) -> Void)?
     var onStatus: ((RimeStatus) -> Void)?
     var status = RimeStatus(state: .ready, keyboard: true)
@@ -65,7 +65,7 @@ private final class FakeRime: RimeInputDriving {
     }
 }
 
-private final class SpySound: TypingSoundPlaying {
+final class SpySound: TypingSoundPlaying {
     var textSounds: [KeyKind?] = []
     var keySounds: [KeyKind] = []
     func play(before: String, after: String, kind: KeyKind?) {
@@ -81,7 +81,7 @@ private final class SpySound: TypingSoundPlaying {
 private final class BarePress: UIPress {}
 
 /// 有按键码与修饰键的实体键(UIKit 不给测试别的办法造一个)。
-private final class FakeKey: UIKey {
+final class FakeKey: UIKey {
     let code: UIKeyboardHIDUsage, flags: UIKeyModifierFlags
     init(_ code: UIKeyboardHIDUsage, _ flags: UIKeyModifierFlags) {
         self.code = code
@@ -95,7 +95,7 @@ private final class FakeKey: UIKey {
     override var charactersIgnoringModifiers: String { " " }
 }
 
-private final class KeyPress: UIPress {
+final class KeyPress: UIPress {
     let fakeKey: FakeKey
     init(_ code: UIKeyboardHIDUsage, _ flags: UIKeyModifierFlags) {
         fakeKey = FakeKey(code, flags)

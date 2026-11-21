@@ -13,6 +13,9 @@ packages:
   # 内嵌输入法 RimeKit:本机 ~/git/rime-kit(路径相对本文件),先在那里跑 scripts/fetch.sh。见 README「一次性准备」。
   RimeKit:
     path: ../../../rime-kit
+  # 按住说话 VoiceKit:本机 ~/git/voice-kit(路径相对本文件),从 rapp 移植。见 README「一次性准备」。
+  VoiceKit:
+    path: ../../../voice-kit
 targets:
   SumiWrite:
     type: application
@@ -30,6 +33,10 @@ targets:
         product: RimeKit
       - package: RimeKit
         product: RimeKitUI
+      - package: VoiceKit
+        product: VoiceKit
+      - package: VoiceKit
+        product: VoiceKitUI
     info:
       path: build/Info-app.plist
       properties:
@@ -40,6 +47,13 @@ targets:
           - IBMPlexSansSC-Light.otf
           - LXGWWenKaiMonoLite-Regular.ttf
           - ZhaohuaTypeWriter.ttf
+        # 按住说话的用途说明(语音输入设计 §6.5)。
+        NSMicrophoneUsageDescription: 按住语音按钮说话时录音，转成文字写进纸页
+        NSSpeechRecognitionUsageDescription: 把你按住语音按钮时说的话转成文字
+        # AI 整理的接入点多半在局域网里(ios.md §3.8「AI 整理」):只放开本地网络的 http,公网照旧要 https。
+        NSLocalNetworkUsageDescription: 连接你在设置里填写的 AI 整理接入点
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
