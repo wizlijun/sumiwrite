@@ -164,9 +164,6 @@ final class VoiceLandingTests: XCTestCase {
         c.textView.coreUndoManager?.undo()
         XCTAssertEqual(page.body(), said)
         c.textView.coreUndoManager?.undo()
-        // 内核的已知缺陷:整段替换后连撤两次,原话的最后一个字留下(撤销后的 `body_index` 拆块,Yrs 的撤销跟丢了拆出的块)。
-        // 内核修好后这里会报「预期的失败没有发生」,删掉这一行。
-        XCTExpectFailure("core: undoing a whole-run replace twice keeps its last character")
         XCTAssertEqual(page.body(), "")
     }
 

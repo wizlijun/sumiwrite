@@ -492,3 +492,13 @@ fn undo_and_redo_availability_follows_history() {
     put(&mut d, 0, 0, "b", 3);
     assert!(!d.can_redo());
 }
+#[test]
+fn undo_twice_after_replacing_all_text_leaves_empty_page() {
+    let mut d = new();
+    put(&mut d, 0, 0, "abc", 1);
+    put(&mut d, 0, 3, "xy", 2);
+    d.undo(3).unwrap();
+    assert_eq!(d.body(), "abc");
+    d.undo(4).unwrap();
+    assert_eq!(d.body(), "");
+}
