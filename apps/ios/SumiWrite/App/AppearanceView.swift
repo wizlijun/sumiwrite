@@ -127,7 +127,7 @@ private struct VoiceTidyRows: View {
             Text(ready ? "超过 10 个字时，先发给下面填的接入点整理再插入" : "先填写接入点和 key")
                 .font(.footnote).foregroundStyle(.secondary)
         }
-        TextField("接入点", text: $endpoint.url, prompt: Text(llmUrlHint))
+        TextField("接入点", text: $endpoint.url, prompt: Text("http://192.168.x.x:端口"))
             .keyboardType(.URL)
             .textContentType(.URL)
             .textInputAutocapitalization(.never)
@@ -143,7 +143,10 @@ private struct VoiceTidyRows: View {
                 keyDraft = endpoint.key
                 probed = normalizeLlmUrl(endpoint.url)
             }
-            .onDisappear(perform: commitKey)
+            .onDisappear {
+                commitURL()
+                commitKey()
+            }
             .onChange(of: focus) { old, _ in
                 if old == .url { commitURL() }
                 if old == .key { commitKey() }

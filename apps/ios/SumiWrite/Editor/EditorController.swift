@@ -178,7 +178,8 @@ final class EditorController: UIViewController, UITextViewDelegate {
         prepareToSwitch()
         guard textView.markedTextRange == nil else { return "请先完成输入" }
         let range = textView.selectedRange
-        guard range.location != NSNotFound else { return nil }
+        // 没有选区:字没进纸页,交回提示,调用方留着它(TidyHeld)。
+        guard range.location != NSNotFound else { return "这一页现在不能写" }
         let visible = ((textView.text ?? "") as NSString).replacingCharacters(in: clamped(range), with: text)
         let start = clamped(range).location
         let caret = start + (text as NSString).length
