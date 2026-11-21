@@ -68,7 +68,7 @@ struct AppearanceView: View {
                     Toggle("聚焦打字", isOn: $prefs.prefs.focusTyping)
                     Toggle("打字音", isOn: $prefs.prefs.typingSound)
                 }
-                SwitchShortcutSection(shortcut: $prefs.prefs.switchShortcut)
+                SwitchShortcutSection(shortcut: $prefs.prefs.switchShortcut, voiceKey: $prefs.prefs.voiceKey)
             }
             .navigationTitle("设置")
             .navigationBarTitleDisplayMode(.inline)
@@ -76,9 +76,10 @@ struct AppearanceView: View {
     }
 }
 
-/// 「输入法」一组:实体键盘的内嵌输入法切换中 / 英的快捷键(ios.md §3.6)。
+/// 「输入法」一组:实体键盘的内嵌输入法切换中 / 英的快捷键(ios.md §3.6),与长按右 ⌥ 说话(§3.7)。
 private struct SwitchShortcutSection: View {
     @Binding var shortcut: RimeSwitchShortcut
+    @Binding var voiceKey: Bool
 
     var body: some View {
         Section {
@@ -88,6 +89,7 @@ private struct SwitchShortcutSection: View {
                 Text("Shift + 空格").tag(RimeSwitchShortcut.shiftSpace)
                 Text("关").tag(RimeSwitchShortcut.off)
             }
+            Toggle("按住右 ⌥ 说话", isOn: $voiceKey)
         } header: { Text("输入法") } footer: {
             if shortcut == .shiftSpace {
                 Text("接实体键盘时,内置输入法用它在中文与英文之间切换;单按左 Shift 也能切换。按着 Shift 打完大写字母紧接着按空格,也会切换。")

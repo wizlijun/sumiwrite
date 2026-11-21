@@ -274,7 +274,7 @@ private struct MicButton: View {
             .gesture(
                 DragGesture(minimumDistance: 0, coordinateSpace: .global)
                     .updating($pressing) { _, state, _ in state = true }
-                    .onChanged { host.finger(at: $0.location) }
+                    .onChanged { host.finger(at: $0.location, start: $0.startLocation) }
                     .onEnded { _ in host.fingerUp() },
                 including: enabled ? .all : .none)
             // 手势被系统取消时没有 `onEnded`,只有手势状态复位:晚一拍看手指是否还算按着,是就当打断。

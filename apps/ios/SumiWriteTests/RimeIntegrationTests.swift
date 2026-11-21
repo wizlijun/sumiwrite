@@ -81,7 +81,7 @@ final class SpySound: TypingSoundPlaying {
 private final class BarePress: UIPress {}
 
 /// 有按键码与修饰键的实体键(UIKit 不给测试别的办法造一个)。
-private final class FakeKey: UIKey {
+final class FakeKey: UIKey {
     let code: UIKeyboardHIDUsage, flags: UIKeyModifierFlags
     init(_ code: UIKeyboardHIDUsage, _ flags: UIKeyModifierFlags) {
         self.code = code
@@ -95,7 +95,7 @@ private final class FakeKey: UIKey {
     override var charactersIgnoringModifiers: String { " " }
 }
 
-private final class KeyPress: UIPress {
+final class KeyPress: UIPress {
     let fakeKey: FakeKey
     init(_ code: UIKeyboardHIDUsage, _ flags: UIKeyModifierFlags) {
         fakeKey = FakeKey(code, flags)

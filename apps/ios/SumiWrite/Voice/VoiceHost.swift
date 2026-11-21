@@ -23,8 +23,11 @@ final class VoiceHost: ObservableObject, VoiceSink {
     private var bag = Set<AnyCancellable>()
     /// 打字音让出了会话,还没收回。
     private var yielded = false
-    /// 麦克风按钮上的手指按着(手势还没结束或被取消)。
+    /// 麦克风按钮上的手指按着(手势还没结束或被取消),而且这次按下还没结束。
     private var fingerDown = false
+    /// 当前这次触摸的起点,用来认出同一个手势:按下已结束(`voiceDidEnd`)而手指还没抬起时,它后来的移动不再开始新的一次;
+    /// 手势无声无息地没了,下一次触摸的起点不同,照样能开始。
+    private var fingerStart: CGPoint?
     /// VoiceOver 双击开始的一次说话还没结束。
     private var accessibilityOn = false
 
@@ -45,6 +48,8 @@ final class VoiceHost: ObservableObject, VoiceSink {
             guard let self else { return }
             self.defaults.set(true, forKey: Self.languageHintKey)
         }
+        controller.onVoiceKey = { [weak self] phase in self?.key(phase) }
+        controller.voiceKeyReady = { [weak self] in self?.idle ?? false }
         // `$prefs` 在 willSet 时发值:用发来的值。
         prefs.$prefs
             .sink { [weak self] p in self?.overlay?.style = .sumi(p) }
@@ -74,12 +79,13 @@ final class VoiceHost: ObservableObject, VoiceSink {
 
     // MARK: 麦克风按钮
 
-    /// 手指按下或移动;`point` 是窗口坐标(`DragGesture` 的 `.global`)。
-    func finger(at point: CGPoint) {
-        if fingerDown {
-            hold.move(to: point)
+    /// 手指按下或移动;`point` 与这次触摸的起点 `start` 是窗口坐标(`DragGesture` 的 `.global`)。
+    func finger(at point: CGPoint, start: CGPoint) {
+        if start == fingerStart {
+            if fingerDown { hold.move(to: point) }
             return
         }
+        fingerStart = start
         fingerDown = true
         guard let window = controller?.viewIfLoaded?.window else { return }
         attach(to: window)
@@ -90,6 +96,7 @@ final class VoiceHost: ObservableObject, VoiceSink {
 
     /// 手指松开:按当前的选择插入、插入原话或取消。
     func fingerUp() {
+        fingerStart = nil
         guard fingerDown else { return }
         fingerDown = false
         Task { await hold.up() }
@@ -98,7 +105,10 @@ final class VoiceHost: ObservableObject, VoiceSink {
     /// 系统抢走了触点(手势被取消)、来电、退到后台:按取消处理,已说出的字不插入。
     func interrupt() {
         fingerDown = false
+        fingerStart = nil
         accessibilityOn = false
+        // 离开前台时按着的键可能等不到松开:门限也忘掉它们(rapp 的 resign)。
+        controller?.voiceKeyResign()
         Task { await hold.cancel() }
     }
 
@@ -120,6 +130,29 @@ final class VoiceHost: ObservableObject, VoiceSink {
             await hold.start()
             // 被拒绝、请求授权、没能开始:下一次双击重新开始。
             if !hold.holding { accessibilityOn = false }
+        }
+    }
+
+    // MARK: 实体键盘(长按右 ⌥)
+
+    /// 没有别的说话在进行:手指、VoiceOver、上一次说话都结束了。
+    private var idle: Bool {
+        !fingerDown && !accessibilityOn && !hold.holding && voice.phase == .idle
+    }
+
+    /// 编辑面的门限给出的阶段(ios.md §3.7「入口」)。键盘路径没有圆盘,只画气泡与 `keyboardHint`。
+    private func key(_ phase: VoiceKeyPhase) {
+        switch phase {
+        case .start:
+            if let window = controller?.viewIfLoaded?.window { attach(to: window) }
+            Task {
+                await hold.start()
+                // 被拒绝、请求授权、没能开始:门限吞掉余下的键,直到右 ⌥ 松开(rapp `voiceEnd`)。
+                if !hold.holding { controller?.voiceKeyEnded() }
+            }
+        case .release: Task { await hold.finish(.send) }
+        case .cancel: Task { await hold.finish(.cancel) }
+        case .edit: Task { await hold.finish(.edit) }
         }
     }
 
@@ -148,7 +181,8 @@ final class VoiceHost: ObservableObject, VoiceSink {
     }
 
     func voiceInsert(_ text: String, pick: VoicePick) {
-        controller?.insertVoice(text)
+        // 说话期间系统输入法开始了组字:不插入,提示。
+        if let refused = controller?.insertVoice(text) { onNotice?(refused, .none) }
     }
 
     func voiceNotice(_ text: String, settings: VoiceSettings) {
@@ -157,6 +191,10 @@ final class VoiceHost: ObservableObject, VoiceSink {
 
     func voiceDidEnd(_ pick: VoicePick?) {
         accessibilityOn = false
+        // 手指的这次按下结束了(包括手势无声无息地没了、60 s 上限):不再算按着,下一次触摸能开始。
+        if !hold.keyboard { fingerDown = false }
+        // 键盘的这次从别处结束(60 s 上限、打断):门限吞掉余下的键,直到右 ⌥ 松开。
+        controller?.voiceKeyEnded()
         // 没走到录音(请求授权、被拒绝、轻点)时不会有 `restoreAudio`:在这里收回。
         if yielded { reclaimAudio() }
     }

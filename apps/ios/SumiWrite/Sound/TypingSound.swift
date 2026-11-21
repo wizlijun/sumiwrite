@@ -120,9 +120,11 @@ final class TypingSound: TypingSoundPlaying {
     }
 
     /// 语音输入开始前调用:会话要交给录音,这期间输入、打断结束、引擎配置变化都不去把会话改回 `.playback`。
+    /// 同步设标记:排在前面的 `activate(.input)` 跑完才返回,之后的都看得到它,不会在 VoiceKit 设 `.record` 时
+    /// 插进来改回 `.playback`。调用方在主线程,声音队列从不同步等主线程,不会死锁。
     func yieldSession() {
         setReady(false)
-        queue.async { [weak self] in self?.yielded = true }
+        queue.sync { yielded = true }
     }
 
     /// 语音输入用完会话之后调用:重新配置 `.playback` + `.mixWithOthers`,重启引擎与播放节点。

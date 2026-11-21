@@ -20,6 +20,8 @@ struct EditorPrefs: Codable, Equatable {
     var soundPack: SoundPack = .typewriter
     /// 内嵌输入法切换中 / 英的快捷键(ios.md §3.6)。
     var switchShortcut: RimeSwitchShortcut = .controlSpace
+    /// 接实体键盘时单独长按右 ⌥ 说话(ios.md §3.7「入口」)。
+    var voiceKey: Bool = true
 
     init() {}
 
@@ -35,6 +37,7 @@ struct EditorPrefs: Codable, Equatable {
         typingSound = try c.decodeIfPresent(Bool.self, forKey: .typingSound) ?? d.typingSound
         soundPack = try c.decodeIfPresent(SoundPack.self, forKey: .soundPack) ?? d.soundPack
         switchShortcut = try c.decodeIfPresent(RimeSwitchShortcut.self, forKey: .switchShortcut) ?? d.switchShortcut
+        voiceKey = try c.decodeIfPresent(Bool.self, forKey: .voiceKey) ?? d.voiceKey
     }
 
     /// 字号加 `delta` 并夹到合法范围。
