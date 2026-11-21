@@ -132,7 +132,7 @@ cargo +1.99.0 test --manifest-path apps/ios/ffi/Cargo.toml
 
 ## iPhone Duo 半折打字手工验收
 
-规范 [`ios.md` §3.7](../../docs/spec/platform/ios.md#37-iphone-duo-半折打字)。只能在 iPhone Duo 真机上做,或者在装了 iOS 27 模拟器运行时的 iPhone Duo 模拟器上做。自动测试只覆盖「何时进入半折」的纯判定(`DeskPostureTests`)。
+规范 [`ios.md` §3.7](../../docs/spec/platform/ios.md#37-iphone-duo-半折打字)。只能在 iPhone Duo 真机上做:iOS 27.2 模拟器运行时把 iPhone Duo(`iPhone19,4`)列为不支持的机型,建不出 Duo 模拟器。自动测试只覆盖「何时进入半折」的纯判定(`DeskPostureTests`)。
 
 1. 横拿、半折:正文只在折痕以上,软键盘弹在下半屏,折痕以下是底座,「···」条在底座上;
 2. 半折时编辑面没有焦点:自动聚焦并弹出键盘;

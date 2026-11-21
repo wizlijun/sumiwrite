@@ -381,7 +381,9 @@ final class EditorController: UIViewController, UITextViewDelegate {
     /// 转轴变化时(`inLayout` 为 false)动画到新布局;布局过程中(旋转、换窗口大小)只换约束,随下一遍布局到位。
     private func updateDesk(inLayout: Bool) {
         guard #available(iOS 27.1, *), let observer = desk as? DeskObserver else { return }
-        let top = DeskPosture.foldTop(hinge: observer.hinge, divisions: observer.divisions(in: view), bounds: view.bounds)
+        // 只在转轴半开时才查折痕:没有转轴的机型上每次布局都不多做一次查询。
+        let divisions = observer.hinge == .partiallyOpen ? observer.divisions(in: view) : []
+        let top = DeskPosture.foldTop(hinge: observer.hinge, divisions: divisions, bounds: view.bounds)
         switch (deskFoldTop, top) {
         case (nil, nil): return
         case let (old?, new?) where abs(old - new) < 0.5: return
