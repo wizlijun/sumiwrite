@@ -54,6 +54,8 @@ targets:
         NSLocalNetworkUsageDescription: 连接你在设置里填写的 AI 整理接入点
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
+        # 只用系统的 TLS 与 SHA-256 摘要,不含需要出口申报的加密;上传 TestFlight 时不再逐次询问。
+        ITSAppUsesNonExemptEncryption: false
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
@@ -61,6 +63,9 @@ targets:
         CURRENT_PROJECT_VERSION: "2"
         INFOPLIST_KEY_CFBundleDisplayName: "Sumi Write"
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        # 写明系统原本的默认方向:不写时 App Store 上传校验会拒收 iPad 版(分屏要求四个方向都支持)。
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
   SumiWriteTests:
     type: bundle.unit-test

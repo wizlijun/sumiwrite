@@ -25,6 +25,7 @@ bash ~/git/rime-kit/scripts/fetch.sh
 - `bash apps/ios/scripts/build-core.sh`:产出 `build/SumiCoreFFI.xcframework`、`build/gen/sumi_ios_ffi.swift` 和 `build/fixtures/`(`yrs-v1.json`、`yjs-v1.json`、`desktop.sqlite3`、`golden.json`)。可重复执行。
 - `xcodegen generate`(在 `apps/ios/` 下):生成 `SumiWrite.xcodeproj`,该工程不入库;本地包 RimeKit(产品 `RimeKit`、`RimeKitUI`)随之接入。
 - 真机:`bash apps/ios/scripts/install-device.sh <设备名或 UDID>`,需先配好签名。
+- TestFlight:`bash apps/ios/scripts/upload-testflight.sh`,打包并上传到 App Store Connect,见「TestFlight」一节。
 
 ## Verification
 
@@ -147,3 +148,12 @@ cargo +1.99.0 test --manifest-path apps/ios/ffi/Cargo.toml
 复制 `Signing.example.xcconfig` 为 `Signing.local.xcconfig`,填自己的团队与 Bundle ID。该文件已被 `.gitignore` 忽略,仓库里不放任何真值。
 
 `Base.xcconfig` 里的 `PRODUCT_BUNDLE_IDENTIFIER = com.example.sumiwrite` 只是模拟器构建与测试用的占位值,`Signing.local.xcconfig` 会覆盖它。M0/M1 计划正文把这个占位值写作 `local.sumiwrite.placeholder`,以 `Base.xcconfig` 为准。
+
+## TestFlight
+
+规范 [`ios.md` §1](../../docs/spec/platform/ios.md#1-范围):第一阶段走 TestFlight 自用,不公开发行;Bundle ID、签名身份、TestFlight 配置都不进仓库。
+
+- 前提:`Signing.local.xcconfig` 已填好;Xcode「设置 → 账户」里登录了该团队的账号(上传用它,脚本不碰密钥);App Store Connect 里已有这个 Bundle ID 的 App 记录(第一次要在网页上新建)。
+- 上传:`bash apps/ios/scripts/upload-testflight.sh`。构建号用年月日时分;处理完(通常 5–15 分钟)后在 App Store Connect 的 TestFlight 页可见。
+- `ITSAppUsesNonExemptEncryption` 为 `false`:应用只用系统 TLS 与 SHA-256 摘要,不再逐次回答出口合规问题。
+- 内部测试组(团队成员)不用审核;公开链接只能给外部测试组,第一个构建要过 Beta 版 App 审核。
