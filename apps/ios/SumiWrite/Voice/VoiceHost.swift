@@ -145,8 +145,7 @@ final class VoiceHost: ObservableObject, VoiceSink {
             return
         }
         guard let ai else { return }
-        controller.replaceVoice(original: ai.original, with: ai.result)
-        onNotice?(Self.tidiedNotice, .none)
+        if controller.replaceVoice(original: ai.original, with: ai.result) { onNotice?(Self.tidiedNotice, .none) }
     }
 
     /// VoiceTidy 的 `held`:等着的字存进这一页的文件;落地后(nil)删掉,没能落地的留下。

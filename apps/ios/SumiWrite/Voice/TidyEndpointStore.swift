@@ -17,19 +17,27 @@ final class TidyEndpointStore: ObservableObject {
         didSet { if url != oldValue { defaults.set(url, forKey: Self.urlKey) } }
     }
 
-    /// 第一次用到才读钥匙串:应用启动时不碰它。
+    /// 第一次用到才读钥匙串:应用启动时不碰它。设备锁着读不到时当作空,下次再读。
+    /// 设置面板在 key 填完(回车或离开输入框)时才写;写不进钥匙串时保持原来的值。
     var key: String {
         get {
             if let loaded { return loaded }
-            let k = Self.readKey() ?? ""
-            loaded = k
-            return k
+            switch Self.readKey() {
+            case .found(let k):
+                loaded = k
+                return k
+            case .missing:
+                loaded = ""
+                return ""
+            case .unavailable:
+                return ""
+            }
         }
         set {
             guard newValue != key else { return }
+            guard Self.writeKey(newValue) else { return }
             objectWillChange.send()
             loaded = newValue
-            Self.writeKey(newValue)
         }
     }
 
@@ -43,27 +51,49 @@ final class TidyEndpointStore: ObservableObject {
         url = defaults.string(forKey: Self.urlKey) ?? ""
     }
 
+    /// 向填好的接入点发一次试探请求、不看结果:系统的本地网络询问就出现在设置里,而不是第一次长语音的中途
+    /// (ios.md §3.7「AI 整理」)。不带 key。
+    static func probe(_ url: String) {
+        guard let base = normalizeLlmUrl(url), let u = URL(string: base) else { return }
+        var request = URLRequest(url: u, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 5)
+        request.httpMethod = "HEAD"
+        URLSession.shared.dataTask(with: request) { _, _, _ in }.resume()
+    }
+
+    private enum Read { case found(String), missing, unavailable }
+
     private static func query() -> [String: Any] {
         [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: keyService]
     }
 
-    private static func readKey() -> String? {
+    private static func readKey() -> Read {
         var q = query()
         q[kSecReturnData as String] = true
         q[kSecMatchLimit as String] = kSecMatchLimitOne
         var out: AnyObject?
-        guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess, let data = out as? Data else { return nil }
-        return String(data: data, encoding: .utf8)
+        switch SecItemCopyMatching(q as CFDictionary, &out) {
+        case errSecSuccess:
+            guard let data = out as? Data, let k = String(data: data, encoding: .utf8) else { return .missing }
+            return .found(k)
+        case errSecItemNotFound: return .missing
+        default: return .unavailable  // 如设备锁着(errSecInteractionNotAllowed)
+        }
     }
 
-    /// 空的 key 删掉那一项。
-    private static func writeKey(_ key: String) {
+    /// 空的 key 删掉那一项;其余先更新,没有那一项再添加。返回是否写成。
+    private static func writeKey(_ key: String) -> Bool {
         let q = query()
-        SecItemDelete(q as CFDictionary)
-        guard !key.isEmpty else { return }
+        guard !key.isEmpty else {
+            let s = SecItemDelete(q as CFDictionary)
+            return s == errSecSuccess || s == errSecItemNotFound
+        }
+        let attrs: [String: Any] = [kSecValueData as String: Data(key.utf8),
+                                    kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly]
+        let s = SecItemUpdate(q as CFDictionary, attrs as CFDictionary)
+        if s == errSecSuccess { return true }
+        guard s == errSecItemNotFound else { return false }
         var add = q
-        add[kSecValueData as String] = Data(key.utf8)
-        add[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
-        SecItemAdd(add as CFDictionary, nil)
+        add.merge(attrs) { _, new in new }
+        return SecItemAdd(add as CFDictionary, nil) == errSecSuccess
     }
 }

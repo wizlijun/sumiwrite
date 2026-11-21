@@ -124,9 +124,9 @@ struct ContentView: View {
             voice.restoreHeld()
         }
         .onChange(of: scenePhase) { _, phase in
-            // 来电、控制中心、退到后台:正在说的话按取消处理(ios.md §3.7「打断」)。
-            // 整理卡上的字先落地(§3.7「AI 整理」)。
-            if phase != .active {
+            // 退到后台:整理卡上的字先落地,正在说的话按取消处理(ios.md §3.7「松手与落地」「AI 整理」)。
+            // 只是失去活跃(控制中心、本地网络等系统弹窗)不动它;来电由音频会话的打断取消。
+            if phase == .background {
                 voice.landTidy()
                 voice.interrupt()
             }

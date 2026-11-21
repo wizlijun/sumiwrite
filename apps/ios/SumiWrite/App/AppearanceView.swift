@@ -108,10 +108,16 @@ private struct SwitchShortcutSection: View {
 }
 
 /// 「输入法」一组里的三行:长语音先让 AI 整理、接入点、key(ios.md §3.7「AI 整理」)。
-/// 接入点没填好时开关变灰;输入框空着时的淡字只是提示,不是默认值。
+/// 接入点没填好时开关变灰;输入框空着时的淡字只是提示,不是默认值。地址与 key 都在填完(回车或离开输入框)时生效:
+/// 地址变了就试探一次(本地网络询问出现在这里),key 这时才写进钥匙串。
 private struct VoiceTidyRows: View {
     @Binding var on: Bool
     @ObservedObject var endpoint: TidyEndpointStore
+    private enum Field { case url, key }
+    @FocusState private var focus: Field?
+    @State private var keyDraft = ""
+    /// 上次试探过的地址(规范化后)。
+    @State private var probed: String?
 
     var body: some View {
         let ready = endpoint.endpoint.configured
@@ -126,8 +132,31 @@ private struct VoiceTidyRows: View {
             .textContentType(.URL)
             .textInputAutocapitalization(.never)
             .autocorrectionDisabled()
-        SecureField("key", text: Binding(get: { endpoint.key }, set: { endpoint.key = $0 }))
+            .focused($focus, equals: .url)
+            .onSubmit(commitURL)
+        SecureField("key", text: $keyDraft)
             .textInputAutocapitalization(.never)
             .autocorrectionDisabled()
+            .focused($focus, equals: .key)
+            .onSubmit(commitKey)
+            .onAppear {
+                keyDraft = endpoint.key
+                probed = normalizeLlmUrl(endpoint.url)
+            }
+            .onDisappear(perform: commitKey)
+            .onChange(of: focus) { old, _ in
+                if old == .url { commitURL() }
+                if old == .key { commitKey() }
+            }
+    }
+
+    private func commitURL() {
+        guard let base = normalizeLlmUrl(endpoint.url), base != probed else { return }
+        probed = base
+        TidyEndpointStore.probe(base)
+    }
+
+    private func commitKey() {
+        if keyDraft != endpoint.key { endpoint.key = keyDraft }
     }
 }

@@ -189,7 +189,10 @@ final class EditorController: UIViewController, UITextViewDelegate {
             show(rendered, caret: caret)
             registerInput()
             if caret >= start { voiceSpan = NSRange(location: start, length: caret - start) }
-        case .rejected(let rendered, let caret): reset(to: rendered, caret: caret)
+        case .rejected(let rendered, let caret):
+            // 内核没收下:字没进纸页,交回提示,调用方留着它(TidyHeld)。
+            reset(to: rendered, caret: caret)
+            return "这一页现在不能写"
         }
         markEdited()
         revealCaret()
@@ -197,21 +200,25 @@ final class EditorController: UIViewController, UITextViewDelegate {
     }
 
     /// AI 整理落地的第二步(ios.md §3.7「AI 整理」):把 `insertVoice` 刚插入的原话换成整理后的文字,单独算一次编辑,
-    /// 所以一次撤销回到原话。那段已经不是 `original`(中间改过字)时什么也不做。
-    func replaceVoice(original: String, with text: String) {
-        guard let span = voiceSpan, let model, model.isWritable, textView.markedTextRange == nil else { return }
+    /// 所以一次撤销回到原话。那段已经不是 `original`(中间改过字)、内核没收下时什么也不换,返回 false。
+    @discardableResult
+    func replaceVoice(original: String, with text: String) -> Bool {
+        guard let span = voiceSpan, let model, model.isWritable, textView.markedTextRange == nil else { return false }
         voiceSpan = nil
         let current = (textView.text ?? "") as NSString
-        guard NSMaxRange(span) <= current.length, current.substring(with: span) == original else { return }
+        guard NSMaxRange(span) <= current.length, current.substring(with: span) == original else { return false }
         let visible = current.replacingCharacters(in: span, with: text)
         let caret = span.location + (text as NSString).length
         switch model.userEdited(visible: visible, composing: false, caret: caret) {
-        case .unchanged: return
+        case .unchanged: return false
         case .accepted(let rendered, let caret): show(rendered, caret: caret)
-        case .rejected(let rendered, let caret): reset(to: rendered, caret: caret)
+        case .rejected(let rendered, let caret):
+            reset(to: rendered, caret: caret)
+            return false
         }
         markEdited()
         revealCaret()
+        return true
     }
 
     /// 上次没插入的语音放回本页末尾(ios.md §3.7「AI 整理」):前面有字时先另起一行。算一次编辑,光标随之到文末。
@@ -228,7 +235,9 @@ final class EditorController: UIViewController, UITextViewDelegate {
         switch model.userEdited(visible: joined, composing: false, caret: caret) {
         case .unchanged: return nil
         case .accepted(let rendered, let caret): show(rendered, caret: caret)
-        case .rejected(let rendered, let caret): reset(to: rendered, caret: caret)
+        case .rejected(let rendered, let caret):
+            reset(to: rendered, caret: caret)
+            return "这一页现在不能写"
         }
         markEdited()
         revealCaret()
