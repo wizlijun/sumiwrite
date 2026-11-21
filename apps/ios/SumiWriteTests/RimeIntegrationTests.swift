@@ -540,6 +540,15 @@ final class RimeIntegrationTests: XCTestCase {
         XCTAssertEqual(try bar(h).alpha, 1)
     }
 
+    /// 光标在文本视图的可见区里(聚焦打字时留白属于可见区,平时不算)。
+    private func caretVisible(_ tv: SumiTextView) -> Bool {
+        guard let end = tv.selectedTextRange?.end else { return false }
+        let caret = tv.caretRect(for: end)
+        let top = tv.contentOffset.y + tv.contentInset.top - (tv.pinnedY == nil ? 0 : tv.contentInset.top)
+        let bottom = tv.contentOffset.y + tv.bounds.height - (tv.pinnedY == nil ? tv.contentInset.bottom : 0)
+        return caret.minY >= top - 0.5 && caret.maxY <= bottom + 0.5
+    }
+
     /// 切到英文后打字(菜单切和单按 Shift 切两条路),长页、长段落自动换行:
     /// - 切换前后光标在窗口里的位置不变;
     /// - 文本视图一直是第一响应者,每打一键光标都在可见区里,候选行(空闲小块)显示;
@@ -550,9 +559,21 @@ final class RimeIntegrationTests: XCTestCase {
         for viaMenu in [true, false] {
             let h = try harness()
             h.textView.insertText(longPage(30))
-            RunLoop.main.run(until: Date().addingTimeInterval(0.8)) // 粘贴后的滚动动画走完
-            h.controller.view.layoutIfNeeded()
             let bar = try bar(h)
+            // 等粘贴后画面停稳:模拟器可能先弹软键盘、再把光标滚进可见区,iOS 27 上要 1 秒左右,不能按固定时长等。
+            // 停稳 = 光标可见、候选行显示,且视区高度、滚动位置、留白连续 0.3 秒不变。
+            let deadline = Date().addingTimeInterval(4)
+            var last: [CGFloat] = []
+            var still = 0
+            repeat {
+                RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+                h.controller.view.layoutIfNeeded()
+                let tv = h.textView
+                let now = [tv.bounds.height, tv.contentOffset.y, tv.contentInset.top, tv.contentInset.bottom]
+                still = now == last ? still + 1 : 0
+                last = now
+            } while !(caretVisible(h.textView) && bar.alpha == 1 && still >= 6) && Date() < deadline
+            XCTAssertTrue(caretVisible(h.textView), "caret not revealed after paste, via menu: \(viaMenu)")
             let before = try caretInWindow(h)
             if viaMenu {
                 choose(.english, in: bar)
@@ -582,10 +603,7 @@ final class RimeIntegrationTests: XCTestCase {
                 let tv = h.textView
                 XCTAssertTrue(tv.isFirstResponder, at)
                 let caret = tv.caretRect(for: try XCTUnwrap(tv.selectedTextRange?.end))
-                let top = tv.contentOffset.y + tv.contentInset.top - (tv.pinnedY == nil ? 0 : tv.contentInset.top)
-                let bottom = tv.contentOffset.y + tv.bounds.height - (tv.pinnedY == nil ? tv.contentInset.bottom : 0)
-                XCTAssertTrue(caret.minY >= top - 0.5 && caret.maxY <= bottom + 0.5,
-                              "caret \(caret.minY)…\(caret.maxY) outside \(top)…\(bottom), " + at)
+                XCTAssertTrue(caretVisible(tv), "caret \(caret.minY)…\(caret.maxY) outside \(tv.contentOffset.y)+\(tv.bounds.height), " + at)
                 XCTAssertEqual(bar.alpha, 1, at)
                 XCTAssertFalse(bar.isOpaque, "idle chip while typing English, " + at)
                 if tv.pinnedY == nil {
