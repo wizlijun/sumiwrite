@@ -190,3 +190,8 @@
 - **outbox 表只写不清(iOS M1 终审,延后)**:每次 `commit_local_delta_with` 都向 `outbox` 插一行,M1 没有任何消费者,表随按键增长,只占磁盘。清理策略随 M3 同步落地再定 `[未定]`。源:`core/src/storage.rs`(`commit_local_delta_with`)。
 - **缺少「重启 → 编辑 → 再打开」的测试(iOS M1 终审,延后)**:`PagePersistenceTests` 没有覆盖重启后先编辑、再重新打开这条路径。按内核语义它是对的(重启后修订等于 durable head,下一笔是 head+1),手工清单第 9、13 条依赖它;补一个 XCTest `[未定]`。源:`apps/ios/SumiWriteTests/PagePersistenceTests.swift`。
 - **呼吸光标动画没有限帧(iOS M1 终审,延后)**:`SumiCursorView` 的呼吸 `CABasicAnimation` 无限重复,ProMotion 机型上可能按 120 Hz 合成,只影响耗电。可设 `preferredFrameRateRange`(例如最低 10、最高 30、首选 20)`[未定]`。源:`apps/ios/SumiWrite/Editor/SumiCursorView.swift`。
+- **端侧(离线)整理未做(语音输入)**:AI 整理只走用户自填的接入点,空着就直接插入原话。端侧整理 `[未定]`。现行 [ios.md §3.7](../spec/platform/ios.md)。
+- **整理网关的流式回应缺 `nosniff`(语音输入,跨边界)**:网关的流式回应要带 `X-Content-Type-Options: nosniff`,否则 iOS 的 `URLSession` 会先攒约 512 字节再交出,第一屏出字变慢。网关不在本仓库,由网关一侧改;是否已改 `[未定]`。现行 [ios.md §3.7](../spec/platform/ios.md)。
+- **VoiceOver 双击开始说话显示键盘提示(语音输入)**:VoiceOver 双击麦克风开始说话时,提示行显示的是键盘版的「松开 ⌥ 插入…」,不是触屏提示;修法 `[未定]`。现行 [ios.md §3.7](../spec/platform/ios.md)、§7.10。
+- **整理中插入被拒时原话延后放回(语音输入)**:整理中插入被拒(如系统输入法组字中)时,原话要等下次打开该页才放回;被删页的暂存语音(`voice-held/`)不会清理 `[未定]`。现行 [ios.md §3.7](../spec/platform/ios.md)。
+- **内核撤销可能留尾巴(语音输入)**:被恢复的文字如果之后又被一次真实插入拆开,撤回到最初那次插入时仍可能留下尾巴(Yjs 同样的限制);不处理 `[未定]`。现行 [ios.md §3.7](../spec/platform/ios.md)「落地之后」。
