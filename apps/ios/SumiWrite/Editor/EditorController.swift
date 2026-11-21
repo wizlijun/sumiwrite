@@ -324,7 +324,14 @@ final class EditorController: UIViewController, UITextViewDelegate {
         installCursor()
 
         if #available(iOS 27.1, *) {
-            desk = DeskObserver(view: view) { [weak self] in self?.updateDesk(inLayout: false) }
+            let observer = DeskObserver(view: view) { [weak self] in self?.updateDesk(inLayout: false) }
+            desk = observer
+            deskProbe = { [weak self, unowned observer] in
+                guard let self else { return nil }
+                // 只在转轴半开时才查折痕:没有转轴的机型上每次布局都不多做一次查询。
+                let divisions = observer.hinge == .partiallyOpen ? observer.divisions(in: self.view) : []
+                return DeskPosture.foldTop(hinge: observer.hinge, divisions: divisions, bounds: self.view.bounds)
+            }
         }
     }
 
@@ -373,17 +380,18 @@ final class EditorController: UIViewController, UITextViewDelegate {
     private lazy var keyboardCap = container.bottomAnchor.constraint(lessThanOrEqualTo: view.keyboardLayoutGuide.topAnchor)
     /// `DeskObserver`;存成 `AnyObject` 免得整个类带上 iOS 27.1 的可用性。其他机型与旧系统上为 nil。
     private var desk: AnyObject?
+    /// 当前该用的折痕顶(编辑面坐标),nil 表示普通布局。iOS 27.1 起由 `DeskObserver` 提供;
+    /// 旧系统上为 nil,半折代码整段不跑。测试换成固定值,在没有转轴的模拟器上验证半折布局。
+    var deskProbe: (() -> CGFloat?)?
     /// 当前的折痕顶(编辑面坐标);不在半折布局时为 nil。
     private(set) var deskFoldTop: CGFloat?
     /// 进出半折时通知外壳画底座:折痕顶的窗口 y 坐标,离开半折时为 nil。
     var onDeskChange: ((CGFloat?) -> Void)?
 
     /// 转轴变化时(`inLayout` 为 false)动画到新布局;布局过程中(旋转、换窗口大小)只换约束,随下一遍布局到位。
-    private func updateDesk(inLayout: Bool) {
-        guard #available(iOS 27.1, *), let observer = desk as? DeskObserver else { return }
-        // 只在转轴半开时才查折痕:没有转轴的机型上每次布局都不多做一次查询。
-        let divisions = observer.hinge == .partiallyOpen ? observer.divisions(in: view) : []
-        let top = DeskPosture.foldTop(hinge: observer.hinge, divisions: divisions, bounds: view.bounds)
+    func updateDesk(inLayout: Bool) {
+        guard let deskProbe else { return }
+        let top = deskProbe()
         switch (deskFoldTop, top) {
         case (nil, nil): return
         case let (old?, new?) where abs(old - new) < 0.5: return

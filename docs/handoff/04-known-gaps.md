@@ -196,5 +196,4 @@
 - **整理中插入被拒时原话延后放回(语音输入)**:整理中插入被拒(如系统输入法组字中)时,原话要等下次打开该页才放回;被删页的暂存语音(`voice-held/`)不会清理 `[未定]`。现行 [ios.md §3.8](../spec/platform/ios.md)。
 - **内核撤销可能留尾巴(语音输入)**:被恢复的文字如果之后又被一次真实插入拆开,撤回到最初那次插入时仍可能留下尾巴(Yjs 同样的限制);不处理 `[未定]`。现行 [ios.md §3.8](../spec/platform/ios.md)「落地之后」。
 - **iPhone Duo 半折没有模拟器可验(iPhone Duo)**:通用 iOS 27.2 运行时在 `unsupportedDeviceTypes` 里列了 `iPhone19,4`,Duo 模拟器要用专用运行时 `iOS-27-2-iPhone19-4`;它启动后停在合上状态(App 在外屏),`simctl` 与 DeviceHub 都没有开合转轴的控件。半折布局只能在真机上按 README 清单验收 `[未定]`。现行 [ios.md §3.7](../spec/platform/ios.md)。
-- **候选点按测试在 iPhone Duo 模拟器上失败(测试尺寸假设)**:`RimeIntegrationTests.test_candidateTapReachesSelect` 把测试窗口固定成 430×900,Duo 模拟器给它右侧 84pt 安全区,候选行只剩 298pt,第二个候选被分到下一页,找不到「拟好」按钮;去掉 Duo 观察器同样失败,与 §3.7 无关。改测试还是改候选行 `[未定]`。源:`apps/ios/SumiWriteTests/RimeIntegrationTests.swift`。
 - **英文打字光标测试在 iOS 27.2 上失败(原有)**:`RimeIntegrationTests.test_englishTypingKeepsCaretVisibleAndStill` 在 iPhone 18 Pro(iOS 27.2)模拟器上失败,长页打字后光标落到可见区外;在 iPhone Duo 改动之前的提交 `252042f` 上同样失败,iOS 26.5 与 iPhone Duo 模拟器上通过。根因与修法 `[未定]`。源:`apps/ios/SumiWriteTests/RimeIntegrationTests.swift`。

@@ -240,6 +240,36 @@ final class EditorControllerTests: XCTestCase {
         return window
     }
 
+    /// iPhone Duo 半折(ios.md §3.7):模拟器不能开合,直接给折痕顶。正文底边停在折痕顶并自动聚焦,
+    /// 键盘比下半屏高时不低于键盘顶边;离开半折回到贴键盘;外壳收到折痕顶的窗口坐标,离开时收到 nil。
+    func test_halfFoldPinsTextAboveFold() throws {
+        let (c, _, _) = try makeController(tempDir())
+        let window = try hostInWindow(c)
+        defer { window.isHidden = true }
+        c.textView.resignFirstResponder()
+        var reported: [CGFloat?] = []
+        c.onDeskChange = { reported.append($0) }
+        var fold: CGFloat? = 400
+        c.deskProbe = { fold }
+        func textBottom() -> CGFloat {
+            c.updateDesk(inLayout: false)
+            window.layoutIfNeeded()
+            return c.textView.convert(c.textView.bounds, to: nil).maxY
+        }
+        let keyboardTop = c.view.convert(c.view.keyboardLayoutGuide.layoutFrame, to: nil).minY
+
+        XCTAssertEqual(textBottom(), 400, accuracy: 0.5)
+        XCTAssertTrue(c.textView.isFirstResponder)
+
+        fold = keyboardTop + 20
+        XCTAssertEqual(textBottom(), keyboardTop, accuracy: 0.5)
+
+        fold = nil
+        XCTAssertEqual(textBottom(), keyboardTop, accuracy: 0.5)
+        XCTAssertNil(c.deskFoldTop)
+        XCTAssertEqual(reported, [400, keyboardTop + 20, nil])
+    }
+
     func test_keyboardInputGoesThroughCoreAndCoreUndo() throws {
         let (c, _, page) = try makeController(tempDir())
         let window = try hostInWindow(c)

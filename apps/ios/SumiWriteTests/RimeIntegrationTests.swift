@@ -392,13 +392,14 @@ final class RimeIntegrationTests: XCTestCase {
     }
 
     /// 点候选:点按落在候选行的按钮上(不被文本视图的手势接走),到达 `select`。
+    /// 候选用单字:有的机型(如 iPhone Duo 模拟器)给测试窗口加了右侧安全区,候选行窄到放不下两个双字候选。
     func test_candidateTapReachesSelect() throws {
         let h = try harness()
-        h.rime.compose("nihao", menu: RimeMenu(rows: [RimeCandidate(index: 0, label: "1", text: "你好"),
-                                                      RimeCandidate(index: 1, label: "2", text: "拟好")], cursor: 0))
+        h.rime.compose("ni", menu: RimeMenu(rows: [RimeCandidate(index: 0, label: "1", text: "你"),
+                                                   RimeCandidate(index: 1, label: "2", text: "拟")], cursor: 0))
         let bar = try bar(h)
         bar.layoutIfNeeded()
-        let b = try XCTUnwrap(button("拟好", in: bar))
+        let b = try XCTUnwrap(button("拟", in: bar))
         let point = b.convert(CGPoint(x: b.bounds.midX, y: b.bounds.midY), to: h.window)
         let hit = try XCTUnwrap(h.window.hitTest(point, with: nil))
         XCTAssertTrue(hit === b || hit.isDescendant(of: b), "tap lands on \(hit)")
