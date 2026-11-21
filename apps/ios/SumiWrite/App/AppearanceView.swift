@@ -1,8 +1,11 @@
 import RimeKit
 import SwiftUI
+import VoiceKit
 
 struct AppearanceView: View {
     @ObservedObject var prefs: PrefsModel
+    /// AI 整理的接入点与 key(ios.md §3.7「AI 整理」)。
+    @ObservedObject var tidyEndpoint: TidyEndpointStore = .shared
     /// 「复制全文」(ios.md §3.5.1):Markdown 原文与「已复制 N 字」的 N;系统输入法组字中为 nil。
     var copyText: () -> (markdown: String, characters: Int)? = { ("", 0) }
     /// 空页时按钮置灰;面板每次重算都问,要便宜。
@@ -68,7 +71,8 @@ struct AppearanceView: View {
                     Toggle("聚焦打字", isOn: $prefs.prefs.focusTyping)
                     Toggle("打字音", isOn: $prefs.prefs.typingSound)
                 }
-                SwitchShortcutSection(shortcut: $prefs.prefs.switchShortcut, voiceKey: $prefs.prefs.voiceKey)
+                SwitchShortcutSection(shortcut: $prefs.prefs.switchShortcut, voiceKey: $prefs.prefs.voiceKey,
+                                      voiceTidy: $prefs.prefs.voiceTidy, endpoint: tidyEndpoint)
             }
             .navigationTitle("设置")
             .navigationBarTitleDisplayMode(.inline)
@@ -76,10 +80,12 @@ struct AppearanceView: View {
     }
 }
 
-/// 「输入法」一组:实体键盘的内嵌输入法切换中 / 英的快捷键(ios.md §3.6),与长按右 ⌥ 说话(§3.7)。
+/// 「输入法」一组:实体键盘的内嵌输入法切换中 / 英的快捷键(ios.md §3.6),长按右 ⌥ 说话与 AI 整理(§3.7)。
 private struct SwitchShortcutSection: View {
     @Binding var shortcut: RimeSwitchShortcut
     @Binding var voiceKey: Bool
+    @Binding var voiceTidy: Bool
+    @ObservedObject var endpoint: TidyEndpointStore
 
     var body: some View {
         Section {
@@ -90,6 +96,7 @@ private struct SwitchShortcutSection: View {
                 Text("关").tag(RimeSwitchShortcut.off)
             }
             Toggle("按住右 ⌥ 说话", isOn: $voiceKey)
+            VoiceTidyRows(on: $voiceTidy, endpoint: endpoint)
         } header: { Text("输入法") } footer: {
             if shortcut == .shiftSpace {
                 Text("接实体键盘时,内置输入法用它在中文与英文之间切换;单按左 Shift 也能切换。按着 Shift 打完大写字母紧接着按空格,也会切换。")
@@ -97,5 +104,30 @@ private struct SwitchShortcutSection: View {
                 Text("接实体键盘时,内置输入法用它在中文与英文之间切换;单按左 Shift 也能切换。")
             }
         }
+    }
+}
+
+/// 「输入法」一组里的三行:长语音先让 AI 整理、接入点、key(ios.md §3.7「AI 整理」)。
+/// 接入点没填好时开关变灰;输入框空着时的淡字只是提示,不是默认值。
+private struct VoiceTidyRows: View {
+    @Binding var on: Bool
+    @ObservedObject var endpoint: TidyEndpointStore
+
+    var body: some View {
+        let ready = endpoint.endpoint.configured
+        VStack(alignment: .leading, spacing: 4) {
+            Toggle("长语音先让 AI 整理", isOn: $on)
+                .disabled(!ready)
+            Text(ready ? "超过 10 个字时，先发给下面填的接入点整理再插入" : "先填写接入点和 key")
+                .font(.footnote).foregroundStyle(.secondary)
+        }
+        TextField("接入点", text: $endpoint.url, prompt: Text(llmUrlHint))
+            .keyboardType(.URL)
+            .textContentType(.URL)
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+        SecureField("key", text: Binding(get: { endpoint.key }, set: { endpoint.key = $0 }))
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
     }
 }

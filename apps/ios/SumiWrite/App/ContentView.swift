@@ -120,10 +120,16 @@ struct ContentView: View {
             voice.onNotice = { text, settings in
                 flash(text, life: VoiceHost.noticeLife(text, settings: settings), settings: settings)
             }
+            // 上次没插入的语音放回本页末尾(ios.md §3.7「AI 整理」);切页时由编辑面通知。
+            voice.restoreHeld()
         }
         .onChange(of: scenePhase) { _, phase in
             // 来电、控制中心、退到后台:正在说的话按取消处理(ios.md §3.7「打断」)。
-            if phase != .active { voice.interrupt() }
+            // 整理卡上的字先落地(§3.7「AI 整理」)。
+            if phase != .active {
+                voice.landTidy()
+                voice.interrupt()
+            }
             // 退到后台走后台任务包装;只是失去活跃(控制中心、来电)直接存。
             if phase == .background { controller.sceneDidEnterBackground() }
             else if phase != .active { controller.saveNow() }
@@ -197,6 +203,7 @@ struct ContentView: View {
             flash("请先完成输入")
             return false
         }
+        voice.landTidy()
         controller.prepareToSwitch()
         controller.saveNow()
         if let page = change() { controller.show(page: page) }
@@ -205,6 +212,7 @@ struct ContentView: View {
     }
 
     private func openOverview() {
+        voice.landTidy()
         controller.prepareToSwitch()
         controller.saveNow()
         library.refresh()
@@ -213,6 +221,7 @@ struct ContentView: View {
 
     /// 设置面板盖住编辑面:内置输入法的组字先上屏。
     private func openAppearance() {
+        voice.landTidy()
         controller.prepareToSwitch()
         showAppearance = true
     }

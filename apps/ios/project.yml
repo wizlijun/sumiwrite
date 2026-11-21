@@ -50,6 +50,10 @@ targets:
         # 按住说话的用途说明(语音输入设计 §6.5)。
         NSMicrophoneUsageDescription: 按住语音按钮说话时录音，转成文字写进纸页
         NSSpeechRecognitionUsageDescription: 把你按住语音按钮时说的话转成文字
+        # AI 整理的接入点多半在局域网里(ios.md §3.7「AI 整理」):只放开本地网络的 http,公网照旧要 https。
+        NSLocalNetworkUsageDescription: 连接你在设置里填写的 AI 整理接入点
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES

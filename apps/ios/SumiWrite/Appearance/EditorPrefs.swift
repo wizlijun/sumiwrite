@@ -22,6 +22,8 @@ struct EditorPrefs: Codable, Equatable {
     var switchShortcut: RimeSwitchShortcut = .controlSpace
     /// 接实体键盘时单独长按右 ⌥ 说话(ios.md §3.7「入口」)。
     var voiceKey: Bool = true
+    /// 长语音先让 AI 整理(ios.md §3.7「AI 整理」);接入点没填好时不起作用。
+    var voiceTidy: Bool = true
 
     init() {}
 
@@ -38,6 +40,7 @@ struct EditorPrefs: Codable, Equatable {
         soundPack = try c.decodeIfPresent(SoundPack.self, forKey: .soundPack) ?? d.soundPack
         switchShortcut = try c.decodeIfPresent(RimeSwitchShortcut.self, forKey: .switchShortcut) ?? d.switchShortcut
         voiceKey = try c.decodeIfPresent(Bool.self, forKey: .voiceKey) ?? d.voiceKey
+        voiceTidy = try c.decodeIfPresent(Bool.self, forKey: .voiceTidy) ?? d.voiceTidy
     }
 
     /// 字号加 `delta` 并夹到合法范围。

@@ -86,13 +86,7 @@ final class VoiceLandingTests: XCTestCase {
     func testRightOptionHoldStartsAndTabInsertsRaw() throws {
         let (c, page, _, _) = try harness()
         let host = try voiceHost(c, final: "你好")
-        // 从 0 起算:大的时间戳加 0.3 再减回去,浮点上可能差一点不到 0.3。
-        var t = Date(timeIntervalSinceReferenceDate: 0)
-        c.now = { t }
-        let option = KeyPress(.keyboardRightAlt, .alternate)
-        XCTAssertEqual(c.unhandled([option], began: true), [], "按住的右 ⌥ 先被吞下")
-        t += VoiceKeyGate.holdDelay
-        c.voiceKeyElapsed()
+        hold(c)
         wait { host.hold.holding }
         XCTAssertTrue(host.hold.active)
         let tab = KeyPress(.keyboardTab, [])
@@ -101,7 +95,7 @@ final class VoiceLandingTests: XCTestCase {
         XCTAssertEqual(page.body(), "你好")
         XCTAssertFalse(c.textView.text.contains("\t"))
         XCTAssertEqual(c.unhandled([tab], began: false), [])
-        XCTAssertEqual(c.unhandled([option], began: false), [])
+        XCTAssertEqual(c.unhandled([KeyPress(.keyboardRightAlt, .alternate)], began: false), [])
     }
 
     /// 设置里关掉「按住右 ⌥ 说话」:右 ⌥ 照常往下传,不开始说话。
@@ -109,8 +103,8 @@ final class VoiceLandingTests: XCTestCase {
         let (c, _, _, _) = try harness()
         let host = try voiceHost(c, final: "你好")
         prefs?.prefs.voiceKey = false
-        var t = Date(timeIntervalSinceReferenceDate: 0)
-        c.now = { t }
+        var t: TimeInterval = 0
+        c.uptime = { t }
         let option = KeyPress(.keyboardRightAlt, .alternate)
         XCTAssertEqual(c.unhandled([option], began: true), [option])
         t += VoiceKeyGate.holdDelay
@@ -120,15 +114,65 @@ final class VoiceLandingTests: XCTestCase {
         XCTAssertEqual(c.unhandled([option], began: false), [option])
     }
 
-    private func voiceHost(_ c: EditorController, final text: String) throws -> VoiceHost {
+    /// 接入点没填(空的 `LlmEndpoint`)时不碰 key 的钥匙串;整理请求走 `TidyStub`。
+    private func voiceHost(_ c: EditorController, final text: String,
+                           endpoint: LlmEndpoint = LlmEndpoint()) throws -> VoiceHost {
         let prefs = try XCTUnwrap(prefs)
         let d = try XCTUnwrap(suite.flatMap(UserDefaults.init(suiteName:)))
-        return VoiceHost(controller: c, prefs: prefs, defaults: d, engine: FinalEngine(text), permissions: Granted())
+        let held = try XCTUnwrap(dir).appendingPathComponent("voice-held")
+        return VoiceHost(controller: c, prefs: prefs, defaults: d, engine: FinalEngine(text), permissions: Granted(),
+                         api: LlmApi(session: TidyStub.session), endpoint: { endpoint }, heldDir: held)
     }
 
-    /// 转主线程直到 `done` 成立(VoiceKit 的开始与松手都在主线程的 Task 里),最多 2 s。
-    private func wait(_ done: () -> Bool) {
-        let deadline = Date().addingTimeInterval(2)
+    /// 长按右 ⌥ 过 0.3 s,开始一次键盘说话。门限的时钟从 0 起算:大的时间戳加 0.3 再减回去,浮点上可能差一点不到 0.3。
+    private func hold(_ c: EditorController) {
+        var t: TimeInterval = 0
+        c.uptime = { t }
+        XCTAssertEqual(c.unhandled([KeyPress(.keyboardRightAlt, .alternate)], began: true), [], "按住的右 ⌥ 先被吞下")
+        t += VoiceKeyGate.holdDelay
+        c.voiceKeyElapsed()
+    }
+
+    /// 接入点没填:长语音照样立刻插入原话,不出整理卡。
+    func testEmptyEndpointInsertsRawImmediately() throws {
+        let (c, page, _, _) = try harness()
+        let said = "下午三点在图书馆二楼见然后记得带上周的打印稿"
+        XCTAssertTrue(said.count >= 20)
+        let host = try voiceHost(c, final: said)
+        hold(c)
+        wait { host.hold.holding }
+        XCTAssertEqual(c.unhandled([KeyPress(.keyboardRightAlt, [])], began: false), [], "松开右 ⌥ 插入")
+        wait { page.body() == said }
+        XCTAssertEqual(page.body(), said)
+        XCTAssertEqual(host.tidy.phase, .idle)
+    }
+
+    /// 整理后的文字分两步落地:撤销一次回到原话,再撤销一次两者都没有。
+    func testTidyTwoStepUndo() throws {
+        let (c, page, _, _) = try harness()
+        let said = "嗯那个下午三点在图书馆二楼见然后记得带上周的打印稿"
+        let tidied = "下午三点在图书馆二楼见,记得带上周的打印稿。"
+        TidyStub.answer = tidied
+        let host = try voiceHost(c, final: said, endpoint: LlmEndpoint(url: "http://llm.test", key: "test-key"))
+        hold(c)
+        wait { host.hold.holding }
+        XCTAssertEqual(c.unhandled([KeyPress(.keyboardRightAlt, [])], began: false), [])
+        wait { host.tidy.phase != .idle }
+        XCTAssertEqual(page.body(), "", "整理中不落地")
+        wait(5) { page.body() == tidied }
+        XCTAssertEqual(page.body(), tidied)
+        c.textView.coreUndoManager?.undo()
+        XCTAssertEqual(page.body(), said)
+        c.textView.coreUndoManager?.undo()
+        // 内核的已知缺陷:整段替换后连撤两次,原话的最后一个字留下(撤销后的 `body_index` 拆块,Yrs 的撤销跟丢了拆出的块)。
+        // 内核修好后这里会报「预期的失败没有发生」,删掉这一行。
+        XCTExpectFailure("core: undoing a whole-run replace twice keeps its last character")
+        XCTAssertEqual(page.body(), "")
+    }
+
+    /// 转主线程直到 `done` 成立(VoiceKit 的开始与松手都在主线程的 Task 里),最多 `seconds` 秒。
+    private func wait(_ seconds: TimeInterval = 2, _ done: () -> Bool) {
+        let deadline = Date().addingTimeInterval(seconds)
         while !done() && Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.01)) }
     }
 
@@ -150,6 +194,32 @@ private final class FinalEngine: SpeechEngine {
         events?.finish()
     }
     func cancel() { events?.finish() }
+}
+
+/// 假的 LLM 网关:每个请求都回 200 和 `answer`,一次给完。
+private final class TidyStub: URLProtocol {
+    static var answer = ""
+
+    static let session: URLSession = {
+        let c = URLSessionConfiguration.ephemeral
+        c.protocolClasses = [TidyStub.self]
+        return URLSession(configuration: c)
+    }()
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        // nosniff:没有它 URLSession 会扣住 text/plain 的开头(最多 512 字节)去猜类型。
+        let res = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: "HTTP/1.1",
+                                  headerFields: ["Content-Type": "text/plain; charset=utf-8",
+                                                 "X-Content-Type-Options": "nosniff"])!
+        client?.urlProtocol(self, didReceive: res, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: Data(Self.answer.utf8))
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
 }
 
 private final class Granted: SpeechPermissions {

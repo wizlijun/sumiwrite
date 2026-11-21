@@ -13,6 +13,8 @@ final class EditorController: UIViewController, UITextViewDelegate {
     var onCommand: ((EditorCommand) -> Void)?
     /// 时钟;测试注入。
     var now: () -> Date = { Date() }
+    /// 长按右 ⌥ 门限的时钟(开机以来的秒数,改系统时间不影响它);测试注入。
+    var uptime: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
     /// `nil`、`保存失败` 或 `打不开纸页`。
     private(set) var statusText: String? {
         didSet { if statusText != oldValue { onStatusChange?(statusText) } }
@@ -51,6 +53,13 @@ final class EditorController: UIViewController, UITextViewDelegate {
     private var voiceKeyHeld: UIPress?
     /// 右 ⌥ 按住 `VoiceKeyGate.holdDelay` 后喂门限 `.elapsed`。
     private var voiceKeyTimer: DispatchWorkItem?
+    /// AI 整理卡还在(ios.md §3.7「AI 整理」):按下任何键之前先调 `onVoiceTidyKey` 让卡上的字落地。由 `VoiceHost` 接。
+    var voiceTidyBusy: (() -> Bool)?
+    var onVoiceTidyKey: (() -> Void)?
+    /// 换到另一页之后(`show(page:)`),带新页的 id;`VoiceHost` 在这里放回上次没插入的语音。
+    var onPageShown: ((String) -> Void)?
+    /// `insertVoice` 刚插入的那段(插入后的位置),给紧接着的 `replaceVoice` 用。
+    private var voiceSpan: NSRange?
 
     private let container = UIView()
     private let cursorView = SumiCursorView()
@@ -171,18 +180,63 @@ final class EditorController: UIViewController, UITextViewDelegate {
         let range = textView.selectedRange
         guard range.location != NSNotFound else { return nil }
         let visible = ((textView.text ?? "") as NSString).replacingCharacters(in: clamped(range), with: text)
-        let caret = clamped(range).location + (text as NSString).length
+        let start = clamped(range).location
+        let caret = start + (text as NSString).length
+        voiceSpan = nil
         switch model.userEdited(visible: visible, composing: false, caret: caret) {
         case .unchanged: return nil
         case .accepted(let rendered, let caret):
             show(rendered, caret: caret)
             registerInput()
+            if caret >= start { voiceSpan = NSRange(location: start, length: caret - start) }
         case .rejected(let rendered, let caret): reset(to: rendered, caret: caret)
         }
         markEdited()
         revealCaret()
         return nil
     }
+
+    /// AI 整理落地的第二步(ios.md §3.7「AI 整理」):把 `insertVoice` 刚插入的原话换成整理后的文字,单独算一次编辑,
+    /// 所以一次撤销回到原话。那段已经不是 `original`(中间改过字)时什么也不做。
+    func replaceVoice(original: String, with text: String) {
+        guard let span = voiceSpan, let model, model.isWritable, textView.markedTextRange == nil else { return }
+        voiceSpan = nil
+        let current = (textView.text ?? "") as NSString
+        guard NSMaxRange(span) <= current.length, current.substring(with: span) == original else { return }
+        let visible = current.replacingCharacters(in: span, with: text)
+        let caret = span.location + (text as NSString).length
+        switch model.userEdited(visible: visible, composing: false, caret: caret) {
+        case .unchanged: return
+        case .accepted(let rendered, let caret): show(rendered, caret: caret)
+        case .rejected(let rendered, let caret): reset(to: rendered, caret: caret)
+        }
+        markEdited()
+        revealCaret()
+    }
+
+    /// 上次没插入的语音放回本页末尾(ios.md §3.7「AI 整理」):前面有字时先另起一行。算一次编辑,光标随之到文末。
+    /// 插不进去时返回要提示的话。
+    @discardableResult
+    func appendVoice(_ text: String) -> String? {
+        guard !text.isEmpty else { return nil }
+        guard let model, model.isWritable else { return "这一页现在不能写" }
+        prepareToSwitch()
+        guard textView.markedTextRange == nil else { return "请先完成输入" }
+        let current = textView.text ?? ""
+        let joined = current.isEmpty || current.hasSuffix("\n") ? current + text : current + "\n" + text
+        let caret = (joined as NSString).length
+        switch model.userEdited(visible: joined, composing: false, caret: caret) {
+        case .unchanged: return nil
+        case .accepted(let rendered, let caret): show(rendered, caret: caret)
+        case .rejected(let rendered, let caret): reset(to: rendered, caret: caret)
+        }
+        markEdited()
+        revealCaret()
+        return nil
+    }
+
+    /// 当前纸页的 id;打不开纸页时为 nil。
+    var pageID: String? { page?.pageId() }
 
     /// 门限计时到点:右 ⌥ 一直单独按着就开始说话。测试直接调用,不等 0.3 s。
     func voiceKeyElapsed() {
@@ -202,7 +256,7 @@ final class EditorController: UIViewController, UITextViewDelegate {
 
     /// 一次说话从别处结束了(60 s 上限、打断、没能开始):门限吞掉之后的键,直到右 ⌥ 松开。rapp `voiceEnd`。
     func voiceKeyEnded() {
-        _ = voiceKeys.handle(.ended, at: now().timeIntervalSinceReferenceDate, ready: false)
+        _ = voiceKeys.handle(.ended, at: uptime(), ready: false)
     }
 
     // MARK: 视图
@@ -437,6 +491,8 @@ final class EditorController: UIViewController, UITextViewDelegate {
         editSelection = NSRange(location: NSNotFound, length: 0)
         lastEditTime = .distantPast
         lastCaretLine = -1
+        voiceSpan = nil
+        onPageShown?(newPage.pageId())
     }
 
     private func makeUndoManager() -> CoreUndoManager {
@@ -805,6 +861,8 @@ final class EditorController: UIViewController, UITextViewDelegate {
     // MARK: 滚动
 
     func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
+        // 按着的右 ⌥ 是这次滚动的修饰键,不再算长按(rapp gui/macos/Runner/SessionPlugin.swift:237)。
+        voiceKeyFeed(.scroll)
         if focusMode { exitFocus(resetInsetsNow: false) }
     }
 
@@ -936,6 +994,8 @@ final class EditorController: UIViewController, UITextViewDelegate {
         let switching: [Selector] = [#selector(cmdNew), #selector(cmdPrev), #selector(cmdNext),
                                      #selector(cmdOverview), #selector(cmdAppearance)]
         if switching.contains(action) { return canSwitchPage }
+        // 键盘说话中,Esc 是取消:交给门限,不开菜单。
+        if action == #selector(cmdEscape) && voiceKeys.recording { return false }
         if mine.contains(action) { return textView.markedTextRange == nil }
         return super.canPerformAction(action, withSender: sender)
     }
@@ -953,8 +1013,10 @@ final class EditorController: UIViewController, UITextViewDelegate {
 
 extension EditorController: KeyPressHandling {
     /// 先过长按右 ⌥ 说话的门限(ios.md §3.7),它吞下的键不再往下传;其余的再给内嵌输入法。
+    /// AI 整理卡还在时,按下的键先让卡上的字落地,再照常处理。
     func unhandled(_ presses: Set<UIPress>, began: Bool) -> Set<UIPress> {
-        rimeUnhandled(voiceKeyUnhandled(presses, began: began), began: began)
+        if began && voiceTidyBusy?() == true { onVoiceTidyKey?() }
+        return rimeUnhandled(voiceKeyUnhandled(presses, began: began), began: began)
     }
 
     /// 内嵌输入法;它吞下的每个按下的键响一声打字音(按键码分种类),由它引起的上屏、组字不另响。
@@ -1021,7 +1083,7 @@ extension EditorController {
     @discardableResult
     fileprivate func voiceKeyFeed(_ input: VoiceGateInput) -> VoiceGateStep {
         let ready = voiceAvailable && (voiceKeyReady?() ?? false)
-        let step = voiceKeys.handle(input, at: now().timeIntervalSinceReferenceDate, ready: ready)
+        let step = voiceKeys.handle(input, at: uptime(), ready: ready)
         if step.flush {
             voiceKeyTimer?.cancel()
             voiceKeyTimer = nil

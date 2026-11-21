@@ -9,9 +9,14 @@ import VoiceKitUI
 final class VoiceHost: ObservableObject, VoiceSink {
     /// 「识别语言跟随系统」只提示一次,记在这里。
     static let languageHintKey = "voice.languageHintShown"
+    /// 整理后的文字落地时的提示,显示 1.5 s(ios.md §3.7「AI 整理」)。
+    static let tidiedNotice = "已用 AI 整理"
+    static let restoredNotice = "上次没插入的语音已放回本页末尾"
 
     let voice: VoiceInput
     private(set) lazy var hold = VoiceHold(voice: voice, sink: self)
+    /// AI 整理(ios.md §3.7「AI 整理」);会话就是纸页,`sid` 是纸页 id。
+    private(set) var tidy: VoiceTidy!
     /// 要显示的提示与它是否带「去设置」;外壳用自己的提示条显示。
     var onNotice: ((String, VoiceSettings) -> Void)?
 
@@ -20,6 +25,11 @@ final class VoiceHost: ObservableObject, VoiceSink {
     private let sound: TypingSound?
     private let defaults: UserDefaults
     private var overlay: VoiceOverlayView?
+    private var card: TidyCardView?
+    /// 整理中与整理好、还没落地的字,按纸页 id 存在 Application Support/voice-held(ios.md §3.7「AI 整理」)。
+    private let held: TidyHeld
+    /// 这次落地没能插入(纸页换了、组字中、不可写)或被收起的字:紧跟着的 `held(sid, nil)` 把它留下,而不是删掉。
+    private var unlanded: String?
     private var bag = Set<AnyCancellable>()
     /// 打字音让出了会话,还没收回。
     private var yielded = false
@@ -31,14 +41,39 @@ final class VoiceHost: ObservableObject, VoiceSink {
     /// VoiceOver 双击开始的一次说话还没结束。
     private var accessibilityOn = false
 
-    /// 以后接 AI 整理时在末尾加带默认值的参数。
+    /// `endpoint` 为 nil:读 `TidyEndpointStore`(钥匙串);测试注入,不碰钥匙串。`heldDir` 为 nil:Application Support/voice-held。
     init(controller: EditorController, prefs: PrefsModel, sound: TypingSound? = nil, defaults: UserDefaults = .standard,
-         engine: SpeechEngine = SystemSpeechEngine(), permissions: SpeechPermissions = SystemSpeechPermissions()) {
+         engine: SpeechEngine = SystemSpeechEngine(), permissions: SpeechPermissions = SystemSpeechPermissions(),
+         api: LlmApi = LlmApi(), endpoint: (() -> LlmEndpoint)? = nil, heldDir: URL? = nil) {
         self.controller = controller
         self.prefs = prefs
         self.sound = sound
         self.defaults = defaults
+        held = TidyHeld { heldDir ?? Self.heldDirectory() }
         voice = VoiceInput(engine: engine, permissions: permissions)
+        let endpoint = endpoint ?? { TidyEndpointStore.shared.endpoint }
+        tidy = VoiceTidy(
+            sid: controller.pageID ?? "",
+            endpoint: endpoint, api: api,
+            allowed: { [weak prefs] _ in (prefs?.prefs.voiceTidy ?? false) && endpoint().configured },
+            edit: { [weak self] sid, text, ai in self?.land(sid, text, ai) },
+            keep: { [weak self] _, text in self?.unlanded = text },
+            held: { [weak self] sid, text in self?.keepHeld(sid, text) })
+        // 只有「插入」整理;「原话」从不整理(ios.md §3.7「AI 整理」)。
+        hold.tidy = { [weak self] text, pick, at in
+            guard let self, pick == .send, let id = self.controller?.pageID else { return false }
+            self.tidy.moveTo(id)
+            self.card?.tail = !self.hold.keyboard
+            return self.tidy.begin(text, pick, at: at)
+        }
+        hold.wouldTidy = { [weak self] text in
+            guard let self else { return false }
+            return self.hold.pick == .send && self.tidy.would(text)
+        }
+        hold.prefetch = { [weak self] text in self?.tidy.prefetch(text) }
+        controller.voiceTidyBusy = { [weak self] in self?.tidyBusy ?? false }
+        controller.onVoiceTidyKey = { [weak self] in self?.landTidy() }
+        controller.onPageShown = { [weak self] id in self?.restoreHeld(id) }
         voice.restoreAudio = { [weak self] in self?.reclaimAudio() }
         hold.languageHintDue = { [weak self] in
             guard let self else { return false }
@@ -52,29 +87,92 @@ final class VoiceHost: ObservableObject, VoiceSink {
         controller.voiceKeyReady = { [weak self] in self?.idle ?? false }
         // `$prefs` 在 willSet 时发值:用发来的值。
         prefs.$prefs
-            .sink { [weak self] p in self?.overlay?.style = .sumi(p) }
+            .sink { [weak self] p in
+                self?.overlay?.style = .sumi(p)
+                self?.card?.style = .sumi(p)
+            }
             .store(in: &bag)
         NotificationCenter.default.publisher(for: UIAccessibility.reduceMotionStatusDidChangeNotification)
             .sink { [weak self] _ in
                 guard let self else { return }
                 self.overlay?.style = .sumi(self.prefs.prefs)
+                self.card?.style = .sumi(self.prefs.prefs)
             }
             .store(in: &bag)
     }
 
     /// 把 `VoiceOverlayView` 铺满整个窗口、放在最上层(在编辑面与底栏之上);它不接触点。
-    /// 它的坐标就是窗口坐标,所以按下时的手指位置用 `.global`。
+    /// 它的坐标就是窗口坐标,所以按下时的手指位置用 `.global`。整理卡同样铺满、在它之上,只有卡本身接触点。
     func attach(to window: UIWindow) {
-        if let overlay, overlay.window === window {
+        if let overlay, let card, overlay.window === window {
             window.bringSubviewToFront(overlay)
+            window.bringSubviewToFront(card)
             return
         }
         overlay?.removeFromSuperview()
+        card?.removeFromSuperview()
         let o = VoiceOverlayView(hold: hold, voice: voice, style: .sumi(prefs.prefs))
         o.frame = window.bounds
         o.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         window.addSubview(o)
         overlay = o
+        let c = TidyCardView(tidy: tidy, style: .sumi(prefs.prefs))
+        c.frame = window.bounds
+        c.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        window.addSubview(c)
+        card = c
+    }
+
+    // MARK: AI 整理
+
+    /// 整理卡还在(整理中或整理好、还没落地)。
+    var tidyBusy: Bool { tidy.phase == .tidying || tidy.phase == .ready }
+
+    /// 卡上的字立刻落地:整理好了插入整理后的字,还没好插入原话。按键、再按住说话、切页、开概览或设置、退到后台之前调用。
+    func landTidy() {
+        if tidyBusy { tidy.sendNow() }
+    }
+
+    /// 落地分两步:先插原话,再换成整理后的文字(各算一次编辑,一次撤销回到原话)。插不进去就留在 `held` 里。
+    private func land(_ sid: AnyHashable, _ text: String, _ ai: VoiceAi?) {
+        guard let controller, let id = sid as? String, id == controller.pageID else {
+            unlanded = text
+            return
+        }
+        if let refused = controller.insertVoice(ai?.original ?? text) {
+            unlanded = text
+            onNotice?(refused, .none)
+            return
+        }
+        guard let ai else { return }
+        controller.replaceVoice(original: ai.original, with: ai.result)
+        onNotice?(Self.tidiedNotice, .none)
+    }
+
+    /// VoiceTidy 的 `held`:等着的字存进这一页的文件;落地后(nil)删掉,没能落地的留下。
+    private func keepHeld(_ sid: AnyHashable, _ text: String?) {
+        let left = unlanded
+        unlanded = nil
+        guard let id = sid as? String, !id.isEmpty else { return }
+        held.set(id, text ?? left)
+    }
+
+    /// 打开一页时(启动、切页):这一页上次留下没插入的语音接到页末。整理卡正为这一页等着时不动。
+    func restoreHeld(_ id: String? = nil) {
+        guard let controller, let id = id ?? controller.pageID else { return }
+        if tidyBusy && tidy.sid == AnyHashable(id) { return }
+        guard let text = held.take(id) else { return }
+        if let refused = controller.appendVoice(text) {
+            held.set(id, text)
+            onNotice?(refused, .none)
+            return
+        }
+        onNotice?(Self.restoredNotice, .none)
+    }
+
+    private static func heldDirectory() -> URL {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        return base.appendingPathComponent("voice-held", isDirectory: true)
     }
 
     // MARK: 麦克风按钮
@@ -86,7 +184,13 @@ final class VoiceHost: ObservableObject, VoiceSink {
             return
         }
         fingerStart = start
+        // 键盘说话中按到麦克风:取消那次说话,不插入,也不开始新的一次。
+        if keyboardHolding {
+            Task { await hold.cancel() }
+            return
+        }
         fingerDown = true
+        landTidy()
         guard let window = controller?.viewIfLoaded?.window else { return }
         attach(to: window)
         let stage = window.bounds.size
@@ -97,6 +201,10 @@ final class VoiceHost: ObservableObject, VoiceSink {
     /// 手指松开:按当前的选择插入、插入原话或取消。
     func fingerUp() {
         fingerStart = nil
+        if keyboardHolding {
+            Task { await hold.cancel() }
+            return
+        }
         guard fingerDown else { return }
         fingerDown = false
         Task { await hold.up() }
@@ -114,8 +222,11 @@ final class VoiceHost: ObservableObject, VoiceSink {
 
     /// 手势结束时若没走到 `fingerUp`(被系统取消),当作打断。
     func fingerGone() {
-        if fingerDown { interrupt() }
+        if fingerDown { interrupt() } else { fingerStart = nil }
     }
+
+    /// 长按右 ⌥ 的一次说话正在录音。
+    private var keyboardHolding: Bool { hold.keyboard && hold.holding }
 
     /// VoiceOver:双击开始,再双击结束(插入)。没有手指,不画圆盘,只画气泡。
     func accessibilityToggle() {
@@ -125,6 +236,7 @@ final class VoiceHost: ObservableObject, VoiceSink {
             return
         }
         accessibilityOn = true
+        landTidy()
         if let window = controller?.viewIfLoaded?.window { attach(to: window) }
         Task {
             await hold.start()
@@ -144,6 +256,7 @@ final class VoiceHost: ObservableObject, VoiceSink {
     private func key(_ phase: VoiceKeyPhase) {
         switch phase {
         case .start:
+            landTidy()
             if let window = controller?.viewIfLoaded?.window { attach(to: window) }
             Task {
                 await hold.start()
@@ -164,6 +277,7 @@ final class VoiceHost: ObservableObject, VoiceSink {
 
     /// 提示条显示多久(秒):VoiceKit 给的时长;带「去设置」时至少 4 s。
     static func noticeLife(_ text: String, settings: VoiceSettings) -> Double {
+        if text == tidiedNotice { return 1.5 }
         let c = voiceHintLife(text).components
         let life = Double(c.seconds) + Double(c.attoseconds) / 1e18
         return settings == .none ? life : max(life, 4)
