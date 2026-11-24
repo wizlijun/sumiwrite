@@ -92,19 +92,6 @@ final class TypingSound: TypingSoundPlaying {
         engine?.stop()
     }
 
-    /// 输入路径上只读偏好;引擎没就绪时在声音队列上按需启动,分类与排缓冲也都在声音队列上做。
-    func play(before: String, after: String, kind: KeyKind?) {
-        let p = prefs()
-        guard p.typingSound else { return }
-        let pack = p.soundPack
-        queue.async { [weak self] in
-            guard let self else { return }
-            self.wanted = pack
-            if !self.isReady || self.loadedPack != pack { self.activate(.input) }
-            self.schedule(before: before, after: after, kind: kind)
-        }
-    }
-
     /// 偏好变化:关掉就停引擎并放掉节点;打开或换音色就按选中的音色重建。
     func preferencesChanged(_ p: EditorPrefs) {
         let pack: SoundPack? = p.typingSound ? p.soundPack : nil
@@ -138,11 +125,15 @@ final class TypingSound: TypingSoundPlaying {
         }
     }
 
+    /// 偏好的 I/O 缓冲时长,约 5 ms(48 kHz 下 256 帧)。
+    static let ioBuffer: TimeInterval = 0.005
+
     /// 等声音队列排空;只供测试。
     func waitUntilIdle() { queue.sync {} }
 
     // MARK: 声音队列
 
+    /// 输入路径上只读偏好;引擎没就绪时在声音队列上按需启动,排缓冲也在声音队列上做。
     func play(kind: KeyKind) {
         let p = prefs()
         guard p.typingSound else { return }
@@ -153,12 +144,6 @@ final class TypingSound: TypingSoundPlaying {
             if !self.isReady || self.loadedPack != pack { self.activate(.input) }
             self.schedule(kind)
         }
-    }
-
-    private func schedule(before: String, after: String, kind hint: KeyKind?) {
-        // 文字没变不发声;变了以输入代理判出的种类为准。
-        guard let kind = KeyKind.classify(before: before, after: after).map({ hint ?? $0 }) else { return }
-        schedule(kind)
     }
 
     private func schedule(_ kind: KeyKind) {
@@ -204,6 +189,8 @@ final class TypingSound: TypingSoundPlaying {
             if engine == nil || loadedPack != pack { try build(pack) }
             let session = AVAudioSession.sharedInstance()
             try session.setCategory(.playback, options: .mixWithOthers)
+            // 缓冲越短,排进去的声音越早到输出端(ios.md §3.4「缓冲」);系统可以不照办,失败也不算错。
+            try? session.setPreferredIOBufferDuration(Self.ioBuffer)
             try session.setActive(true)
             guard let engine else { throw SetUpError.noSamples }
             if !engine.isRunning { try engine.start() }

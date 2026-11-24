@@ -66,15 +66,9 @@ final class FakeRime: RimeInputDriving {
 }
 
 final class SpySound: TypingSoundPlaying {
-    var textSounds: [KeyKind?] = []
     var keySounds: [KeyKind] = []
-    func play(before: String, after: String, kind: KeyKind?) {
-        // 与 `TypingSound` 一样:文字没变不发声。
-        guard KeyKind.classify(before: before, after: after) != nil else { return }
-        textSounds.append(kind)
-    }
     func play(kind: KeyKind) { keySounds.append(kind) }
-    var total: Int { textSounds.count + keySounds.count }
+    var total: Int { keySounds.count }
 }
 
 /// 没有按键码的按键:只用来经 `pressesBegan` 走一遍按键入口。
@@ -862,10 +856,10 @@ final class RimeIntegrationTests: XCTestCase {
         h.textView.pressesBegan([press], with: nil)
         XCTAssertEqual(h.sound.keySounds, [.key])
         h.rime.push(RimeUpdate(commit: "a"))
-        XCTAssertEqual(h.sound.textSounds.count, 1)
+        XCTAssertEqual(h.sound.total, 2)
         h.textView.pressesEnded([press], with: nil)
         h.rime.push(RimeUpdate(commit: "b"))
-        XCTAssertEqual(h.sound.textSounds.count, 1, "no key held: silent")
+        XCTAssertEqual(h.sound.total, 2, "no key held: silent")
     }
 
     /// 点候选上屏照常发声。

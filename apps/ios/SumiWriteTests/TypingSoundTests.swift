@@ -18,16 +18,6 @@ final class TypingSoundTests: XCTestCase {
         super.tearDown()
     }
 
-    func test_classifyKinds() {
-        XCTAssertEqual(KeyKind.classify(before: "ab", after: "abc"), .key)
-        XCTAssertEqual(KeyKind.classify(before: "ab", after: "ab "), .space)
-        XCTAssertEqual(KeyKind.classify(before: "ab", after: "ab\n"), .enter)
-        XCTAssertEqual(KeyKind.classify(before: "abc", after: "ab"), .delete)
-        XCTAssertEqual(KeyKind.classify(before: "nih", after: "ni"), .delete)
-        XCTAssertEqual(KeyKind.classify(before: "ni hao", after: "你好"), .key)
-        XCTAssertNil(KeyKind.classify(before: "a", after: "a"))
-    }
-
     private var soundsDirectory: URL { Bundle.main.bundleURL.appendingPathComponent("sounds") }
 
     func test_manifestResolvesBundledFiles() throws {
@@ -61,28 +51,16 @@ final class TypingSoundTests: XCTestCase {
         var prefs = EditorPrefs()
         prefs.typingSound = false
         let sound = TypingSound(bundle: .main, prefs: { prefs })
-        sound.play(before: "a", after: "ab")
+        sound.play(kind: .key)
         sound.waitUntilIdle()
         XCTAssertEqual(sound.playedCount, 0)
-    }
-
-    func test_classifyOnLongDocument() {
-        let long = String(repeating: "你好 world\n", count: 20_000)
-        XCTAssertEqual(KeyKind.classify(before: long, after: long + "x"), .key)
-        XCTAssertEqual(KeyKind.classify(before: long, after: long + "\n"), .enter)
-        XCTAssertEqual(KeyKind.classify(before: long + "x", after: long), .delete)
-        XCTAssertNil(KeyKind.classify(before: long, after: long))
-        let mid = long.index(long.startIndex, offsetBy: 100_000)
-        var spaced = long
-        spaced.insert(" ", at: mid)
-        XCTAssertEqual(KeyKind.classify(before: long, after: spaced), .space)
     }
 
     func test_playsWhenReady() {
         let sound = TypingSound(bundle: .main, prefs: { EditorPrefs() })
         let deadline = Date().addingTimeInterval(5)
         while sound.playedCount == 0 && Date() < deadline {
-            sound.play(before: "a", after: "ab")
+            sound.play(kind: .key)
             sound.waitUntilIdle()
             Thread.sleep(forTimeInterval: 0.05)
         }
@@ -92,7 +70,7 @@ final class TypingSoundTests: XCTestCase {
 
     func test_notReadyPlaysNothingAndDoesNotCrash() {
         let sound = TypingSound(bundle: Bundle(for: TypingSoundTests.self), prefs: { EditorPrefs() })
-        for _ in 0..<20 { sound.play(before: "a", after: "ab") }
+        for _ in 0..<20 { sound.play(kind: .key) }
         sound.waitUntilIdle()
         XCTAssertEqual(sound.playedCount, 0)
     }
@@ -104,7 +82,7 @@ final class TypingSoundTests: XCTestCase {
         prefs.typingSound = false
         let sound = TypingSound(bundle: .main, prefs: { prefs }, center: NotificationCenter())
         sound.preferencesChanged(prefs)
-        sound.play(before: "a", after: "ab")
+        sound.play(kind: .key)
         sound.waitUntilIdle()
         XCTAssertNil(sound.builtPack, "no engine while the sound is off")
         XCTAssertEqual(sound.startAttempts, 0)
@@ -125,7 +103,7 @@ final class TypingSoundTests: XCTestCase {
         XCTAssertNil(sound.builtPack, "turning the sound off stops and releases the engine")
 
         prefs.typingSound = true
-        sound.play(before: "a", after: "ab")
+        sound.play(kind: .key)
         sound.waitUntilIdle()
         XCTAssertEqual(sound.builtPack, .thock, "the first sound after turning it back on rebuilds lazily")
     }
@@ -159,7 +137,7 @@ final class TypingSoundTests: XCTestCase {
                     userInfo: [AVAudioSessionInterruptionTypeKey: AVAudioSession.InterruptionType.began.rawValue])
         sound.waitUntilIdle()
         let during = sound.startAttempts
-        for _ in 0..<5 { sound.play(before: "a", after: "ab") }
+        for _ in 0..<5 { sound.play(kind: .key) }
         sound.waitUntilIdle()
         XCTAssertEqual(sound.startAttempts, during, "typing during an interruption does not fight it")
         XCTAssertEqual(sound.playedCount, 0)
@@ -195,13 +173,8 @@ final class TypingSoundTests: XCTestCase {
     // MARK: 编辑面接线
 
     private final class SpySound: TypingSoundPlaying {
-        var calls: [(String, String)] = []
-        var kinds: [KeyKind?] = []
+        var kinds: [KeyKind] = []
         var prefsSeen: [EditorPrefs] = []
-        func play(before: String, after: String, kind: KeyKind?) {
-            calls.append((before, after))
-            kinds.append(kind)
-        }
         func play(kind: KeyKind) { kinds.append(kind) }
         func preferencesChanged(_ prefs: EditorPrefs) { prefsSeen.append(prefs) }
     }
@@ -230,19 +203,20 @@ final class TypingSoundTests: XCTestCase {
         c.textViewDidChange(c.textView)
     }
 
-    func test_controllerPlaysWithPreviousText() throws {
+    /// 不经输入代理的改动(内嵌输入法上屏、听写)在文字变了之后补响一声普通键。
+    func test_changeWithoutDelegateSoundsAfterTheText() throws {
         let spy = SpySound()
         let c = try makeController(sound: spy)
         type("a", into: c)
         type("ab", into: c)
-        XCTAssertEqual(spy.calls.map { "\($0.0)|\($0.1)" }, ["|a", "a|ab"])
+        XCTAssertEqual(spy.kinds, [.key, .key])
     }
 
     func test_controllerDoesNotPlayWhenReadOnly() throws {
         let spy = SpySound()
         let c = try makeController(sound: spy, writable: false)
         type("a", into: c)
-        XCTAssertTrue(spy.calls.isEmpty)
+        XCTAssertTrue(spy.kinds.isEmpty)
     }
 
     func test_pasteAndUndoRefreshBeforeTextWithoutSound() throws {
@@ -254,9 +228,9 @@ final class TypingSoundTests: XCTestCase {
         c.textView.paste(nil)
         UIPasteboard.remove(withName: board.name)
         XCTAssertEqual(c.textView.text, "hello")
-        XCTAssertTrue(spy.calls.isEmpty)
+        XCTAssertTrue(spy.kinds.isEmpty)
         type("hello!", into: c)
-        XCTAssertEqual(spy.calls.map { "\($0.0)|\($0.1)" }, ["hello|hello!"])
+        XCTAssertEqual(spy.kinds, [.key])
     }
 
     func test_controllerForwardsPrefsToSound() throws {
@@ -268,8 +242,8 @@ final class TypingSoundTests: XCTestCase {
         XCTAssertEqual(spy.prefsSeen.last?.typingSound, false)
     }
 
-    /// 按键种类取自输入代理(删除、空格、回车),不只靠前后文字比较。
-    func test_controllerPassesKeyKindFromInput() throws {
+    /// 打字音在输入代理放行时就响(文字还没变),种类取自这次替换(ios.md §3.4「发声时机」)。
+    func test_soundsWhenTheDelegateAllowsTheChange() throws {
         let spy = SpySound()
         let c = try makeController(sound: spy)
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
@@ -281,16 +255,17 @@ final class TypingSoundTests: XCTestCase {
         XCTAssertTrue(c.textView.becomeFirstResponder())
         // 系统键盘先问代理再改字;代码直接调 insertText 不经代理,这里照键盘的顺序走。
         let tv = c.textView
+        XCTAssertTrue(c.textView(tv, shouldChangeTextIn: NSRange(location: 0, length: 0), replacementText: ""))
+        XCTAssertTrue(spy.kinds.isEmpty, "backspace at the start changes nothing: silent")
         for text in ["a", " ", "\n"] {
+            let before = tv.text
             XCTAssertTrue(c.textView(tv, shouldChangeTextIn: tv.selectedRange, replacementText: text))
+            XCTAssertEqual(tv.text, before, "sounded before the text changes")
             tv.insertText(text)
         }
         let sel = tv.selectedRange
         XCTAssertTrue(c.textView(tv, shouldChangeTextIn: NSRange(location: sel.location - 1, length: 1), replacementText: ""))
         tv.deleteBackward()
-        XCTAssertEqual(spy.kinds, [.key, .space, .enter, .delete])
-        // 不经代理的改动(听写、程序插入)由打字音自己按前后文字分类。
-        tv.insertText("b")
-        XCTAssertEqual(spy.kinds.last, .some(nil))
+        XCTAssertEqual(spy.kinds, [.key, .space, .enter, .delete], "one sound per key, none again after the change")
     }
 }

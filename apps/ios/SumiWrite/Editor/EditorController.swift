@@ -79,11 +79,8 @@ final class EditorController: UIViewController, UITextViewDelegate {
     private var lastCaretLine: CGFloat = -1
     private var lastEditTime = Date.distantPast
     private var editSelection = NSRange(location: NSNotFound, length: 0)
-    /// `shouldChangeTextIn` 判出的按键种类,随后的 `textViewDidChange` 交给打字音。
-    private var pendingKind: KeyKind?
-
-    /// 文本视图上一次的文字;打字音拿它与新文字比较。每次文字变化后都刷新(含程序设置、撤销、粘贴)。
-    private var lastText = ""
+    /// 这次改动已由 `shouldChangeTextIn` 处理过打字音;不经代理的改动(内嵌输入法上屏、听写)由 `textViewDidChange` 补响。
+    private var delegateSaw = false
     /// 程序正在改文字或选区;这期间的代理回调不算用户动作。
     private var applyingProgrammaticChange = false
     private var didInitialScroll = false
@@ -619,12 +616,25 @@ final class EditorController: UIViewController, UITextViewDelegate {
         // 记下这次输入后光标应在的位置:随后到达的选区通知若与之相符,就不算「挪光标」。
         editSelection = NSRange(location: range.location + (text as NSString).length, length: 0)
         lastEditTime = now()
-        if !rimeCommitAside { keyPressed(kind) }
+        if !rimeCommitAside {
+            delegateSaw = true
+            keyPressed(kind)
+            // 打字音在文字改动之前就排进声音队列(ios.md §3.4「发声时机」);文字不会变的不响(如文首退格)。
+            if rimeQuiet == 0, model?.isWritable == true, textView.isEditable,
+               range.length > 0 || !text.isEmpty,
+               range.length == 0 || !Self.keepsText(textView.textStorage, range, text) {
+                sound?.play(kind: kind)
+            }
+        }
         return true
     }
 
+    /// 这次替换会不会原样换回同样的字;只看被替换的那一段,不复制全文。
+    private static func keepsText(_ storage: NSTextStorage, _ range: NSRange, _ text: String) -> Bool {
+        NSMaxRange(range) <= storage.length && (storage.string as NSString).substring(with: range) == text
+    }
+
     private func keyPressed(_ kind: KeyKind) {
-        pendingKind = kind
         inEdit = true
         onCommand?(.typing)
         DispatchQueue.main.async { [weak self] in self?.afterEdit() }
@@ -633,8 +643,8 @@ final class EditorController: UIViewController, UITextViewDelegate {
     private func afterEdit() {
         if focusMode { centerCaret(animated: true) }
         inEdit = false
-        // 代理放行了但文字没变(如文首退格):不把这次的种类留给下一次改动。
-        pendingKind = nil
+        // 代理放行了但文字没变(如文首退格):不让这次挡掉下一次不经代理的改动。
+        delegateSaw = false
     }
 
     func textViewDidChange(_ textView: UITextView) {
@@ -642,11 +652,8 @@ final class EditorController: UIViewController, UITextViewDelegate {
         let composing = textView.markedTextRange != nil
         let visible = textView.text ?? ""
         let aside = rimeCommitAside
-        if rimeQuiet == 0, !aside, model.isWritable, textView.isEditable {
-            sound?.play(before: lastText, after: visible, kind: pendingKind)
-        }
-        pendingKind = nil
-        lastText = visible
+        let saw = delegateSaw
+        delegateSaw = false
         let sel = textView.selectedRange
         let caret = sel.location == NSNotFound ? (visible as NSString).length : NSMaxRange(sel)
         switch model.userEdited(visible: visible, composing: composing, caret: caret) {
@@ -654,6 +661,8 @@ final class EditorController: UIViewController, UITextViewDelegate {
             // 拼音预编辑也算真实输入(04「聚焦打字」),但不提交、不重设。
             if composing && !aside { registerInput() }
         case .accepted(let rendered, let caret):
+            // 不经代理的改动没有按下的时刻,只能在文字变了之后响;一律按普通键。
+            if !saw, !aside, rimeQuiet == 0, textView.isEditable { sound?.play(kind: .key) }
             show(rendered, caret: caret)
             if !aside { registerInput() }
         case .rejected(let rendered, let caret):
@@ -769,7 +778,6 @@ final class EditorController: UIViewController, UITextViewDelegate {
         // 这里改过文字或属性:排到光标为止,ios.md §3.3「TextKit 2 的估算高度」。
         textView.layoutThroughCaret()
         applyingProgrammaticChange = was
-        lastText = textView.text ?? ""
     }
 
     private func clamped(_ r: NSRange) -> NSRange {
