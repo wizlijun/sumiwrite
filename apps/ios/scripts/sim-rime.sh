@@ -5,7 +5,7 @@
 # (或 agent)逐张看,对照下面写的预期判定。
 #
 # 用法:bash apps/ios/scripts/sim-rime.sh [--no-build] [场景...]
-#   场景:builtin middle repeat focus shift hotkey english entype switch toggle tap(默认全部,按此顺序)
+#   场景:builtin backspace middle repeat focus shift hotkey english entype switch toggle tap(默认全部,按此顺序)
 #   环境变量:SIM_RIME_DEVICE 专用模拟器的名字(默认 sumi-rime-e2e,没有就建一台 iPad Pro 11-inch (M5));
 #            RIME 指 RimeKit 仓库(默认与本仓库同级的 rime-kit)。
 # 每个场景先按 ⌘N 新建空白页,在空白页里做。
@@ -17,6 +17,11 @@
 # builtin  00 ⌘N:空白页,空闲:右端只有一小块「中」。
 #          b01 n i h a o:光标处是带下划线的组字(拼音,如「ni hao」),候选行第一个是「1 你好」且带下划线。
 #          b02 Space:「你好」上屏,组字与候选消失,回到空闲,光标在「你好」之后。
+# backspace d01 n i h a o Space:「你好」上屏。
+#          d02 ⌫:只剩「你」(上屏后第一下 ⌫ 就删字,不被吞掉)。
+#          d03 ⌫:正文空了。
+#          d04 1 2 3:「123」。
+#          d05 ⌫:「12」。
 # middle   m01 1 2 3 4 5 6 ⏎ 7 8 9 0 ↑:第一行「123456」,光标在其中(约在 4 之后);空闲,第二行「7890」露出,
 #              右端「中」那一小块在第二行的高度。
 #          m02 n i h a o:组字插在第一行光标处,同一行里它后面的数字往后挪(后文回流);候选行整行不透明,盖住第二行。
@@ -45,7 +50,7 @@
 #          e02 点「英文」:菜单收起,状态字变「英」。
 #          e03 a b c:「abc」直接上屏,没有组字、没有候选,仍空闲。
 #          e04 点状态字、点「中文」:状态字变回「中」。
-#          e05 n i h a o Space:「abc你好」。
+#          e05 n i h a o Space:「abc 你好」(中英之间自动空格)。
 # entype   x00 ⌘V:粘进 60 段会自动换行的长文(TextKit 2 只估算没排过的段落,短文里看不出问题),光标在文末。
 #          x01 点状态字、点「英文」:状态字「英」,光标仍在文末、看得到(x01 与 x01b 隔 0.5 秒各截一张,至少一张看得到光标)。
 #          x02 连打两行英文句子(有空格、有回车):长文末尾多了两行英文,光标在末尾、看得到(x02 / x02b);打字时录像
@@ -78,7 +83,7 @@ NAME="${SIM_RIME_DEVICE:-sumi-rime-e2e}"
 
 build=1
 if [ "${1:-}" = --no-build ]; then build=0; shift; fi
-SC="${*:-builtin middle repeat focus shift hotkey english entype switch toggle tap}"
+SC="${*:-builtin backspace middle repeat focus shift hotkey english entype switch toggle tap}"
 
 mkdir -p "$BIN"
 for t in simkey hwkb; do
@@ -183,11 +188,13 @@ serve() {
   [ -f "$SYNC/ready" ] || { echo "TapServer 没起来,见 $OUT/tapserver.log" >&2; exit 1; }
   sleep 2
 }
-# tap <截图名> <无障碍标签>
-tap() {
-  local n=$1 label=$2
+# tap <截图名> <无障碍标签>;menu 同样传参,点状态字直到弹出菜单(淡出的状态字第一下只显出来)。
+tap() { send tap "$@"; }
+menu() { send menu "$@"; }
+send() {
+  local verb=$1 n=$2 label=$3
   rm -f "$SYNC/done"
-  printf 'tap %s\n' "$label" > "$SYNC/cmd.tmp" && mv "$SYNC/cmd.tmp" "$SYNC/cmd"
+  printf '%s %s\n' "$verb" "$label" > "$SYNC/cmd.tmp" && mv "$SYNC/cmd.tmp" "$SYNC/cmd"
   for _ in $(seq 1 400); do [ -f "$SYNC/done" ] && break; sleep 0.1; done
   local r; r=$(cat "$SYNC/done" 2>/dev/null || echo timeout)
   [ "$r" = ok ] || echo "  点「${label}」:${r}" >&2
@@ -210,7 +217,7 @@ record() {
 SENTENCE="T h e SPACE q u i c k , SPACE WAIT:800 b r o w n SPACE f o x . RET WAIT:1500 j u m p s SPACE o v e r BS BS BS BS SPACE o v e r SPACE WAIT:700 t h e SPACE L a z y SPACE d o g S+1 RET"
 # choose <截图名> <菜单项>:点状态字,等菜单弹出,点菜单项。
 choose() {
-  tap "" 切换输入法
+  menu "" 切换输入法
   sleep 0.5
   tap "$1" "$2"
 }
@@ -226,6 +233,13 @@ for s in $SC; do
   builtin)
     step b01-nihao n i h a o
     step b02-space SPACE
+    ;;
+  backspace)
+    step d01-nihao n i h a o SPACE
+    step d02-bs BS
+    step d03-bs BS
+    step d04-abc 1 2 3
+    step d05-bs BS
     ;;
   middle)
     step m01-two-lines 1 2 3 4 5 6 RET 7 8 9 0 UP
@@ -262,7 +276,7 @@ for s in $SC; do
     step k04-nihao n i h a o
     ;;
   english)
-    tap e01-menu 切换输入法
+    menu e01-menu 切换输入法
     tap e02-english 英文
     step e03-abc a b c
     choose e04-chinese 中文

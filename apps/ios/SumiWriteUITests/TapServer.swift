@@ -5,7 +5,8 @@ import XCTest
 /// `TEST_RUNNER_SIM_RIME_SYNC` 传入,模拟器里的测试进程能直接读写宿主的路径):
 ///
 /// - 本测试接上应用后写 `ready`;
-/// - 脚本写 `cmd`(先写临时文件再改名),一行:`tap <无障碍标签>` 或 `quit`;
+/// - 脚本写 `cmd`(先写临时文件再改名),一行:`tap <无障碍标签>`、`menu <无障碍标签>` 或 `quit`;
+///   `menu` 点状态字直到弹出菜单:状态字淡出后点第一下只让它显出来(ios.md §3.6),这时再点一下;
 /// - 本测试删掉 `cmd`,执行,写 `done`:`ok` 或 `missing <标签>`。
 ///
 /// 不经脚本直接跑时跳过。
@@ -32,11 +33,14 @@ final class TapServer: XCTestCase {
                 return
             }
             var reply = "unknown \(text)"
-            if text.hasPrefix("tap ") {
-                let label = String(text.dropFirst(4))
+            if text.hasPrefix("tap ") || text.hasPrefix("menu ") {
+                let label = String(text.drop { $0 != " " }.dropFirst())
                 let button = app.buttons[label].firstMatch
                 if button.waitForExistence(timeout: 30), button.isHittable {
                     button.tap()
+                    if text.hasPrefix("menu "), !app.buttons["中文"].waitForExistence(timeout: 1.5) {
+                        button.tap()
+                    }
                     reply = "ok"
                 } else {
                     reply = "missing \(label)"
