@@ -98,11 +98,7 @@ private struct SwitchShortcutSection: View {
             Toggle("按住右 ⌥ 说话", isOn: $voiceKey)
             VoiceTidyRows(on: $voiceTidy, endpoint: endpoint)
         } header: { Text("输入法") } footer: {
-            if shortcut == .shiftSpace {
-                Text("接实体键盘时,内置输入法用它在中文与英文之间切换;单按左 Shift 也能切换。按着 Shift 打完大写字母紧接着按空格,也会切换。")
-            } else {
-                Text("接实体键盘时,内置输入法用它在中文与英文之间切换;单按左 Shift 也能切换。")
-            }
+            Text("接实体键盘时,内置输入法用它在中文与英文之间切换;单按左 Shift 也能切换。")
         }
     }
 }

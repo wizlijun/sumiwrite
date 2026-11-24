@@ -713,6 +713,22 @@ final class RimeIntegrationTests: XCTestCase {
         XCTAssertEqual(h.sound.total, sounds)
     }
 
+    /// 先松开 Control、空格还按着:系统再发的空格(不带修饰键)与它的松开仍算快捷键,不发声、不进正文、不再切(ios.md §3.6)。
+    func test_spaceResentAfterControlIsLetGoIsSilent() throws {
+        let h = try harness()
+        let sounds = h.sound.total
+        let press = KeyPress(.keyboardSpacebar, .control)
+        let resent = KeyPress(.keyboardSpacebar, [])
+        h.textView.pressesBegan([press], with: nil)
+        h.textView.pressesBegan([resent], with: nil)
+        h.textView.pressesEnded([press], with: nil)
+        h.textView.pressesEnded([resent], with: nil)
+        drainMain()
+        XCTAssertEqual(h.page.body(), "")
+        XCTAssertTrue(h.rime.ascii)
+        XCTAssertEqual(h.sound.total, sounds)
+    }
+
     /// 失去焦点时的上屏也不算打字:不进聚焦打字的计数、不发声,文字照样经 textViewDidChange 进内核(终审 Minor 1)。
     func test_blurFlushIsNotTyping() throws {
         let h = try harness()

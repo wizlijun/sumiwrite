@@ -195,4 +195,4 @@
 - **VoiceOver 双击开始说话显示键盘提示(语音输入)**:VoiceOver 双击麦克风开始说话时,提示行显示的是键盘版的「松开 ⌥ 插入…」,不是触屏提示;修法 `[未定]`。现行 [ios.md §3.8](../spec/platform/ios.md)、§7.10。
 - **整理中插入被拒时原话延后放回(语音输入)**:整理中插入被拒(如系统输入法组字中)时,原话要等下次打开该页才放回;被删页的暂存语音(`voice-held/`)不会清理 `[未定]`。现行 [ios.md §3.8](../spec/platform/ios.md)。
 - **内核撤销可能留尾巴(语音输入)**:被恢复的文字如果之后又被一次真实插入拆开,撤回到最初那次插入时仍可能留下尾巴(Yjs 同样的限制);不处理 `[未定]`。现行 [ios.md §3.8](../spec/platform/ios.md)「落地之后」。
-- **iPhone Duo 半折没有模拟器可验(iPhone Duo)**:通用 iOS 27.2 运行时在 `unsupportedDeviceTypes` 里列了 `iPhone19,4`,Duo 模拟器要用专用运行时 `iOS-27-2-iPhone19-4`;它启动后停在合上状态(App 在外屏),`simctl` 与 DeviceHub 都没有开合转轴的控件。半折布局只能在真机上按 README 清单验收 `[未定]`。现行 [ios.md §3.7](../spec/platform/ios.md)。
+- **iPhone Duo 半折没有模拟器可验(iPhone Duo)**:**已解决**,本人 2026-11-24 在 iPhone Duo 真机验收通过(提交 50bf798)。原缺口:通用 iOS 27.2 运行时在 `unsupportedDeviceTypes` 里列了 `iPhone19,4`,Duo 模拟器要用专用运行时 `iOS-27-2-iPhone19-4`;它启动后停在合上状态(App 在外屏),`simctl` 与 DeviceHub 都没有开合转轴的控件。半折布局只能在真机上按 README 清单验收。现行 [ios.md §3.7](../spec/platform/ios.md)。
