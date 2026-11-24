@@ -76,23 +76,24 @@ private final class BarePress: UIPress {}
 
 /// 有按键码与修饰键的实体键(UIKit 不给测试别的办法造一个)。
 final class FakeKey: UIKey {
-    let code: UIKeyboardHIDUsage, flags: UIKeyModifierFlags
-    init(_ code: UIKeyboardHIDUsage, _ flags: UIKeyModifierFlags) {
+    let code: UIKeyboardHIDUsage, flags: UIKeyModifierFlags, typed: String
+    init(_ code: UIKeyboardHIDUsage, _ flags: UIKeyModifierFlags, typed: String = " ") {
         self.code = code
         self.flags = flags
+        self.typed = typed
         super.init()
     }
     required init?(coder: NSCoder) { nil }
     override var keyCode: UIKeyboardHIDUsage { code }
     override var modifierFlags: UIKeyModifierFlags { flags }
-    override var characters: String { " " }
-    override var charactersIgnoringModifiers: String { " " }
+    override var characters: String { typed }
+    override var charactersIgnoringModifiers: String { typed }
 }
 
 final class KeyPress: UIPress {
     let fakeKey: FakeKey
-    init(_ code: UIKeyboardHIDUsage, _ flags: UIKeyModifierFlags) {
-        fakeKey = FakeKey(code, flags)
+    init(_ code: UIKeyboardHIDUsage, _ flags: UIKeyModifierFlags, typed: String = " ") {
+        fakeKey = FakeKey(code, flags, typed: typed)
         super.init()
     }
     override var key: UIKey? { fakeKey }
@@ -180,16 +181,12 @@ final class RimeIntegrationTests: XCTestCase {
         try XCTUnwrap(h.controller.keyCommands?.first { $0.input == input }?.action, "no key command for \(input)")
     }
 
-    /// 第 `offset` 个字所在段落的顶边,换到编辑面根视图的坐标里。
-    private func paragraphTop(_ h: Harness, offset: Int) throws -> CGFloat {
+    /// 第 `offset` 个字处光标框的顶边(那一行字形的顶边),换到编辑面根视图的坐标里。
+    private func glyphTop(_ h: Harness, offset: Int) throws -> CGFloat {
         let tv = h.textView
-        let tlm = try XCTUnwrap(tv.textLayoutManager)
-        let tcm = try XCTUnwrap(tlm.textContentManager)
-        let loc = try XCTUnwrap(tcm.location(tcm.documentRange.location, offsetBy: offset))
-        tlm.ensureLayout(for: tcm.documentRange)
-        let frag = try XCTUnwrap(tlm.textLayoutFragment(for: loc))
-        let y = frag.layoutFragmentFrame.minY + tv.textContainerInset.top
-        return tv.convert(CGPoint(x: 0, y: y), to: h.controller.view).y
+        if let tlm = tv.textLayoutManager, let tcm = tlm.textContentManager { tlm.ensureLayout(for: tcm.documentRange) }
+        let at = try XCTUnwrap(tv.position(from: tv.beginningOfDocument, offset: offset))
+        return tv.convert(tv.caretRect(for: at), to: h.controller.view).minY
     }
 
     // MARK: 组字与上屏
@@ -304,8 +301,8 @@ final class RimeIntegrationTests: XCTestCase {
         drainMain()
         let bar = try bar(h)
         XCTAssertFalse(bar.isHidden)
-        let line2 = try paragraphTop(h, offset: 4)
-        XCTAssertEqual(bar.frame.minY, line2, accuracy: 1)
+        let line2 = try glyphTop(h, offset: 4)
+        XCTAssertEqual(bar.frame.minY, line2, accuracy: 1, "the bar covers the next line's glyphs")
         let tv = h.textView
         let left = tv.convert(CGPoint(x: tv.textContainerInset.left, y: 0), to: h.controller.view).x
         XCTAssertEqual(bar.frame.minX, left, accuracy: 1)
@@ -329,7 +326,28 @@ final class RimeIntegrationTests: XCTestCase {
         XCTAssertEqual(bar.frame.minY, y0, accuracy: 0.5)
         h.textView.selectedRange = NSRange(location: 6, length: 0) // 第二行行尾
         drainMain()
-        XCTAssertEqual(bar.frame.minY, try paragraphTop(h, offset: 9), accuracy: 1)
+        XCTAssertEqual(bar.frame.minY, try glyphTop(h, offset: 9), accuracy: 1)
+    }
+
+    /// 候选行与输入行字形下缘之间空一个行距(正文字体行高 ×(行距 − 1)),行距调了跟着变;正文底部留白也加上它
+    /// (SUMI-261121-08)。
+    func test_barGapFollowsLineSpacing() throws {
+        let h = try harness()
+        h.textView.insertText("第一行\n第二行")
+        h.textView.selectedRange = NSRange(location: 3, length: 0)
+        var gaps: [CGFloat] = []
+        for spacing in [1.0, 2.0] {
+            h.prefs.prefs.lineSpacing = spacing
+            drainMain()
+            let bar = try bar(h)
+            let caret = h.textView.convert(h.textView.caretRect(for: try XCTUnwrap(h.textView.selectedTextRange?.end)),
+                                           to: h.controller.view)
+            let font = h.prefs.prefs.font.uiFont(size: CGFloat(h.prefs.prefs.fontSize))
+            XCTAssertEqual(bar.frame.minY - caret.maxY, font.lineHeight * CGFloat(spacing - 1), accuracy: 1)
+            XCTAssertEqual(h.textView.contentInset.bottom, bar.frame.height + h.controller.barGap, accuracy: 0.5)
+            gaps.append(bar.frame.minY - caret.maxY)
+        }
+        XCTAssertGreaterThan(gaps[1], gaps[0] + 10)
     }
 
     /// 候选行的样式取自主题与正文字体。
@@ -490,7 +508,8 @@ final class RimeIntegrationTests: XCTestCase {
         let reach = min(margin, 44 - block.frame.width)
         let right = bar.convert(CGPoint(x: block.frame.maxX + reach - 1, y: block.frame.midY), to: h.window)
         XCTAssertTrue(try XCTUnwrap(h.window.hitTest(right, with: nil)) === status)
-        XCTAssertEqual(h.textView.contentInset.bottom, RimeCandidateBar.height(for: bar.style.font), accuracy: 0.5)
+        XCTAssertEqual(h.textView.contentInset.bottom, RimeCandidateBar.height(for: bar.style.font) + h.controller.barGap,
+                       accuracy: 0.5)
         // 组字时整行不透明。
         h.rime.compose("ni", menu: RimeMenu(rows: [RimeCandidate(index: 0, label: "1", text: "你")], cursor: 0))
         bar.layoutIfNeeded()
@@ -622,6 +641,23 @@ final class RimeIntegrationTests: XCTestCase {
         let h = try harness { _, d in d.set(false, forKey: RimeTextViewAdapter.builtinKey) }
         XCTAssertEqual(h.controller.rimeAdapter?.builtin, false)
         XCTAssertEqual(h.rime.active.last ?? false, false)
+    }
+
+    // MARK: 中英文自动空格(SUMI-261121-08)
+
+    /// 「hello」后上屏「世界」、「你好」后打出字母,都先加一个空格,进内核;加的空格不另发打字音。
+    func test_autoSpaceBetweenChineseAndEnglish() throws {
+        let h = try harness()
+        h.textView.insertText("hello")
+        h.rime.push(RimeUpdate(commit: "世界"))
+        XCTAssertEqual(h.page.body(), "hello 世界")
+
+        let before = h.sound.total
+        let press = KeyPress(.keyboardH, [], typed: "h") // 引擎不要:照常交给系统打出
+        h.textView.pressesBegan([press], with: nil)
+        XCTAssertEqual(h.page.body(), "hello 世界 ")
+        XCTAssertEqual(h.sound.total, before, "the space itself makes no sound")
+        h.textView.pressesEnded([press], with: nil)
     }
 
     // MARK: 打字音
@@ -799,7 +835,7 @@ final class RimeIntegrationTests: XCTestCase {
         tv.selectedRange = NSRange(location: 4, length: 0) // 第二行
         drainMain()
         XCTAssertEqual(bar.alpha, 1)
-        XCTAssertEqual(bar.frame.minY, try paragraphTop(h, offset: 6), accuracy: 1)
+        XCTAssertEqual(bar.frame.minY, try glyphTop(h, offset: 8), accuracy: 1)
     }
 
     /// 改字号后候选行跟着重摆:高度随新字号,位置仍在下一行(复审 5)。
@@ -815,8 +851,8 @@ final class RimeIntegrationTests: XCTestCase {
         XCTAssertGreaterThan(bar.style.font.pointSize, 0)
         XCTAssertEqual(bar.frame.height, RimeCandidateBar.height(for: bar.style.font), accuracy: 0.5)
         XCTAssertGreaterThan(bar.frame.height, before)
-        XCTAssertEqual(bar.frame.minY, try paragraphTop(h, offset: 4), accuracy: 1)
-        XCTAssertEqual(h.textView.contentInset.bottom, bar.frame.height, accuracy: 0.5)
+        XCTAssertEqual(bar.frame.minY, try glyphTop(h, offset: 4), accuracy: 1)
+        XCTAssertEqual(h.textView.contentInset.bottom, bar.frame.height + h.controller.barGap, accuracy: 0.5)
     }
 
     /// 候选行消失、底部留白收回时,滚动位置夹回内容范围内(复审 6)。
@@ -940,11 +976,11 @@ final class RimeIntegrationTests: XCTestCase {
         RunLoop.main.run(until: Date().addingTimeInterval(seconds))
     }
 
-    /// 排版落定后,候选行的顶边应在的位置(编辑面根视图坐标):光标所在行的下一行的顶边;以及光标框。
+    /// 排版落定后,候选行的顶边应在的位置(编辑面根视图坐标):光标框下缘再隔一个行距;以及光标框。
     private func expectedBarTop(_ h: Harness) throws -> (bar: CGFloat, caret: CGRect) {
         let tv = h.textView
         tv.layoutIfNeeded()
-        let top = try XCTUnwrap(tv.lineTopBelowCaret(pitch: h.controller.view.bounds.height))
+        let top = try XCTUnwrap(tv.caretBottomAfterLayout()) + h.controller.barGap
         let caret = tv.convert(tv.caretRect(for: try XCTUnwrap(tv.selectedTextRange?.end)), to: h.controller.view)
         return (tv.convert(CGPoint(x: 0, y: top), to: h.controller.view).y, caret)
     }

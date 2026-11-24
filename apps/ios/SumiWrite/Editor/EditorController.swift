@@ -990,6 +990,8 @@ final class EditorController: UIViewController, UITextViewDelegate {
         rimeAdapter = adapter
         // 右端一个状态字(中 / 英 / 系),点开菜单切换;空闲时候选行只剩状态字那一块(ios.md §3.6「状态字」)。
         adapter.bar.statusMenu = true
+        // 中英文之间自动加空格,规则照桌面(ios.md §3.6「中英文之间自动加空格」)。
+        adapter.autoSpace = true
         adapter.onBarChange = { [weak self] in self?.placeRimeBar(reveal: true) }
         adapter.onUpdate = { [weak self] _ in self?.placeRimeBar(reveal: true) }
         let select = adapter.bar.onSelect, page = adapter.bar.onPage
@@ -1036,10 +1038,16 @@ final class EditorController: UIViewController, UITextViewDelegate {
     /// 平时正文底下留出候选行的高度,光标在最后一行时也能把下一行(候选行)滚进视区。
     private var restingInsets: UIEdgeInsets {
         guard let adapter = rimeAdapter, adapter.barVisible else { return .zero }
-        return UIEdgeInsets(top: 0, left: 0, bottom: RimeCandidateBar.height(for: adapter.bar.style.font), right: 0)
+        return UIEdgeInsets(top: 0, left: 0, bottom: barGap + RimeCandidateBar.height(for: adapter.bar.style.font),
+                            right: 0)
     }
 
-    /// 候选行盖住光标的下一行:左缘、宽度与正文列一致,高度随字号;位置由光标所在行算出,所以只在光标换行时动。
+    /// 候选行与光标所在行字形下缘之间的空白:与正文两行之间的一样,正文字体行高 ×(行距设置 − 1)(ios.md §3.6
+    /// 「与输入行的间距按行距算」)。
+    var barGap: CGFloat { max(0, lineHeight - baseFont.lineHeight) }
+
+    /// 候选行在光标所在行之下隔一个行距(`barGap`):左缘、宽度与正文列一致,高度随字号;位置由光标所在行算出,
+    /// 所以只在光标换行时动。
     /// `reveal`:不在聚焦打字、光标所在行在视区里、而候选行会落到视区外时,先把正文上滚到候选行露全
     /// (光标在视区最后一行时就是上滚一行)。聚焦打字时光标行居中,不需要。
     private func placeRimeBar(reveal: Bool) {
@@ -1053,7 +1061,8 @@ final class EditorController: UIViewController, UITextViewDelegate {
         let inset = textView.textContainerInset
         let height = RimeCandidateBar.height(for: bar.style.font)
         let width = max(0, textView.bounds.width - inset.left - inset.right)
-        guard let top = textView.lineTopBelowCaret(pitch: lineHeight) else { return }
+        guard let bottom = textView.caretBottomAfterLayout() else { return }
+        let top = bottom + barGap
         let visible = container.frame
         var y = textView.convert(CGPoint(x: 0, y: top), to: view).y
         let caretLine = textView.selectedTextRange.map { textView.convert(textView.caretRect(for: $0.end), to: view) }
