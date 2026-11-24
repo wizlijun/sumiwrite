@@ -240,6 +240,40 @@ final class EditorControllerTests: XCTestCase {
         return window
     }
 
+    /// 收起软键盘(ios.md §3.2「收起软键盘」):焦点与光标不变;点正文弹回;语音结束不弹回用户收起的;
+    /// 失焦作废;接实体键盘时不给这一项。
+    func test_collapseSoftKeyboardKeepsFocus() throws {
+        let (c, _, _) = try makeController(tempDir())
+        c.hasHardwareKeyboard = { false }
+        let window = try hostInWindow(c)
+        defer { window.isHidden = true }
+        XCTAssertEqual(c.softKeyboardAction, .collapse)
+        c.collapseKeyboard()
+        XCTAssertNotNil(c.textView.inputView)
+        XCTAssertTrue(c.textView.isFirstResponder)
+        XCTAssertEqual(c.softKeyboardAction, .expand)
+
+        c.hideKeyboardForVoice()
+        c.restoreKeyboardAfterVoice(landed: true)
+        XCTAssertNotNil(c.textView.inputView, "语音结束保持用户的收起")
+
+        c.textTapped()
+        XCTAssertNil(c.textView.inputView)
+        XCTAssertTrue(c.textView.isFirstResponder)
+
+        c.collapseKeyboard()
+        c.textView.resignFirstResponder()
+        XCTAssertNil(c.textView.inputView)
+        XCTAssertFalse(c.keyboardCollapsed)
+        XCTAssertNil(c.softKeyboardAction)
+
+        XCTAssertTrue(c.textView.becomeFirstResponder())
+        c.hasHardwareKeyboard = { true }
+        XCTAssertNil(c.softKeyboardAction)
+        c.collapseKeyboard()
+        XCTAssertNil(c.textView.inputView)
+    }
+
     /// iPhone Duo 半折(ios.md §3.7):模拟器不能开合,直接给折痕顶。正文底边停在折痕顶并自动聚焦,
     /// 键盘比下半屏高时不低于键盘顶边;离开半折回到贴键盘;外壳收到折痕顶的窗口坐标,离开时收到 nil。
     func test_halfFoldPinsTextAboveFold() throws {

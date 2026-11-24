@@ -85,6 +85,8 @@ struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
 
     @State private var chromeOpen = false
+    /// 「···」展开时给的「收起键盘」或「弹出键盘」(ios.md §3.2「收起软键盘」),展开那一刻取一次。
+    @State private var keyboardAction: EditorController.SoftKeyboardAction?
     @State private var typingRecently = false
     @State private var typingWork: DispatchWorkItem?
     @State private var showOverview = false
@@ -185,41 +187,61 @@ struct ContentView: View {
         }
     }
 
-    // 底部按需工具:平时只有一个淡淡的「···」,打字时隐藏。
+    // 底部按需工具:平时只有一个淡淡的「···」,打字时隐藏。窄屏上展开条放不下时换窄一些的按钮。
     @ViewBuilder private var chrome: some View {
-        HStack(spacing: 6) {
-            if chromeOpen {
-                let pos = library.position
-                chromeButton("chevron.left", "上一页") { switchPage { library.prev() } }
-                Text("\(pos.index) / \(pos.count)")
-                    .font(.footnote.monospacedDigit())
-                    .foregroundStyle(fg.opacity(0.7))
-                chromeButton("chevron.right", "下一页") { switchPage { library.next() } }
-                chromeButton("plus", "新建") { switchPage { library.newPage() } }
-                chromeButton("square.grid.2x2", "总览") { openOverview() }
-                chromeButton("gearshape", "设置") { openAppearance() }
-                chromeButton("trash", "移到废纸篓") {
-                    if switchPage({ library.moveToTrash(library.currentID) }) {
-                        flash("已移到废纸篓,可在总览里恢复")
-                    }
-                }
-            }
-            chromeButton(chromeOpen ? "xmark" : "ellipsis", chromeOpen ? "收起" : "菜单") {
-                withAnimation(.easeOut(duration: 0.15)) { chromeOpen.toggle() }
-            }
+        ViewThatFits(in: .horizontal) {
+            chromeStrip(button: 44, spacing: 6)
+            chromeStrip(button: 36, spacing: 0)
         }
-        .padding(.horizontal, 10).padding(.vertical, 2)
-        .background(Capsule().fill(fg.opacity(chromeOpen ? 0.10 : 0)))
         .opacity(typingRecently && !chromeOpen ? 0 : (chromeOpen ? 1 : 0.35))
         .animation(.easeOut(duration: 0.3), value: typingRecently)
     }
 
-    private func chromeButton(_ symbol: String, _ label: String, action: @escaping () -> Void) -> some View {
+    private func chromeStrip(button w: CGFloat, spacing: CGFloat) -> some View {
+        HStack(spacing: spacing) {
+            if chromeOpen {
+                let pos = library.position
+                chromeButton("chevron.left", "上一页", width: w) { switchPage { library.prev() } }
+                Text("\(pos.index) / \(pos.count)")
+                    .font(.footnote.monospacedDigit())
+                    .foregroundStyle(fg.opacity(0.7))
+                    .fixedSize()
+                chromeButton("chevron.right", "下一页", width: w) { switchPage { library.next() } }
+                chromeButton("plus", "新建", width: w) { switchPage { library.newPage() } }
+                chromeButton("square.grid.2x2", "总览", width: w) { openOverview() }
+                chromeButton("gearshape", "设置", width: w) { openAppearance() }
+                chromeButton("trash", "移到废纸篓", width: w) {
+                    if switchPage({ library.moveToTrash(library.currentID) }) {
+                        flash("已移到废纸篓,可在总览里恢复")
+                    }
+                }
+                if let action = keyboardAction {
+                    let collapse = action == .collapse
+                    chromeButton(collapse ? "keyboard.chevron.compact.down" : "keyboard",
+                                 collapse ? "收起键盘" : "弹出键盘", width: w) {
+                        if collapse { controller.collapseKeyboard() } else { controller.expandKeyboard() }
+                        withAnimation(.easeOut(duration: 0.15)) { chromeOpen = false }
+                    }
+                }
+            }
+            chromeButton(chromeOpen ? "xmark" : "ellipsis", chromeOpen ? "收起" : "菜单", width: w) { toggleChrome() }
+        }
+        .padding(.horizontal, 10).padding(.vertical, 2)
+        .background(Capsule().fill(fg.opacity(chromeOpen ? 0.10 : 0)))
+    }
+
+    private func toggleChrome() {
+        if !chromeOpen { keyboardAction = controller.softKeyboardAction }
+        withAnimation(.easeOut(duration: 0.15)) { chromeOpen.toggle() }
+    }
+
+    private func chromeButton(_ symbol: String, _ label: String, width: CGFloat = 44,
+                              action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: 17, weight: .light))
                 .foregroundStyle(fg)
-                .frame(width: 44, height: 44)
+                .frame(width: width, height: 44)
                 // 细线图标(尤其「···」)本身只有几个像素,不加这句只有点中笔画才算点到。
                 .contentShape(Rectangle())
         }
@@ -265,7 +287,7 @@ struct ContentView: View {
         case .next: switchPage { library.next() }
         case .overview: openOverview()
         case .appearance: openAppearance()
-        case .menu: withAnimation(.easeOut(duration: 0.15)) { chromeOpen.toggle() }
+        case .menu: toggleChrome()
         case .typing:
             if chromeOpen { chromeOpen = false }
             typingRecently = true

@@ -8,7 +8,7 @@ import VoiceKit
 /// 编辑面:文本视图、自绘光标、键盘避让、聚焦打字、硬件键盘命令、保存接线。
 /// 文字的增删、粘贴、撤销都经 `PageModel` 交给内核;样式来自内核的样式段,经 `Styler` 映射。
 /// 交互细节照搬原型(设计 §5.3)。
-final class EditorController: UIViewController, UITextViewDelegate {
+final class EditorController: UIViewController, UITextViewDelegate, UIGestureRecognizerDelegate {
     let textView = SumiTextView()
     /// 硬件键盘命令与「正在打字」;由外壳接。
     var onCommand: ((EditorCommand) -> Void)?
@@ -116,8 +116,19 @@ final class EditorController: UIViewController, UITextViewDelegate {
         // 失焦时门限忘掉按着的键(说话中就取消);点按正文:等长按时右 ⌥ 算修饰键,说话中取消(rapp 的 pointer)。
         let rimeFocus = textView.onFocusChange
         textView.onFocusChange = { [weak self] focused in
-            if !focused { self?.voiceKeyResign() }
+            if !focused {
+                self?.voiceKeyResign()
+                self?.dropKeyboardCollapse()
+            }
             rimeFocus?(focused)
+        }
+        let tap = UITapGestureRecognizer(target: self, action: #selector(textTapped))
+        tap.cancelsTouchesInView = false
+        tap.delaysTouchesEnded = false
+        tap.delegate = self
+        textView.addGestureRecognizer(tap)
+        keyboardObserver = NotificationCenter.default.addObserver(forName: .GCKeyboardDidConnect, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.dropKeyboardCollapse() }
         }
         let rimeTouch = textView.onTouchBegan
         textView.onTouchBegan = { [weak self] modifiers in
@@ -270,19 +281,68 @@ final class EditorController: UIViewController, UITextViewDelegate {
     /// 开始录音时收起软键盘(ios.md §3.8「软键盘」):换上一块空的输入视图,文本视图仍是第一响应者,
     /// 选区、焦点与实体键盘的按键都不变。接着实体键盘时没有软键盘可收,不动。
     func hideKeyboardForVoice() {
-        guard textView.isFirstResponder, textView.inputView == nil, GCKeyboard.coalesced == nil else { return }
-        textView.inputView = UIView(frame: .zero)
+        guard textView.isFirstResponder, !hasHardwareKeyboard() else { return }
+        keyboardHiddenForVoice = true
+        applyKeyboardHiding()
+    }
+
+    /// 语音结束(ios.md §3.8「软键盘」):换回系统键盘,用户自己收起了的仍收着。`landed` 为 true(字落进了纸页)时
+    /// 编辑面取得焦点:没接实体键盘时软键盘随之展开,接着时系统不弹软键盘。为 false(取消、没听清、没能插入)时
+    /// 回到说话前的样子。
+    func restoreKeyboardAfterVoice(landed: Bool) {
+        keyboardHiddenForVoice = false
+        applyKeyboardHiding()
+        if landed, voiceAvailable, !textView.isFirstResponder { textView.becomeFirstResponder() }
+    }
+
+    // MARK: 收起软键盘(ios.md §3.2「收起软键盘」)
+
+    enum SoftKeyboardAction { case collapse, expand }
+
+    /// 用户收起了软键盘,到这次焦点结束为止。
+    private(set) var keyboardCollapsed = false
+    private var keyboardHiddenForVoice = false
+    private var keyboardObserver: NSObjectProtocol?
+    /// 接着实体键盘;测试换成固定值。
+    var hasHardwareKeyboard: () -> Bool = { GCKeyboard.coalesced != nil }
+
+    /// 「···」里该给的那一项:编辑面有焦点、可编辑、没接实体键盘时是「收起键盘」或「弹出键盘」,否则没有。
+    var softKeyboardAction: SoftKeyboardAction? {
+        guard textView.isFirstResponder, textView.isEditable, !hasHardwareKeyboard() else { return nil }
+        return keyboardCollapsed ? .expand : .collapse
+    }
+
+    func collapseKeyboard() {
+        guard softKeyboardAction == .collapse else { return }
+        keyboardCollapsed = true
+        applyKeyboardHiding()
+    }
+
+    func expandKeyboard() {
+        guard keyboardCollapsed else { return }
+        keyboardCollapsed = false
+        applyKeyboardHiding()
+    }
+
+    /// 收起(用户或语音)时换上空的输入视图,否则换回系统键盘;只在变了时重载。
+    private func applyKeyboardHiding() {
+        let hide = (keyboardCollapsed || keyboardHiddenForVoice) && !hasHardwareKeyboard()
+        guard hide != (textView.inputView != nil) else { return }
+        textView.inputView = hide ? UIView(frame: .zero) : nil
         textView.reloadInputViews()
     }
 
-    /// 语音结束(ios.md §3.8「软键盘」):换回系统键盘。`landed` 为 true(字落进了纸页)时编辑面取得焦点:
-    /// 没接实体键盘时软键盘随之展开,接着时系统不弹软键盘。为 false(取消、没听清、没能插入)时回到说话前的样子。
-    func restoreKeyboardAfterVoice(landed: Bool) {
-        if textView.inputView != nil {
-            textView.inputView = nil
-            textView.reloadInputViews()
-        }
-        if landed, voiceAvailable, !textView.isFirstResponder { textView.becomeFirstResponder() }
+    /// 失焦或接上实体键盘:用户的收起作废。
+    private func dropKeyboardCollapse() {
+        keyboardCollapsed = false
+        applyKeyboardHiding()
+    }
+
+    /// 点一下正文:收着的软键盘弹回(光标照常落到点的位置)。拖动滚动不算。
+    @objc func textTapped() { expandKeyboard() }
+
+    func gestureRecognizer(_ g: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
+        true
     }
 
     // MARK: 视图
@@ -433,7 +493,10 @@ final class EditorController: UIViewController, UITextViewDelegate {
                 self.view.layoutIfNeeded()
             }
         }
-        if top != nil && entering { focusEditor() }
+        if top != nil && entering {
+            expandKeyboard() // 半折时下半屏是软键盘(§3.2「收起软键盘」)
+            focusEditor()
+        }
         onDeskChange?(top.map { view.convert(CGPoint(x: 0, y: $0), to: nil).y })
     }
 
