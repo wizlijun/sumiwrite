@@ -990,6 +990,7 @@ final class EditorController: UIViewController, UITextViewDelegate {
         rimeAdapter = adapter
         // 右端一个状态字(中 / 英 / 系),点开菜单切换;空闲时候选行只剩状态字那一块(ios.md §3.6「状态字」)。
         adapter.bar.statusMenu = true
+        adapter.bar.statusFades = true // 状态字打字后渐隐,点一下再显示(§3.6「渐隐」)
         // 中英文之间自动加空格,规则照桌面(ios.md §3.6「中英文之间自动加空格」)。
         adapter.autoSpace = true
         adapter.onBarChange = { [weak self] in self?.placeRimeBar(reveal: true) }

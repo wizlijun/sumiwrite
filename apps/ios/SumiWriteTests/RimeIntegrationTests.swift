@@ -660,6 +660,24 @@ final class RimeIntegrationTests: XCTestCase {
         h.textView.pressesEnded([press], with: nil)
     }
 
+    /// 状态字渐隐(SUMI-261121-11):打字后淡去,位置还在;点一下只显示,不弹菜单。
+    func test_statusFadesAfterTyping() throws {
+        let h = try harness()
+        guard let bar = h.controller.rimeAdapter?.bar,
+              let status = bar.subviews.compactMap({ $0 as? UIButton }).first(where: { $0.accessibilityLabel == "切换输入法" })
+        else { return XCTFail("no status") }
+        bar.statusFadeDelay = 0.05
+        XCTAssertEqual(status.alpha, 1)
+        let press = KeyPress(.keyboardH, [], typed: "h")
+        h.textView.pressesBegan([press], with: nil)
+        h.textView.pressesEnded([press], with: nil)
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 1.5))
+        XCTAssertLessThan(status.alpha, 0.05)
+        XCTAssertFalse(status.showsMenuAsPrimaryAction)
+        status.sendActions(for: .touchUpInside)
+        XCTAssertTrue(status.showsMenuAsPrimaryAction)
+    }
+
     // MARK: 打字音
 
     /// 引擎吞下的按键:上屏后打字音只响一次(不再按文字变化另响)。
