@@ -1,4 +1,5 @@
 import Combine
+import GameController
 import os
 import RimeKitUI
 import UIKit
@@ -264,9 +265,27 @@ final class EditorController: UIViewController, UITextViewDelegate {
         voiceKeyTimer = nil
     }
 
-    /// 一次说话从别处结束了(60 s 上限、打断、没能开始):门限吞掉之后的键,直到右 ⌥ 松开。rapp `voiceEnd`。
+    /// 一次说话从别处结束了(5 分钟上限、打断、没能开始):门限吞掉之后的键,直到右 ⌥ 松开。rapp `voiceEnd`。
     func voiceKeyEnded() {
         _ = voiceKeys.handle(.ended, at: uptime(), ready: false)
+    }
+
+    /// 开始录音时收起软键盘(ios.md §3.8「软键盘」):换上一块空的输入视图,文本视图仍是第一响应者,
+    /// 选区、焦点与实体键盘的按键都不变。接着实体键盘时没有软键盘可收,不动。
+    func hideKeyboardForVoice() {
+        guard textView.isFirstResponder, textView.inputView == nil, GCKeyboard.coalesced == nil else { return }
+        textView.inputView = UIView(frame: .zero)
+        textView.reloadInputViews()
+    }
+
+    /// 语音结束(ios.md §3.8「软键盘」):换回系统键盘。`landed` 为 true(字落进了纸页)时编辑面取得焦点:
+    /// 没接实体键盘时软键盘随之展开,接着时系统不弹软键盘。为 false(取消、没听清、没能插入)时回到说话前的样子。
+    func restoreKeyboardAfterVoice(landed: Bool) {
+        if textView.inputView != nil {
+            textView.inputView = nil
+            textView.reloadInputViews()
+        }
+        if landed, voiceAvailable, !textView.isFirstResponder { textView.becomeFirstResponder() }
     }
 
     // MARK: 视图

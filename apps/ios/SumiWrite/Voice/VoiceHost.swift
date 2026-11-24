@@ -40,6 +40,10 @@ final class VoiceHost: ObservableObject, VoiceSink {
     private var fingerStart: CGPoint?
     /// VoiceOver 双击开始的一次说话还没结束。
     private var accessibilityOn = false
+    /// 这次说话收起了软键盘,还没换回(ios.md §3.8「软键盘」)。
+    private var keyboardHidden = false
+    /// 这次说话的字落进了纸页:结束时编辑面取得焦点。
+    private var landed = false
 
     /// `endpoint` 为 nil:读 `TidyEndpointStore`(钥匙串);测试注入,不碰钥匙串。`heldDir` 为 nil:Application Support/voice-held。
     init(controller: EditorController, prefs: PrefsModel, sound: TypingSound? = nil, defaults: UserDefaults = .standard,
@@ -84,6 +88,22 @@ final class VoiceHost: ObservableObject, VoiceSink {
             self.defaults.set(true, forKey: Self.languageHintKey)
         }
         controller.onVoiceKey = { [weak self] phase in self?.key(phase) }
+        // 开始录音:收起软键盘(ios.md §3.8「软键盘」)。`$holding` 在 willSet 时发值:用发来的值。
+        hold.$holding
+            .sink { [weak self] holding in
+                guard let self, holding else { return }
+                self.landed = false
+                self.keyboardHidden = true
+                self.controller?.hideKeyboardForVoice()
+            }
+            .store(in: &bag)
+        // 整理卡收起(落地、还原、出错提示):换回软键盘。落地的字在同一轮里插入,所以下一轮再看。
+        tidy.$phase
+            .sink { [weak self] phase in
+                guard phase != .tidying, phase != .ready else { return }
+                DispatchQueue.main.async { self?.settleKeyboard() }
+            }
+            .store(in: &bag)
         controller.voiceKeyReady = { [weak self] in self?.idle ?? false }
         // `$prefs` 在 willSet 时发值:用发来的值。
         prefs.$prefs
@@ -130,7 +150,18 @@ final class VoiceHost: ObservableObject, VoiceSink {
 
     /// 卡上的字立刻落地:整理好了插入整理后的字,还没好插入原话。按键、再按住说话、切页、开概览或设置、退到后台之前调用。
     func landTidy() {
-        if tidyBusy { tidy.sendNow() }
+        guard tidyBusy else { return }
+        tidy.sendNow()
+        // 切页、开概览或设置、退到后台时落地:不为它取得焦点、弹出软键盘;按键时编辑面本来就有焦点。
+        landed = false
+    }
+
+    /// 说话与整理卡都结束后换回软键盘:字落了地就让编辑面取得焦点(没接实体键盘时软键盘展开),否则回到说话前。
+    private func settleKeyboard() {
+        guard idle, !tidyBusy, keyboardHidden || landed else { return }
+        controller?.restoreKeyboardAfterVoice(landed: landed)
+        keyboardHidden = false
+        landed = false
     }
 
     /// 落地分两步:先插原话,再换成整理后的文字(各算一次编辑,一次撤销回到原话)。插不进去就留在 `held` 里。
@@ -144,6 +175,7 @@ final class VoiceHost: ObservableObject, VoiceSink {
             onNotice?(refused, .none)
             return
         }
+        landed = true
         guard let ai else { return }
         if controller.replaceVoice(original: ai.original, with: ai.result) { onNotice?(Self.tidiedNotice, .none) }
     }
@@ -295,7 +327,7 @@ final class VoiceHost: ObservableObject, VoiceSink {
 
     func voiceInsert(_ text: String, pick: VoicePick) {
         // 说话期间系统输入法开始了组字:不插入,提示。
-        if let refused = controller?.insertVoice(text) { onNotice?(refused, .none) }
+        if let refused = controller?.insertVoice(text) { onNotice?(refused, .none) } else { landed = true }
     }
 
     func voiceNotice(_ text: String, settings: VoiceSettings) {
@@ -304,12 +336,14 @@ final class VoiceHost: ObservableObject, VoiceSink {
 
     func voiceDidEnd(_ pick: VoicePick?) {
         accessibilityOn = false
-        // 手指的这次按下结束了(包括手势无声无息地没了、60 s 上限):不再算按着,下一次触摸能开始。
+        // 手指的这次按下结束了(包括手势无声无息地没了、5 分钟上限):不再算按着,下一次触摸能开始。
         if !hold.keyboard { fingerDown = false }
-        // 键盘的这次从别处结束(60 s 上限、打断):门限吞掉余下的键,直到右 ⌥ 松开。
+        // 键盘的这次从别处结束(5 分钟上限、打断):门限吞掉余下的键,直到右 ⌥ 松开。
         controller?.voiceKeyEnded()
         // 没走到录音(请求授权、被拒绝、轻点)时不会有 `restoreAudio`:在这里收回。
         if yielded { reclaimAudio() }
+        // 整理卡接走了字时等卡收起再换回(`tidy.$phase`)。
+        DispatchQueue.main.async { [weak self] in self?.settleKeyboard() }
     }
 
     private func reclaimAudio() {
